@@ -112,6 +112,13 @@ public final class MailStore: @unchecked Sendable {
         return id
     }
 
+    public func accounts() throws -> [AccountID] {
+        try dbQueue.read { db in
+            try String.fetchAll(db, sql: "SELECT id FROM accounts ORDER BY created_at")
+                .map(AccountID.init)
+        }
+    }
+
     public func account(_ id: AccountID) throws -> (displayName: String, address: String)? {
         try dbQueue.read { db in
             try Row.fetchOne(db, sql: "SELECT display_name, address FROM accounts WHERE id = ?", arguments: [id.raw])

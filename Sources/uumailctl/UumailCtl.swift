@@ -68,6 +68,73 @@ struct UumailCtl {
                 print("[4] inbox: NOT FOUND")
             }
 
+        case "sync":
+            // Composition-root glue for the probe stage: wires the gateway to the store
+            // directly. The SyncEngine component replaces this once it exists.
+            guard let path = value(of: "--db", in: arguments) else {
+                FileHandle.standardError.write(Data("sync: --db <path> is required\n".utf8))
+                exit(2)
+            }
+            let store = try MailStore(path: path)
+            let accountID = try existingOrNewAccount(store: store, configuration: configuration)
+
+            if try store.folders(account: accountID).isEmpty {
+                let folders = try await client.folderSync()
+                try store.applyFolderSnapshot(
+                    account: accountID,
+                    folders: folders.folders.map {
+                        MailFolder(serverID: $0.serverID, parentID: $0.parentID, displayName: $0.displayName, type: $0.type)
+                    },
+                    syncKey: folders.syncKey
+                )
+                print("folders: \(folders.folders.count) stored")
+            }
+
+            guard let inbox = try store.folders(account: accountID).first(where: { $0.type == 2 }) else {
+                FileHandle.standardError.write(Data("sync: no inbox folder\n".utf8))
+                exit(2)
+            }
+
+            var key = try store.syncKey(account: accountID, collection: inbox.serverID) ?? "0"
+
+            if key == "0" {
+                // First sync: `SyncKey=0` answers with a fresh key and no items. The window
+                // only arrives on the follow-up call, so both requests finish before any
+                // write — advancing the key without its window would silently skip mail.
+                let bootstrap = try await client.sync(collectionID: inbox.serverID, syncKey: "0")
+                let window = try await client.sync(collectionID: inbox.serverID, syncKey: bootstrap.syncKey)
+                try store.applySyncBatch(
+                    account: accountID,
+                    folder: inbox.serverID,
+                    added: window.added.map(Self.mailMessage),
+                    changed: window.changed.map(Self.mailMessage),
+                    removedServerIDs: window.removedServerIDs,
+                    syncKey: window.syncKey
+                )
+                print("initial sync: +\(window.added.count) added, key \(window.syncKey), more=\(window.moreAvailable)")
+                key = window.syncKey
+            }
+
+            for round in 1...5 {
+                let delta = try await client.sync(collectionID: inbox.serverID, syncKey: key)
+                try store.applySyncBatch(
+                    account: accountID,
+                    folder: inbox.serverID,
+                    added: delta.added.map(Self.mailMessage),
+                    changed: delta.changed.map(Self.mailMessage),
+                    removedServerIDs: delta.removedServerIDs,
+                    syncKey: delta.syncKey
+                )
+                print("round \(round): +\(delta.added.count) added, -\(delta.removedServerIDs.count) removed, key \(delta.syncKey), more=\(delta.moreAvailable)")
+                key = delta.syncKey
+                if !delta.moreAvailable { break }
+            }
+            let stored = try store.messages(account: accountID, folder: inbox.serverID, limit: 20)
+            print("stored \(stored.count) messages in \(inbox.displayName)")
+            for message in stored.prefix(10) {
+                print("  [\(message.receivedRaw ?? "")] \(message.subject ?? "(no subject)") <- \(message.sender ?? "")")
+            }
+
         case "store":
             // Persists a folder snapshot into a local SQLite file, proving the store contract.
             guard let path = value(of: "--db", in: arguments) else {
@@ -100,6 +167,32 @@ struct UumailCtl {
             printUsage()
             exit(2)
         }
+    }
+
+    private static func existingOrNewAccount(store: MailStore, configuration: EASConfiguration) throws -> AccountID {
+        if let first = try store.accounts().first {
+            return first
+        }
+        return try store.createAccount(
+            NewAccount(
+                displayName: configuration.account,
+                address: "\(configuration.account)@\(configuration.host)",
+                host: configuration.host
+            )
+        )
+    }
+
+    private static func mailMessage(_ message: EASMessage) -> MailMessage {
+        MailMessage(
+            serverID: message.serverID,
+            subject: message.subject,
+            sender: message.from,
+            recipients: message.to,
+            receivedRaw: message.dateReceived,
+            isRead: message.isRead ?? false,
+            importance: message.importance,
+            bodyPreview: message.bodyPreview
+        )
     }
 
     private static func value(of flag: String, in arguments: [String]) -> String? {
@@ -138,6 +231,7 @@ struct UumailCtl {
           folders [--json]     list the folder hierarchy
           diagnose             OPTIONS -> Provision -> FolderSync
           store --db <path>    sync folders into a local SQLite store
+          sync --db <path>     sync the inbox into the store (read-only on the server)
 
         Flags:
           --insecure           skip TLS verification (only for internal CAs)
