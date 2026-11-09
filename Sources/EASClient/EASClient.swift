@@ -409,6 +409,56 @@ public actor EASClient {
         )
     }
 
+    // MARK: Body fetch
+
+    /// Fetches one message body through ItemOperations. Type 2 is HTML; the gateway
+    /// truncates at `truncationSize` characters and flags the body as truncated.
+    public func fetchBody(
+        collectionID: String,
+        serverID: String,
+        truncationSize: Int = 20_000
+    ) async throws -> String {
+        if policyKey == nil {
+            try await provision()
+        }
+        let body = try codec.encode(.children("ItemOperations", [
+            .children("Fetch", [
+                .text("Store", "Mailbox"),
+                .text("CollectionId", collectionID),
+                .text("ServerId", serverID),
+                .children("Options", [
+                    .children("BodyPreference", [
+                        .text("Type", "2"),
+                        .text("TruncationSize", String(truncationSize)),
+                    ]),
+                ]),
+            ]),
+        ]))
+        let response = try await call("ItemOperations", body: body)
+        let document = try decode(response)
+
+        guard let operations = document.child("ItemOperations"),
+              let status = operations.child("Status")?.stringValue()
+        else {
+            throw EASError.malformedResponse("ItemOperations: missing Status")
+        }
+        guard status == "1" else {
+            throw EASError.permanent(status: response.status, detail: "ItemOperations status=\(status)")
+        }
+        guard let fetch = operations.path("Response", "Fetch"),
+              let fetchStatus = fetch.child("Status")?.stringValue()
+        else {
+            throw EASError.malformedResponse("ItemOperations: missing Response/Fetch")
+        }
+        guard fetchStatus == "1" else {
+            throw EASError.permanent(status: response.status, detail: "Fetch status=\(fetchStatus)")
+        }
+        guard let data = fetch.path("Properties", "Body", "Data")?.stringValue() else {
+            throw EASError.malformedResponse("ItemOperations: missing Body/Data")
+        }
+        return data
+    }
+
     // MARK: Transport plumbing
 
     private func call(

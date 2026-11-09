@@ -37,6 +37,9 @@ updated: 2026-11-09
 | T-1109-08 | change | CMP-STORE | done | messages/message_bodies 迁移与 `applySyncBatch` |
 | T-1109-09 | change | CMP-SYNC | done | SyncEngine 分页环 + 适配器 + CLI `sync` |
 | T-1109-10 | verify | CMP-SYNC | done | 真机收信：5 轮 × 25 封入本地库 |
+| T-1109-11 | change | CMP-EAS | done | `fetchBody`（ItemOperations） |
+| T-1109-12 | change | CMP-STORE | done | 正文分表存储（v3） |
+| T-1109-13 | change | CMP-APP | done | 三栏阅读 + WKWebView 渲染 |
 
 ## 领取的开放问题
 

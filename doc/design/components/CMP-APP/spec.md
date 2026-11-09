@@ -31,10 +31,11 @@ component: CMP-APP
 
 | 能力 | 代码 | 验证 |
 |---|---|---|
-| 账号配置（含设备 ID 高级项） | `AccountSetupView.swift` | 窗口截图 |
+| 账号配置（含设备 ID 高级项） | `AccountSetupView.swift` | 真机：Keychain 免配置启动 |
 | 文件夹侧栏 + 邮件列表 | `MailboxView.swift` | 真机 200 封渲染；发件人显示名解析、本地时间；`MailboxModel` 3 个单测 |
 | 刷新与失败状态 | `MailboxModel.refresh()` | 单测（失败保留缓存） |
-| 正文 / 阅读 / 撰写 | ⬜ | — |
+| 三栏 + 正文阅读（WKWebView，禁 JS，CSP 阻止远程资源，单封可放行） | `MessageBodyView.swift` | 真机：点选邮件拉取 HTML 并渲染；3 个模型单测 |
+| 撰写 | ⬜ | — |
 
 ## 待办
 

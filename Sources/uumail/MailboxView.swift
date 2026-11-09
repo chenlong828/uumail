@@ -13,13 +13,14 @@ struct MailboxView: View {
             }
             .navigationSplitViewColumnWidth(min: 180, ideal: 220)
             .navigationTitle("文件夹")
-        } detail: {
+        } content: {
             VStack(spacing: 0) {
                 messageList
                 Divider()
                 statusBar
             }
             .navigationTitle(model.folders.first(where: { $0.serverID == model.selectedFolderID })?.displayName ?? "收件箱")
+            .navigationSplitViewColumnWidth(min: 280, ideal: 380)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
@@ -30,11 +31,17 @@ struct MailboxView: View {
                     .disabled(model.state == .syncing)
                 }
             }
+        } detail: {
+            MessageBodyView(state: model.detailState) {
+                Task { await model.loadBody() }
+            }
+            .navigationTitle("阅读")
         }
     }
 
     private var messageList: some View {
-        List(model.messages, id: \.serverID) { message in
+        List(selection: $model.selectedMessageID) {
+            ForEach(model.messages, id: \.serverID) { message in
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Circle()
                     .fill(message.isRead ? Color.clear : Color.accentColor)
@@ -54,6 +61,8 @@ struct MailboxView: View {
                     .foregroundStyle(.secondary)
             }
             .padding(.vertical, 2)
+            .tag(message.serverID)
+            }
         }
         .overlay {
             if model.messages.isEmpty {

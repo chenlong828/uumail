@@ -65,7 +65,9 @@ component: CMP-STORE
 |---|---|---|
 | schema v1：accounts / device_profiles / folders / sync_state | ✅ | 迁移随 `MailStore.inMemory()` 走通 |
 | `applyFolderSnapshot` | ✅ | 幂等、软删、复活、回滚、未知账号 |
-| `applySyncBatch` / `page` / `messageDetail` / `searchLocal` / outbox | ⬜ | — |
+| `applySyncBatch` | ✅ | 5 个用例 |
+| `applyBody` / `body`（正文分表，HTML 标记） | ✅ | 2 个用例 |
+| `page` / `messageDetail` / `searchLocal` / outbox | ⬜ | — |
 
 `createAccount` 目前返回 `draft` 态账号；账号状态机随 UI 工序补齐。
 

@@ -33,6 +33,21 @@ public final class MailService: MailServiceProtocol, @unchecked Sendable {
         try store.folders(account: accountID)
     }
 
+    /// Returns the stored HTML body, or fetches it through the gateway and stores it.
+    public func body(folderID: String, serverID: String) throws -> String? {
+        try store.body(account: accountID, folder: folderID, serverID: serverID)?.text
+    }
+
+    public func fetchBody(folderID: String, serverID: String) async throws -> String {
+        do {
+            let html = try await client.fetchBody(collectionID: folderID, serverID: serverID)
+            try store.applyBody(account: accountID, folder: folderID, serverID: serverID, html: html)
+            return html
+        } catch {
+            throw EASGateway.map(error)
+        }
+    }
+
     public func messages(folderID: String, limit: Int) throws -> [StoredMessage] {
         try store.messages(account: accountID, folder: folderID, limit: limit)
     }
@@ -64,4 +79,6 @@ public protocol MailServiceProtocol: AnyObject, Sendable {
     func syncOnce() async throws -> SyncReport
     func folders() throws -> [StoredFolder]
     func messages(folderID: String, limit: Int) throws -> [StoredMessage]
+    func body(folderID: String, serverID: String) throws -> String?
+    func fetchBody(folderID: String, serverID: String) async throws -> String
 }

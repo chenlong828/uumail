@@ -28,6 +28,19 @@ final class FakeService: MailServiceProtocol, @unchecked Sendable {
     func messages(folderID: String, limit: Int) throws -> [StoredMessage] {
         messageList
     }
+
+    nonisolated(unsafe) var cachedBody: String?
+    nonisolated(unsafe) var fetchBodyResult: Result<String, Error> = .success("<html><body>hi</body></html>")
+    nonisolated(unsafe) private(set) var fetchBodyCalls = 0
+
+    func body(folderID: String, serverID: String) throws -> String? {
+        cachedBody
+    }
+
+    func fetchBody(folderID: String, serverID: String) async throws -> String {
+        fetchBodyCalls += 1
+        return try fetchBodyResult.get()
+    }
 }
 
 @Suite("MailboxModel")
@@ -86,5 +99,61 @@ struct MailboxModelTests {
         #expect(model.selectedFolderID == "13")
         model.selectedFolderID = "4"
         #expect(model.messages.isEmpty)
+    }
+}
+
+@Suite("MailboxModel body loading")
+@MainActor
+struct MailboxModelBodyTests {
+    private func model(_ service: FakeService) -> MailboxModel {
+        let model = MailboxModel(service: service)
+        model.loadCached()
+        model.selectedMessageID = "1"
+        return model
+    }
+
+    @Test("a cached body is shown without a network call")
+    func cachedBody() async {
+        let service = FakeService(
+            folderList: [StoredFolder(serverID: "13", parentID: "0", displayName: "收件箱", type: 2)],
+            messageList: [StoredMessage(serverID: "1", subject: "A", sender: "a@b.c", receivedRaw: nil, isRead: true, bodyPreview: nil)]
+        )
+        service.cachedBody = "<html>cached</html>"
+        let model = model(service)
+        await model.loadBody()
+
+        #expect(model.detailState == .loaded("<html>cached</html>"))
+        #expect(service.fetchBodyCalls == 0)
+    }
+
+    @Test("a missing body is fetched and becomes the detail state")
+    func fetchedBody() async {
+        let service = FakeService(
+            folderList: [StoredFolder(serverID: "13", parentID: "0", displayName: "收件箱", type: 2)],
+            messageList: [StoredMessage(serverID: "1", subject: "A", sender: "a@b.c", receivedRaw: nil, isRead: true, bodyPreview: nil)]
+        )
+        service.fetchBodyResult = .success("<html>fetched</html>")
+        let model = model(service)
+        await model.loadBody()
+
+        #expect(model.detailState == .loaded("<html>fetched</html>"))
+        #expect(service.fetchBodyCalls == 1)
+    }
+
+    @Test("a failed fetch is reported instead of showing an empty body")
+    func failedBody() async {
+        let service = FakeService(
+            folderList: [StoredFolder(serverID: "13", parentID: "0", displayName: "收件箱", type: 2)],
+            messageList: [StoredMessage(serverID: "1", subject: "A", sender: "a@b.c", receivedRaw: nil, isRead: true, bodyPreview: nil)]
+        )
+        service.fetchBodyResult = .failure(MailGatewayError.offline)
+        let model = model(service)
+        await model.loadBody()
+
+        guard case .failed(let message) = model.detailState else {
+            Issue.record("expected failed detail state")
+            return
+        }
+        #expect(message.contains("offline"))
     }
 }

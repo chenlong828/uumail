@@ -92,6 +92,9 @@ public final class MailStore: @unchecked Sendable {
                 );
                 """)
         }
+        migrator.registerMigration("v3_body_html") { db in
+            try db.execute(sql: "ALTER TABLE message_bodies ADD COLUMN is_html INTEGER NOT NULL DEFAULT 0")
+        }
         try migrator.migrate(dbQueue)
     }
 
@@ -320,6 +323,42 @@ public final class MailStore: @unchecked Sendable {
                     isRead: (row["is_read"] as Int) == 1,
                     bodyPreview: row["preview"]
                 )
+            }
+        }
+    }
+
+    /// Stores a fetched body. The body table is separate from the envelope so list
+    /// queries never touch it.
+    public func applyBody(
+        account id: AccountID,
+        folder folderID: String,
+        serverID: String,
+        html: String
+    ) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO message_bodies (account_id, folder_id, server_id, text, fetched_at, is_html)
+                    VALUES (?, ?, ?, ?, ?, 1)
+                    ON CONFLICT(account_id, folder_id, server_id) DO UPDATE SET
+                        text = excluded.text,
+                        fetched_at = excluded.fetched_at,
+                        is_html = 1
+                    """,
+                arguments: [id.raw, folderID, serverID, html, Date().timeIntervalSince1970]
+            )
+        }
+    }
+
+    public func body(account id: AccountID, folder folderID: String, serverID: String) throws -> (text: String, isHTML: Bool)? {
+        try dbQueue.read { db in
+            try Row.fetchOne(
+                db,
+                sql: "SELECT text, is_html FROM message_bodies WHERE account_id = ? AND folder_id = ? AND server_id = ?",
+                arguments: [id.raw, folderID, serverID]
+            ).flatMap { row in
+                guard let text: String = row["text"] else { return nil }
+                return (text, (row["is_html"] as Int) == 1)
             }
         }
     }

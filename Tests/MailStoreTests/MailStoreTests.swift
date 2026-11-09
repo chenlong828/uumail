@@ -189,3 +189,32 @@ struct MailStoreSyncTests {
         }
     }
 }
+
+@Suite("MailStore bodies")
+struct MailStoreBodyTests {
+    @Test("a fetched body is stored separately from the envelope and updated in place")
+    func storesBody() throws {
+        let store = try MailStore.inMemory()
+        let id = try store.createAccount(NewAccount(displayName: "工作", address: "jdoe@corp.test", host: "mail.corp.test"))
+        try store.applyFolderSnapshot(account: id, folders: [
+            MailFolder(serverID: "13", parentID: "0", displayName: "收件箱", type: 2),
+        ], syncKey: "1")
+        try store.applySyncBatch(account: id, folder: "13", added: [
+            MailMessage(serverID: "1", subject: "A", receivedRaw: "2026-11-08T05:11:18.000Z"),
+        ], changed: [], removedServerIDs: [], syncKey: "2")
+
+        try store.applyBody(account: id, folder: "13", serverID: "1", html: "<html>v1</html>")
+        #expect(try store.body(account: id, folder: "13", serverID: "1")?.text == "<html>v1</html>")
+        #expect(try store.body(account: id, folder: "13", serverID: "1")?.isHTML == true)
+
+        try store.applyBody(account: id, folder: "13", serverID: "1", html: "<html>v2</html>")
+        #expect(try store.body(account: id, folder: "13", serverID: "1")?.text == "<html>v2</html>")
+    }
+
+    @Test("an unfetched message has no body row")
+    func noBody() throws {
+        let store = try MailStore.inMemory()
+        let id = try store.createAccount(NewAccount(displayName: "工作", address: "jdoe@corp.test", host: "mail.corp.test"))
+        #expect(try store.body(account: id, folder: "13", serverID: "1") == nil)
+    }
+}

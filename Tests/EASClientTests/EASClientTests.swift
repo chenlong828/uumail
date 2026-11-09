@@ -353,3 +353,57 @@ struct EASSyncTests {
         }
     }
 }
+
+@Suite("EASClient body fetch")
+struct EASBodyTests {
+    private func bodyResponse(html: String) -> Data {
+        let codec = try! WBXMLCodec.standard()
+        return try! codec.encode(.children("ItemOperations", [
+            .text("Status", "1"),
+            .children("Response", [
+                .children("Fetch", [
+                    .text("Status", "1"),
+                    .text("CollectionId", "13"),
+                    .text("ServerId", "101"),
+                    .children("Properties", [
+                        .children("Body", [
+                            .text("Type", "2"),
+                            .text("Data", html),
+                        ]),
+                    ]),
+                ]),
+            ]),
+        ]))
+    }
+
+    @Test("fetchBody asks ItemOperations for HTML and returns the payload")
+    func fetchesBody() async throws {
+        let stub = StubTransport(responses: [
+            EASHTTPResponse(status: 200, headers: [:], body: bodyResponse(html: "<html>hello</html>"))
+        ])
+        let client = EASClient(configuration: makeConfiguration(), transport: stub, policyKey: "1")
+        let html = try await client.fetchBody(collectionID: "13", serverID: "101")
+
+        #expect(html == "<html>hello</html>")
+        let request = try #require(await stub.recorded.first?.request)
+        let document = try WBXMLCodec.standard().decode(try #require(request.body))
+        #expect(document.path("ItemOperations", "Fetch", "Store")?.stringValue() == "Mailbox")
+        #expect(document.path("ItemOperations", "Fetch", "CollectionId")?.stringValue() == "13")
+        #expect(document.path("ItemOperations", "Fetch", "ServerId")?.stringValue() == "101")
+        #expect(document.path("ItemOperations", "Fetch", "Options", "BodyPreference", "Type")?.stringValue() == "2")
+        #expect(document.path("ItemOperations", "Fetch", "Options", "BodyPreference", "TruncationSize")?.stringValue() == "20000")
+    }
+
+    @Test("ItemOperations status 2 is a failure, not an empty body")
+    func statusFailure() async {
+        let codec = try! WBXMLCodec.standard()
+        let failure = try! codec.encode(.children("ItemOperations", [.text("Status", "2")]))
+        let stub = StubTransport(responses: [
+            EASHTTPResponse(status: 200, headers: [:], body: failure)
+        ])
+        let client = EASClient(configuration: makeConfiguration(), transport: stub, policyKey: "1")
+        await #expect(throws: EASError.permanent(status: 200, detail: "ItemOperations status=2")) {
+            _ = try await client.fetchBody(collectionID: "13", serverID: "101")
+        }
+    }
+}
