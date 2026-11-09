@@ -105,3 +105,87 @@ struct MailStoreTests {
         }
     }
 }
+
+@Suite("MailStore sync batches")
+struct MailStoreSyncTests {
+    private func seededStore() throws -> (MailStore, AccountID) {
+        let store = try MailStore.inMemory()
+        let id = try store.createAccount(NewAccount(displayName: "工作", address: "jdoe@corp.test", host: "mail.corp.test"))
+        try store.applyFolderSnapshot(
+            account: id,
+            folders: [MailFolder(serverID: "13", parentID: "0", displayName: "收件箱", type: 2)],
+            syncKey: "1"
+        )
+        return (store, id)
+    }
+
+    @Test("a batch stores envelopes and previews, then advances the key")
+    func appliesBatch() throws {
+        let (store, id) = try seededStore()
+        try store.applySyncBatch(
+            account: id,
+            folder: "13",
+            added: [
+                MailMessage(serverID: "101", subject: "周报", sender: "a@corp.test",
+                            receivedRaw: "2026-11-08T05:11:18.000Z", bodyPreview: "摘要"),
+                MailMessage(serverID: "102", subject: "通知", sender: "b@corp.test",
+                            receivedRaw: "2026-11-08T04:00:00.000Z", isRead: true),
+            ],
+            changed: [],
+            removedServerIDs: [],
+            syncKey: "2"
+        )
+        let messages = try store.messages(account: id, folder: "13")
+        #expect(messages.count == 2)
+        #expect(messages.first?.serverID == "101")
+        #expect(messages.first?.bodyPreview == "摘要")
+        #expect(try store.syncKey(account: id, collection: "13") == "2")
+    }
+
+    @Test("re-applying the same batch keeps one row per server id")
+    func idempotentBatch() throws {
+        let (store, id) = try seededStore()
+        let message = MailMessage(serverID: "101", subject: "周报", receivedRaw: "2026-11-08T05:11:18.000Z")
+        try store.applySyncBatch(account: id, folder: "13", added: [message], changed: [],
+                                 removedServerIDs: [], syncKey: "2")
+        try store.applySyncBatch(account: id, folder: "13", added: [message], changed: [],
+                                 removedServerIDs: [], syncKey: "3")
+        #expect(try store.messages(account: id, folder: "13").count == 1)
+        #expect(try store.syncKey(account: id, collection: "13") == "3")
+    }
+
+    @Test("removed messages disappear but keep their row")
+    func softDeleteMessage() throws {
+        let (store, id) = try seededStore()
+        try store.applySyncBatch(account: id, folder: "13", added: [
+            MailMessage(serverID: "101", subject: "A", receivedRaw: "2026-11-08T05:11:18.000Z"),
+            MailMessage(serverID: "102", subject: "B", receivedRaw: "2026-11-08T04:00:00.000Z"),
+        ], changed: [], removedServerIDs: [], syncKey: "2")
+        try store.applySyncBatch(account: id, folder: "13", added: [], changed: [],
+                                 removedServerIDs: ["102"], syncKey: "3")
+        let remaining = try store.messages(account: id, folder: "13")
+        #expect(remaining.map(\.serverID) == ["101"])
+    }
+
+    @Test("a failed batch does not advance the key")
+    func rollbackKeepsKey() throws {
+        let (store, id) = try seededStore()
+        #expect(throws: MailStoreError.invalidFolder(reason: "empty message serverID")) {
+            try store.applySyncBatch(account: id, folder: "13", added: [
+                MailMessage(serverID: "101", subject: "A"),
+                MailMessage(serverID: "", subject: "broken"),
+            ], changed: [], removedServerIDs: [], syncKey: "2")
+        }
+        #expect(try store.messages(account: id, folder: "13").isEmpty)
+        #expect(try store.syncKey(account: id, collection: "13") == nil)
+    }
+
+    @Test("syncing into an unknown folder fails loudly")
+    func unknownFolder() throws {
+        let (store, id) = try seededStore()
+        #expect(throws: MailStoreError.folderNotFound(account: id, folder: "999")) {
+            try store.applySyncBatch(account: id, folder: "999", added: [], changed: [],
+                                     removedServerIDs: [], syncKey: "2")
+        }
+    }
+}

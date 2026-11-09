@@ -45,7 +45,48 @@ public struct StoredFolder: Equatable, Sendable {
     public var type: Int
 }
 
+public struct MailMessage: Equatable, Sendable {
+    public var serverID: String
+    public var subject: String?
+    public var sender: String?
+    public var recipients: String?
+    public var receivedRaw: String?
+    public var isRead: Bool
+    public var importance: Int?
+    public var bodyPreview: String?
+
+    public init(
+        serverID: String,
+        subject: String? = nil,
+        sender: String? = nil,
+        recipients: String? = nil,
+        receivedRaw: String? = nil,
+        isRead: Bool = false,
+        importance: Int? = nil,
+        bodyPreview: String? = nil
+    ) {
+        self.serverID = serverID
+        self.subject = subject
+        self.sender = sender
+        self.recipients = recipients
+        self.receivedRaw = receivedRaw
+        self.isRead = isRead
+        self.importance = importance
+        self.bodyPreview = bodyPreview
+    }
+}
+
+public struct StoredMessage: Equatable, Sendable {
+    public var serverID: String
+    public var subject: String?
+    public var sender: String?
+    public var receivedRaw: String?
+    public var isRead: Bool
+    public var bodyPreview: String?
+}
+
 public enum MailStoreError: Error, Equatable, Sendable {
+    case folderNotFound(account: AccountID, folder: String)
     case accountNotFound(AccountID)
     case invalidFolder(reason: String)
     case database(String)
