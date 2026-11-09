@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
-# Builds uumail.app from the SwiftPM executable (no Xcode project needed).
+# Builds uumail.app and publishes it into dist/.
+# Every completed development milestone should end with a run of this script.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
 ./Scripts/swiftw build -c release --product uumail
-APP=".build/uumail.app"
+
+APP="dist/uumail.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp ".build/release/uumail" "$APP/Contents/MacOS/uumail"
+
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -25,5 +29,13 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </dict>
 </plist>
 PLIST
+
 codesign --force --sign - "$APP" >/dev/null 2>&1 || echo "warning: ad-hoc signing failed"
-echo "$APP"
+
+{
+  echo "commit: $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+  echo "built:  $(date '+%Y-%m-%d %H:%M:%S %Z')"
+  echo "config: release"
+} > dist/build-info.txt
+
+echo "published: $APP"

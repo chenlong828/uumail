@@ -24,7 +24,7 @@ component: CMP-APP
 - 依赖：AppServices（MailService、KeychainAccountStore、MailboxModel）、SwiftUI。
 - 冷热：热（读本地库）；同步在后台，不阻塞列表。
 - 尺寸预算：≤ 120k token；当前远低。
-- 单独运行：`./Scripts/make-app.sh && open .build/uumail.app`
+- 单独运行：`./Scripts/make-app.sh && open dist/uumail.app`（脚本把 release 构建发布到 `dist/`）
 - 删除测试：删掉则只能命令行看信，对终端用户等于没有产品。
 
 ## 实现进度（2026-11-09）
