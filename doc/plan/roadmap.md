@@ -30,7 +30,7 @@ updated: 2026-11-09
 | W-M1-02 文件夹树同步 | M1 | W-M1-01 | CMP-SYNC、CMP-STORE | SCN-0002 `verified` |
 | W-M1-03 收件箱增量同步 | M1 | W-M1-02 | CMP-SYNC、CMP-STORE、CMP-EAS | 进行中：分页与原子提交已通，初始同步深度待定；SCN-0003 待 `verified` |
 | W-M1-04 正文渲染与附件下载 | M1 | W-M1-03 | CMP-STORE、CMP-EAS、AttachmentCache | SCN-0004、SCN-0005 `verified` |
-| W-M2-01 Outbox 与发信 | M2 | W-M1-04 | CMP-OUT、CMP-EAS | 进行中：协议、队列、撰写界面已通；待真机发信验证 |
+| W-M2-01 Outbox 与发信 | M2 | W-M1-04 | CMP-OUT、CMP-EAS | 已完成：协议、队列、撰写界面；真机自测信投递成功 |
 | W-M2-02 回复/转发与草稿 | M2 | W-M2-01 | CMP-OUT、CMP-STORE | 回复/转发、草稿两个场景 `verified` |
 | W-M3-01 Ping 与通知 | M3 | W-M2-01 | CMP-SYNC、通知策略 | Ping 实测不支持 → 轮询；通知已落地 |
 | W-M3-02 本地搜索 | M3 | W-M1-03 | CMP-STORE | 搜索场景 `verified`；FTS 不扫正文列 |

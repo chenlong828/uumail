@@ -43,6 +43,17 @@ BASELINE insert5000=0.61s list200=0.002s search=0.001s hits=50 page=200
 
 **未覆盖**：证书固定、SQLCipher、审计日志、发信内容校验（收件人域名白名单等）。
 
+## 发信真机验证（授权后执行）
+
+```
+$ uumailctl send --to <本人地址> --subject "uumail 自测 20261109-2318"
+sent: outbox BFCA3F5C… cleared
+$ uumailctl sync --db .build/send-verify.sqlite
++125 added …  收件箱: "uumail 自测 20261109-2318" <- "陈龙07" <chenlong53479@hundsun.com>
+```
+
+结论：`SendMail`（opaque MIME、`SaveInSentItems`）被网关接受（outbox 清空 = `200` + 0 字节），邮件真实投递并入收件箱。M2 端到端闭环。
+
 ## 裁决
 
-blocker 0 / decision 1（短查询用 LIKE 兜底，牺牲索引换可用性）/ hold 1（发信真机验证需用户授权）。
+blocker 0 / decision 1（短查询用 LIKE 兜底，牺牲索引换可用性）/ hold 0（发信已获授权并验证）。
