@@ -32,7 +32,7 @@ component: CMP-APP
 | 能力 | 代码 | 验证 |
 |---|---|---|
 | 账号配置（含设备 ID 高级项） | `AccountSetupView.swift` | 窗口截图 |
-| 文件夹侧栏 + 邮件列表 | `MailboxView.swift` | 窗口截图；`MailboxModel` 3 个单测 |
+| 文件夹侧栏 + 邮件列表 | `MailboxView.swift` | 真机 200 封渲染；发件人显示名解析、本地时间；`MailboxModel` 3 个单测 |
 | 刷新与失败状态 | `MailboxModel.refresh()` | 单测（失败保留缓存） |
 | 正文 / 阅读 / 撰写 | ⬜ | — |
 

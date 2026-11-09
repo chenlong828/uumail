@@ -31,7 +31,8 @@ let package = Package(
         ),
         .executableTarget(
             name: "uumail",
-            dependencies: ["AppServices", "MailStore"]
+            dependencies: ["AppServices", "MailStore"],
+            swiftSettings: [.define("DEBUG", .when(configuration: .debug))]
         ),
         .executableTarget(
             name: "uumailctl",

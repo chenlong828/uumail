@@ -17,7 +17,7 @@ updated: 2026-11-09
 | FolderSync 解析 + 事务落库 | ✅ | 21 个真实文件夹落库；幂等、软删、复活、回滚各有测试 |
 | 真实网关只读跑通 | ✅ | `[1] OPTIONS ok: 2.0…16.1`、`[2] Provision ok`、`[3] FolderSync ok: 21 folders`、`[4] inbox: id=13` |
 | 凭据不入库 | ✅ | 环境变量注入；`.env` 在 `.gitignore`；文档与测试无真实值 |
-| 收件箱 UI | ✅ | SwiftUI 外壳：配置页、文件夹侧栏、邮件列表；窗口截图验证 |
+| 收件箱 UI | ✅ | SwiftUI 外壳：配置页、文件夹侧栏、邮件列表；以 `UUMAIL_DEBUG_ENV=1` 从环境注入凭据启动，真机 200 封渲染，未写 Keychain |
 | 收件箱同步端到端 | ✅ | 真机：5 轮 × 25 封 = 125 封入 SQLite，含主题/发件人/时间/已读 |
 | `Sync` 分页语义 | ✅ | 实测 `MoreAvailable` 不可靠，改为按「本轮新增 < 窗口」停止；进 playbook §3 |
 

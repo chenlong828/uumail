@@ -43,4 +43,10 @@ export EAS_HOST EAS_USER EAS_PASS EAS_DOMAIN EAS_DEVICE_ID
 
 `diagnose` 只发 `OPTIONS → Provision → FolderSync`，不改服务器数据。
 
+调试启动（仅 DEBUG 构建，不写 Keychain）：在同一个 shell 里再加
+
+```bash
+UUMAIL_DEBUG_ENV=1 UUMAIL_DB_PATH="$PWD/.build/app.sqlite" .build/debug/uumail
+```
+
 原始协议探针（Python）留在 `~/working/公网邮箱访问`，只作证据，不是本仓库的一部分。

@@ -43,7 +43,7 @@ struct MailboxView: View {
                     Text(message.subject ?? "(无主题)")
                         .fontWeight(message.isRead ? .regular : .semibold)
                         .lineLimit(1)
-                    Text(message.sender ?? "")
+                    Text(Self.senderName(message.sender))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -69,7 +69,7 @@ struct MailboxView: View {
         HStack {
             switch model.state {
             case .idle:
-                Text(model.lastSyncedAt.map { "上次同步 \(Self.displayDate(ISO8601DateFormatter().string(from: $0)))" } ?? "就绪")
+                Text(model.lastSyncedAt.map { "上次同步 \(Self.localTime($0))" } ?? "就绪")
             case .syncing:
                 ProgressView().controlSize(.small)
                 Text("同步中…")
@@ -97,6 +97,20 @@ struct MailboxView: View {
         case 11: "calendar"
         default: "folder"
         }
+    }
+
+    /// `"张三" <zhang@corp.com>` → `张三`; a bare address stays as is.
+    private static func senderName(_ raw: String?) -> String {
+        guard let raw, !raw.isEmpty else { return "" }
+        guard let angle = raw.firstIndex(of: "<") else { return raw }
+        let name = raw[..<angle].trimmingCharacters(in: .whitespaces)
+        return name.isEmpty ? raw : name.trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+    }
+
+    private static func localTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MM-dd HH:mm"
+        return formatter.string(from: date)
     }
 
     private static func displayDate(_ raw: String?) -> String {
