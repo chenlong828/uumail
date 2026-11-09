@@ -95,6 +95,22 @@ public final class MailStore: @unchecked Sendable {
         migrator.registerMigration("v3_body_html") { db in
             try db.execute(sql: "ALTER TABLE message_bodies ADD COLUMN is_html INTEGER NOT NULL DEFAULT 0")
         }
+
+        migrator.registerMigration("v4_attachments") { db in
+            try db.execute(sql: """
+                CREATE TABLE attachments (
+                    account_id TEXT NOT NULL,
+                    folder_id TEXT NOT NULL,
+                    message_id TEXT NOT NULL,
+                    file_reference TEXT NOT NULL,
+                    display_name TEXT NOT NULL,
+                    size INTEGER,
+                    cache_path TEXT,
+                    downloaded_at REAL,
+                    PRIMARY KEY (account_id, folder_id, message_id, file_reference)
+                );
+                """)
+        }
         try migrator.migrate(dbQueue)
     }
 
@@ -262,6 +278,19 @@ public final class MailStore: @unchecked Sendable {
                         message.importance, now,
                     ]
                 )
+                for attachment in message.attachments {
+                    try db.execute(
+                        sql: """
+                            INSERT INTO attachments
+                                (account_id, folder_id, message_id, file_reference, display_name, size, cache_path, downloaded_at)
+                            VALUES (?, ?, ?, ?, ?, ?, NULL, NULL)
+                            ON CONFLICT(account_id, folder_id, message_id, file_reference) DO UPDATE SET
+                                display_name = excluded.display_name,
+                                size = excluded.size
+                            """,
+                        arguments: [id.raw, folderID, message.serverID, attachment.fileReference, attachment.displayName, attachment.size]
+                    )
+                }
                 if let preview = message.bodyPreview {
                     try db.execute(
                         sql: """
@@ -360,6 +389,40 @@ public final class MailStore: @unchecked Sendable {
                 guard let text: String = row["text"] else { return nil }
                 return (text, (row["is_html"] as Int) == 1)
             }
+        }
+    }
+
+    public func attachments(account id: AccountID, folder folderID: String, messageID: String) throws -> [StoredAttachment] {
+        try dbQueue.read { db in
+            try Row.fetchAll(
+                db,
+                sql: """
+                    SELECT message_id, display_name, file_reference, size, cache_path
+                    FROM attachments WHERE account_id = ? AND folder_id = ? AND message_id = ?
+                    ORDER BY display_name
+                    """,
+                arguments: [id.raw, folderID, messageID]
+            ).map { row in
+                StoredAttachment(
+                    messageID: row["message_id"],
+                    displayName: row["display_name"],
+                    fileReference: row["file_reference"],
+                    size: row["size"],
+                    cachePath: row["cache_path"]
+                )
+            }
+        }
+    }
+
+    public func markAttachmentCached(account id: AccountID, folder folderID: String, messageID: String, fileReference: String, cachePath: String) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                    UPDATE attachments SET cache_path = ?, downloaded_at = ?
+                    WHERE account_id = ? AND folder_id = ? AND message_id = ? AND file_reference = ?
+                    """,
+                arguments: [cachePath, Date().timeIntervalSince1970, id.raw, folderID, messageID, fileReference]
+            )
         }
     }
 

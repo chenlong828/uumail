@@ -87,6 +87,18 @@ public struct FolderSyncResult: Equatable, Sendable {
     public let syncKey: String
 }
 
+public struct EASAttachment: Equatable, Sendable {
+    public var displayName: String
+    public var fileReference: String
+    public var size: Int?
+
+    public init(displayName: String, fileReference: String, size: Int?) {
+        self.displayName = displayName
+        self.fileReference = fileReference
+        self.size = size
+    }
+}
+
 public struct EASMessage: Equatable, Sendable {
     public var serverID: String
     public var subject: String?
@@ -96,6 +108,7 @@ public struct EASMessage: Equatable, Sendable {
     public var isRead: Bool?
     public var importance: Int?
     public var bodyPreview: String?
+    public var attachments: [EASAttachment] = []
 
     public init(
         serverID: String,
@@ -105,7 +118,8 @@ public struct EASMessage: Equatable, Sendable {
         dateReceived: String? = nil,
         isRead: Bool? = nil,
         importance: Int? = nil,
-        bodyPreview: String? = nil
+        bodyPreview: String? = nil,
+        attachments: [EASAttachment] = []
     ) {
         self.serverID = serverID
         self.subject = subject
@@ -115,6 +129,7 @@ public struct EASMessage: Equatable, Sendable {
         self.isRead = isRead
         self.importance = importance
         self.bodyPreview = bodyPreview
+        self.attachments = attachments
     }
 }
 
@@ -405,7 +420,16 @@ public actor EASClient {
             dateReceived: value("DateReceived"),
             isRead: value("Read").flatMap { $0 == "1" },
             importance: value("Importance").flatMap(Int.init),
-            bodyPreview: application?.path("Body", "Data")?.stringValue()
+            bodyPreview: application?.path("Body", "Data")?.stringValue(),
+            attachments: (application?.child("Attachments")?.children ?? []).compactMap { node in
+                guard let reference = node.child("FileReference")?.stringValue() else { return nil }
+                return EASAttachment(
+                    displayName: node.child("DisplayName")?.stringValue() ?? "attachment",
+                    fileReference: reference,
+                    size: node.child("EstimatedDataSize").flatMap { Int($0.stringValue() ?? "") }
+                        ?? node.child("AttSize").flatMap { Int($0.stringValue() ?? "") }
+                )
+            }
         )
     }
 
@@ -455,6 +479,37 @@ public actor EASClient {
         }
         guard let data = fetch.path("Properties", "Body", "Data")?.stringValue() else {
             throw EASError.malformedResponse("ItemOperations: missing Body/Data")
+        }
+        return data
+    }
+
+    // MARK: Attachments
+
+    /// Downloads one attachment by its `FileReference`. The payload comes back as base64
+    /// text in `ItemOperations/Data` (see pyactivesync's fetch_attachment).
+    public func fetchAttachment(fileReference: String) async throws -> Data {
+        if policyKey == nil {
+            try await provision()
+        }
+        let body = try codec.encode(.children("ItemOperations", [
+            .children("Fetch", [
+                .text("Store", "Mailbox"),
+                .text("FileReference", fileReference),
+            ]),
+        ]))
+        let response = try await call("ItemOperations", body: body)
+        let document = try decode(response)
+        guard let status = document.path("ItemOperations", "Status")?.stringValue() else {
+            throw EASError.malformedResponse("ItemOperations: missing Status")
+        }
+        guard status == "1" else {
+            throw EASError.permanent(status: response.status, detail: "ItemOperations status=\(status)")
+        }
+        guard let encoded = document.path("ItemOperations", "Data")?.stringValue() else {
+            throw EASError.malformedResponse("ItemOperations: missing Data")
+        }
+        guard let data = Data(base64Encoded: encoded) else {
+            throw EASError.malformedResponse("ItemOperations: bad base64 payload")
         }
         return data
     }

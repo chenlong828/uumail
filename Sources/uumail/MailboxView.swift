@@ -1,3 +1,4 @@
+import AppKit
 import AppServices
 import MailStore
 import SwiftUI
@@ -32,9 +33,16 @@ struct MailboxView: View {
                 }
             }
         } detail: {
-            MessageBodyView(state: model.detailState) {
-                Task { await model.loadBody() }
-            }
+            MessageBodyView(
+                state: model.detailState,
+                attachments: model.attachments,
+                onRetry: { Task { await model.loadBody() } },
+                onOpenAttachment: { attachment in
+                    if let url = try? await model.downloadAttachment(attachment) {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+            )
             .navigationTitle("阅读")
         }
     }

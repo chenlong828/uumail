@@ -52,6 +52,27 @@ public struct StoredFolder: Equatable, Sendable {
     }
 }
 
+public struct MailAttachment: Equatable, Sendable {
+    public var displayName: String
+    public var fileReference: String
+    public var size: Int?
+
+    public init(displayName: String, fileReference: String, size: Int?) {
+        self.displayName = displayName
+        self.fileReference = fileReference
+        self.size = size
+    }
+}
+
+public struct StoredAttachment: Equatable, Sendable, Identifiable {
+    public var messageID: String
+    public var displayName: String
+    public var fileReference: String
+    public var size: Int?
+    public var cachePath: String?
+    public var id: String { fileReference }
+}
+
 public struct MailMessage: Equatable, Sendable {
     public var serverID: String
     public var subject: String?
@@ -61,6 +82,7 @@ public struct MailMessage: Equatable, Sendable {
     public var isRead: Bool
     public var importance: Int?
     public var bodyPreview: String?
+    public var attachments: [MailAttachment] = []
 
     public init(
         serverID: String,

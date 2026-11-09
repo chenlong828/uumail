@@ -67,6 +67,7 @@ component: CMP-STORE
 | `applyFolderSnapshot` | ✅ | 幂等、软删、复活、回滚、未知账号 |
 | `applySyncBatch` | ✅ | 5 个用例 |
 | `applyBody` / `body`（正文分表，HTML 标记） | ✅ | 2 个用例 |
+| `attachments` 元数据表 + 缓存标记 | ✅ | 随正文/同步用例 |
 | `page` / `messageDetail` / `searchLocal` / outbox | ⬜ | — |
 
 `createAccount` 目前返回 `draft` 态账号；账号状态机随 UI 工序补齐。

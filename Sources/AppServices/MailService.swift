@@ -1,4 +1,5 @@
 import EASClient
+import CryptoKit
 import Foundation
 import MailStore
 import SyncEngine
@@ -48,6 +49,50 @@ public final class MailService: MailServiceProtocol, @unchecked Sendable {
         }
     }
 
+    public func attachments(folderID: String, messageID: String) throws -> [StoredAttachment] {
+        try store.attachments(account: accountID, folder: folderID, messageID: messageID)
+    }
+
+    /// Downloads an attachment into the local cache (once) and returns its file URL.
+    public func downloadAttachment(folderID: String, messageID: String, attachment: StoredAttachment) async throws -> URL {
+        let destination = try Self.cacheURL(for: attachment)
+        if let cached = attachment.cachePath, FileManager.default.fileExists(atPath: cached) {
+            return URL(fileURLWithPath: cached)
+        }
+        let data: Data
+        do {
+            data = try await client.fetchAttachment(fileReference: attachment.fileReference)
+        } catch {
+            throw EASGateway.map(error)
+        }
+        try FileManager.default.createDirectory(
+            at: destination.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try data.write(to: destination, options: .atomic)
+        try store.markAttachmentCached(
+            account: accountID,
+            folder: folderID,
+            messageID: messageID,
+            fileReference: attachment.fileReference,
+            cachePath: destination.path
+        )
+        return destination
+    }
+
+    private static func cacheURL(for attachment: StoredAttachment) throws -> URL {
+        let base = FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("uumail/attachments", isDirectory: true)
+        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        let digest = SHA256.hash(data: Data(attachment.fileReference.utf8))
+            .map { String(format: "%02x", $0) }.joined().prefix(16)
+        let safeName = attachment.displayName
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: ":", with: "_")
+        return base.appendingPathComponent("\(digest)-\(safeName)")
+    }
+
     public func messages(folderID: String, limit: Int) throws -> [StoredMessage] {
         try store.messages(account: accountID, folder: folderID, limit: limit)
     }
@@ -81,4 +126,6 @@ public protocol MailServiceProtocol: AnyObject, Sendable {
     func messages(folderID: String, limit: Int) throws -> [StoredMessage]
     func body(folderID: String, serverID: String) throws -> String?
     func fetchBody(folderID: String, serverID: String) async throws -> String
+    func attachments(folderID: String, messageID: String) throws -> [StoredAttachment]
+    func downloadAttachment(folderID: String, messageID: String, attachment: StoredAttachment) async throws -> URL
 }

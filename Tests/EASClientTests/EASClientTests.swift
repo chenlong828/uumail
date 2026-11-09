@@ -407,3 +407,61 @@ struct EASBodyTests {
         }
     }
 }
+
+@Suite("EASClient attachments")
+struct EASAttachmentTests {
+    @Test("Sync parses attachment metadata into the envelope")
+    func parsesAttachmentMetadata() async throws {
+        let codec = try! WBXMLCodec.standard()
+        let response = try! codec.encode(.children("Sync", [
+            .children("Collections", [
+                .children("Collection", [
+                    .text("SyncKey", "2"),
+                    .text("CollectionId", "13"),
+                    .text("Status", "1"),
+                    .children("Commands", [
+                        .children("Add", [
+                            .text("ServerId", "101"),
+                            .children("ApplicationData", [
+                                .text("Subject", "with file"),
+                                .children("Attachments", [
+                                    .children("Attachment", [
+                                        .text("DisplayName", "report.pdf"),
+                                        .text("FileReference", "ref-1"),
+                                        .text("EstimatedDataSize", "72084"),
+                                    ]),
+                                ]),
+                            ]),
+                        ]),
+                    ]),
+                ]),
+            ]),
+        ]))
+        let stub = StubTransport(responses: [EASHTTPResponse(status: 200, headers: [:], body: response)])
+        let client = EASClient(configuration: makeConfiguration(), transport: stub, policyKey: "1")
+        let result = try await client.sync(collectionID: "13")
+        let attachment = try #require(result.added.first?.attachments.first)
+        #expect(attachment.displayName == "report.pdf")
+        #expect(attachment.fileReference == "ref-1")
+        #expect(attachment.size == 72084)
+    }
+
+    @Test("fetchAttachment decodes the base64 payload")
+    func fetchesAttachment() async throws {
+        let payload = Data([0x25, 0x50, 0x44, 0x46]) // %PDF
+        let codec = try! WBXMLCodec.standard()
+        let response = try! codec.encode(.children("ItemOperations", [
+            .text("Status", "1"),
+            .text("Data", payload.base64EncodedString()),
+        ]))
+        let stub = StubTransport(responses: [EASHTTPResponse(status: 200, headers: [:], body: response)])
+        let client = EASClient(configuration: makeConfiguration(), transport: stub, policyKey: "1")
+        let data = try await client.fetchAttachment(fileReference: "ref-1")
+        #expect(data == payload)
+
+        let request = try #require(await stub.recorded.first?.request)
+        let doc = try codec.decode(try #require(request.body))
+        #expect(doc.path("ItemOperations", "Fetch", "Store")?.stringValue() == "Mailbox")
+        #expect(doc.path("ItemOperations", "Fetch", "FileReference")?.stringValue() == "ref-1")
+    }
+}

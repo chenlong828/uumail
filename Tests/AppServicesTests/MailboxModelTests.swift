@@ -41,6 +41,16 @@ final class FakeService: MailServiceProtocol, @unchecked Sendable {
         fetchBodyCalls += 1
         return try fetchBodyResult.get()
     }
+
+    nonisolated(unsafe) var attachmentList: [StoredAttachment] = []
+
+    func attachments(folderID: String, messageID: String) throws -> [StoredAttachment] {
+        attachmentList
+    }
+
+    func downloadAttachment(folderID: String, messageID: String, attachment: StoredAttachment) async throws -> URL {
+        URL(fileURLWithPath: "/tmp/\(attachment.displayName)")
+    }
 }
 
 @Suite("MailboxModel")

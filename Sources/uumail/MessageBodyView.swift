@@ -1,10 +1,13 @@
 import AppServices
+import MailStore
 import SwiftUI
 import WebKit
 
 struct MessageBodyView: View {
     let state: MailboxModel.DetailState
+    let attachments: [StoredAttachment]
     let onRetry: () -> Void
+    let onOpenAttachment: (StoredAttachment) async -> Void
     @State private var allowRemoteContent = false
 
     var body: some View {
@@ -24,6 +27,23 @@ struct MessageBodyView: View {
             }
         case .loaded(let html):
             VStack(spacing: 0) {
+                if !attachments.isEmpty {
+                    HStack(spacing: 8) {
+                        ForEach(attachments) { attachment in
+                            Button {
+                                Task { await onOpenAttachment(attachment) }
+                            } label: {
+                                Label(attachment.displayName, systemImage: "paperclip")
+                                    .lineLimit(1)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
+                        Spacer()
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.top, 6)
+                }
                 HStack {
                     Toggle("加载远程图片", isOn: $allowRemoteContent)
                         .toggleStyle(.switch)

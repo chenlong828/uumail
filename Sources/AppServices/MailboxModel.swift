@@ -24,6 +24,7 @@ public final class MailboxModel {
     public private(set) var messages: [StoredMessage] = []
     public private(set) var state: State = .idle
     public private(set) var lastSyncedAt: Date?
+    public private(set) var attachments: [StoredAttachment] = []
     public private(set) var detailState: DetailState = .none {
         didSet { /* observation only */ }
     }
@@ -107,6 +108,16 @@ public final class MailboxModel {
         loadedBodyFor = nil
     }
 
+    /// Downloads (or reuses) one attachment and returns the file to open.
+    public func downloadAttachment(_ attachment: StoredAttachment) async throws -> URL {
+        guard let messageID = selectedMessageID, let folderID = selectedFolderID else {
+            throw MailGatewayError.unsupported
+        }
+        return try await service.downloadAttachment(
+            folderID: folderID, messageID: messageID, attachment: attachment
+        )
+    }
+
     /// Shows a cached body immediately; otherwise fetches it and stores it.
     public func loadBody() async {
         if case .loading = detailState { return }
@@ -115,6 +126,7 @@ public final class MailboxModel {
             return
         }
         if loadedBodyFor == messageID, case .loaded = detailState { return }
+        attachments = (try? service.attachments(folderID: folderID, messageID: messageID)) ?? []
         if let cached = try? service.body(folderID: folderID, serverID: messageID), !cached.isEmpty {
             detailState = .loaded(cached)
             loadedBodyFor = messageID
