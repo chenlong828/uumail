@@ -48,6 +48,13 @@ public struct KeychainAccountStore: Sendable {
         attributes[kSecValueData as String] = data
         attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
         let status = SecItemAdd(attributes as CFDictionary, nil)
+        if status == errSecDuplicateItem {
+            let query = base
+            let updates: [String: Any] = [kSecValueData as String: data]
+            let updateStatus = SecItemUpdate(query as CFDictionary, updates as CFDictionary)
+            guard updateStatus == errSecSuccess else { throw KeychainError.status(updateStatus) }
+            return
+        }
         guard status == errSecSuccess else { throw KeychainError.status(status) }
     }
 

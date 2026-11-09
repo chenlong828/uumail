@@ -70,6 +70,20 @@ struct UumailCtl {
                 print("[4] inbox: NOT FOUND")
             }
 
+        case "seed":
+            // Writes the account into the login Keychain so the app starts configured.
+            // The password never touches a file: it comes from the environment.
+            let saved = StoredAccountConfiguration(
+                host: configuration.host,
+                account: configuration.account,
+                password: configuration.password,
+                domain: configuration.domain,
+                deviceID: configuration.deviceID,
+                displayName: configuration.account
+            )
+            try KeychainAccountStore().save(saved)
+            print("keychain seeded: \(configuration.account)@\(configuration.host)")
+
         case "sync":
             guard let path = value(of: "--db", in: arguments) else {
                 FileHandle.standardError.write(Data("sync: --db <path> is required\n".utf8))
@@ -173,6 +187,7 @@ struct UumailCtl {
           provision            run the two-step policy handshake
           folders [--json]     list the folder hierarchy
           diagnose             OPTIONS -> Provision -> FolderSync
+          seed                 store the env account in the login Keychain
           store --db <path>    sync folders into a local SQLite store
           sync --db <path>     sync the inbox into the store (read-only on the server)
 

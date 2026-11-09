@@ -50,4 +50,15 @@ export EAS_HOST EAS_USER EAS_PASS EAS_DOMAIN EAS_DEVICE_ID
 UUMAIL_DEBUG_ENV=1 UUMAIL_DB_PATH="$PWD/.build/app.sqlite" .build/debug/uumail
 ```
 
+首次配置写进 Keychain 后，`dist/uumail.app` 启动即自动同步：
+
+```bash
+set -a; . ~/working/公网邮箱访问/.env; set +a
+export EAS_HOST EAS_USER EAS_PASS EAS_DOMAIN EAS_DEVICE_ID
+./Scripts/swiftw run uumailctl seed
+security delete-generic-password -s com.uumail.account   # 需要撤销时
+```
+
+应用数据在 `~/Library/Application Support/uumail/mail.sqlite`；`dist/` 只放应用包。
+
 原始协议探针（Python）留在 `~/working/公网邮箱访问`，只作证据，不是本仓库的一部分。
