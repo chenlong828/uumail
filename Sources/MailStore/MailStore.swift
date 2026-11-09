@@ -96,6 +96,14 @@ public final class MailStore: @unchecked Sendable {
             try db.execute(sql: "ALTER TABLE message_bodies ADD COLUMN is_html INTEGER NOT NULL DEFAULT 0")
         }
 
+        migrator.registerMigration("v6_search") { db in
+            try db.execute(sql: """
+                CREATE VIRTUAL TABLE messages_fts USING fts5(
+                    subject, sender, body, tokenize='trigram'
+                );
+                """)
+        }
+
         migrator.registerMigration("v5_outbox") { db in
             try db.execute(sql: """
                 CREATE TABLE outbox (
@@ -325,6 +333,7 @@ public final class MailStore: @unchecked Sendable {
                         arguments: [id.raw, folderID, message.serverID, preview, now]
                     )
                 }
+                try Self.reindexMessage(db, account: id, folder: folderID, serverID: message.serverID)
             }
 
             for serverID in removedServerIDs {
@@ -356,7 +365,7 @@ public final class MailStore: @unchecked Sendable {
             try Row.fetchAll(
                 db,
                 sql: """
-                    SELECT m.server_id, m.subject, m.sender, m.received_raw, m.is_read, b.text AS preview
+                    SELECT m.server_id, m.folder_id, m.subject, m.sender, m.received_raw, m.is_read, b.text AS preview
                     FROM messages m
                     LEFT JOIN message_bodies b
                         ON b.account_id = m.account_id AND b.folder_id = m.folder_id AND b.server_id = m.server_id
@@ -372,7 +381,8 @@ public final class MailStore: @unchecked Sendable {
                     sender: row["sender"],
                     receivedRaw: row["received_raw"],
                     isRead: (row["is_read"] as Int) == 1,
-                    bodyPreview: row["preview"]
+                    bodyPreview: row["preview"],
+                    folderID: row["folder_id"]
                 )
             }
         }
@@ -398,6 +408,7 @@ public final class MailStore: @unchecked Sendable {
                     """,
                 arguments: [id.raw, folderID, serverID, html, Date().timeIntervalSince1970]
             )
+            try Self.reindexMessage(db, account: id, folder: folderID, serverID: serverID)
         }
     }
 
@@ -538,6 +549,53 @@ public final class MailStore: @unchecked Sendable {
                 arguments: [id.raw, folder]
             )
         }
+    }
+
+    public func searchLocal(account id: AccountID, query: String, limit: Int = 50) throws -> [StoredMessage] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+        return try dbQueue.read { db in
+            try Row.fetchAll(
+                db,
+                sql: """
+                    SELECT m.server_id, m.folder_id, m.subject, m.sender, m.received_raw, m.is_read, b.text AS preview
+                    FROM messages_fts f
+                    JOIN messages m ON m.rowid = f.rowid
+                    LEFT JOIN message_bodies b
+                        ON b.account_id = m.account_id AND b.folder_id = m.folder_id AND b.server_id = m.server_id
+                    WHERE messages_fts MATCH ? AND m.account_id = ? AND m.deleted_at IS NULL
+                    ORDER BY m.received_raw DESC
+                    LIMIT ?
+                    """,
+                arguments: [trimmed, id.raw, limit]
+            ).map { row in
+                StoredMessage(
+                    serverID: row["server_id"], subject: row["subject"], sender: row["sender"],
+                    receivedRaw: row["received_raw"], isRead: (row["is_read"] as Int) == 1,
+                    bodyPreview: row["preview"], folderID: row["folder_id"]
+                )
+            }
+        }
+    }
+
+    private static func reindexMessage(_ db: Database, account id: AccountID, folder: String, serverID: String) throws {
+        guard let rowid = try Int64.fetchOne(
+            db,
+            sql: "SELECT rowid FROM messages WHERE account_id = ? AND folder_id = ? AND server_id = ?",
+            arguments: [id.raw, folder, serverID]
+        ) else { return }
+        let subject = try String.fetchOne(db, sql: "SELECT subject FROM messages WHERE rowid = ?", arguments: [rowid])
+        let sender = try String.fetchOne(db, sql: "SELECT sender FROM messages WHERE rowid = ?", arguments: [rowid])
+        let body = try String.fetchOne(
+            db,
+            sql: "SELECT text FROM message_bodies WHERE account_id = ? AND folder_id = ? AND server_id = ?",
+            arguments: [id.raw, folder, serverID]
+        )
+        try db.execute(sql: "DELETE FROM messages_fts WHERE rowid = ?", arguments: [rowid])
+        try db.execute(
+            sql: "INSERT INTO messages_fts(rowid, subject, sender, body) VALUES (?, ?, ?, ?)",
+            arguments: [rowid, subject ?? "", sender ?? "", body ?? ""]
+        )
     }
 
     // MARK: - Sync state

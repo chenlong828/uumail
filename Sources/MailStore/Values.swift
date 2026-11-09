@@ -112,6 +112,7 @@ public struct StoredMessage: Equatable, Sendable {
     public var receivedRaw: String?
     public var isRead: Bool
     public var bodyPreview: String?
+    public var folderID: String?
 
     public init(
         serverID: String,
@@ -119,7 +120,8 @@ public struct StoredMessage: Equatable, Sendable {
         sender: String?,
         receivedRaw: String?,
         isRead: Bool,
-        bodyPreview: String?
+        bodyPreview: String?,
+        folderID: String? = nil
     ) {
         self.serverID = serverID
         self.subject = subject

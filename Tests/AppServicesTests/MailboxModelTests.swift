@@ -44,6 +44,12 @@ final class FakeService: MailServiceProtocol, @unchecked Sendable {
 
     nonisolated(unsafe) var attachmentList: [StoredAttachment] = []
 
+    nonisolated(unsafe) var searchResults: [StoredMessage] = []
+
+    func searchLocal(query: String, limit: Int) throws -> [StoredMessage] {
+        searchResults
+    }
+
     func attachments(folderID: String, messageID: String) throws -> [StoredAttachment] {
         attachmentList
     }
@@ -316,5 +322,57 @@ struct ComposeModelTests {
         compose.saveDraft(using: service)
         #expect(service.drafts.count == 1)
         #expect(service.sent.isEmpty)
+    }
+}
+
+@Suite("MailboxModel search")
+@MainActor
+struct MailboxSearchTests {
+    @Test("a query replaces the list and clearing restores the folder")
+    func searchFlow() async {
+        let inboxMessage = StoredMessage(serverID: "1", subject: "周报", sender: "a@b.c",
+                                         receivedRaw: nil, isRead: true, bodyPreview: nil, folderID: "13")
+        let service = FakeService(
+            folderList: [StoredFolder(serverID: "13", parentID: "0", displayName: "收件箱", type: 2)],
+            messageList: [inboxMessage]
+        )
+        service.searchResults = [inboxMessage]
+        let model = MailboxModel(service: service)
+        model.loadCached()
+
+        model.searchQuery = "周报"
+        await model.applySearch()
+        #expect(model.messages.count == 1)
+
+        model.searchQuery = ""
+        await model.applySearch()
+        #expect(model.messages.count == 1)
+    }
+}
+
+final class FakeNotifier: NotificationPosting, @unchecked Sendable {
+    nonisolated(unsafe) var posts: [(String, String)] = []
+    func requestAuthorization() async {}
+    func post(title: String, body: String) async { posts.append((title, body)) }
+}
+
+@Suite("Notifications")
+@MainActor
+struct NotificationTests {
+    @Test("new mail triggers one notification with the added count")
+    func notifiesOnNewMail() async {
+        let service = FakeService(
+            folderList: [StoredFolder(serverID: "13", parentID: "0", displayName: "收件箱", type: 2)],
+            messageList: [
+                StoredMessage(serverID: "1", subject: "a", sender: nil, receivedRaw: nil, isRead: false, bodyPreview: nil),
+                StoredMessage(serverID: "2", subject: "b", sender: nil, receivedRaw: nil, isRead: false, bodyPreview: nil),
+                StoredMessage(serverID: "3", subject: "c", sender: nil, receivedRaw: nil, isRead: false, bodyPreview: nil),
+            ]
+        )
+        let notifier = FakeNotifier()
+        let model = MailboxModel(service: service, notifier: notifier)
+        await model.refresh()
+        #expect(notifier.posts.count == 1)
+        #expect(notifier.posts.first?.1 == "3 封新邮件")
     }
 }

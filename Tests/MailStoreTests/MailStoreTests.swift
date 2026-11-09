@@ -255,3 +255,42 @@ struct MailStoreOutboxTests {
         #expect(try store.pendingOutbox(account: id).isEmpty)
     }
 }
+
+@Suite("MailStore search")
+struct MailStoreSearchTests {
+    private func seeded() throws -> (MailStore, AccountID) {
+        let store = try MailStore.inMemory()
+        let id = try store.createAccount(NewAccount(displayName: "工作", address: "jdoe@corp.test", host: "mail.corp.test"))
+        try store.applyFolderSnapshot(account: id, folders: [
+            MailFolder(serverID: "13", parentID: "0", displayName: "收件箱", type: 2),
+        ], syncKey: "1")
+        try store.applySyncBatch(account: id, folder: "13", added: [
+            MailMessage(serverID: "1", subject: "周报会议纪要", sender: "a@corp.test",
+                        receivedRaw: "2026-11-08T05:11:18.000Z"),
+            MailMessage(serverID: "2", subject: "PB1.0 系统通知", sender: "b@corp.test",
+                        receivedRaw: "2026-11-07T05:11:18.000Z"),
+        ], changed: [], removedServerIDs: [], syncKey: "2")
+        return (store, id)
+    }
+
+    @Test("substring search matches Chinese subjects")
+    func chineseSubstring() throws {
+        let (store, id) = try seeded()
+        let hits = try store.searchLocal(account: id, query: "会议纪要")
+        #expect(hits.map(\.serverID) == ["1"])
+    }
+
+    @Test("body text is searchable after it is fetched")
+    func bodyIndexed() throws {
+        let (store, id) = try seeded()
+        try store.applyBody(account: id, folder: "13", serverID: "2",
+                            html: "<p>单拎补丁申请流程说明</p>")
+        #expect(try store.searchLocal(account: id, query: "补丁申请").map(\.serverID) == ["2"])
+    }
+
+    @Test("blank queries return nothing instead of everything")
+    func blankQuery() throws {
+        let (store, id) = try seeded()
+        #expect(try store.searchLocal(account: id, query: "   ").isEmpty)
+    }
+}

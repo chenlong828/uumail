@@ -29,6 +29,10 @@ public final class MailboxModel {
         didSet { /* observation only */ }
     }
 
+    public var searchQuery: String = "" {
+        didSet { Task { await self.applySearch() } }
+    }
+
     public var selectedMessageID: String? {
         didSet {
             guard oldValue != selectedMessageID else { return }
@@ -44,13 +48,15 @@ public final class MailboxModel {
     }
 
     private let service: any MailServiceProtocol
+    private let notifier: (any NotificationPosting)?
 
     /// The same object in the app; tests can leave it nil.
     public var sendService: (any MailSendService)? { service as? any MailSendService }
     private var loadedBodyFor: String?
 
-    public init(service: any MailServiceProtocol) {
+    public init(service: any MailServiceProtocol, notifier: (any NotificationPosting)? = nil) {
         self.service = service
+        self.notifier = notifier
     }
 
     /// Pulls new mail, then refreshes the visible lists. On failure the cached lists stay
@@ -58,11 +64,17 @@ public final class MailboxModel {
     public func refresh() async {
         state = .syncing
         do {
-            _ = try await service.syncOnce()
+            let report = try await service.syncOnce()
             try reloadFolders()
             try reloadMessages()
             lastSyncedAt = Date()
             state = .idle
+            if report.added > 0 {
+                await notifier?.post(
+                    title: "uumail",
+                    body: "\(report.added) 封新邮件"
+                )
+            }
         } catch {
             try? reloadFolders()
             try? reloadMessages()
@@ -100,6 +112,20 @@ public final class MailboxModel {
         }
     }
 
+    func applySearch() async {
+        let trimmed = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            try? reloadMessages()
+            return
+        }
+        do {
+            messages = try service.searchLocal(query: trimmed, limit: 100)
+        } catch {
+            messages = []
+            state = .failed(String(describing: error))
+        }
+    }
+
     private func loadMessages() async {
         try? reloadMessages()
         // Switching folders clears the reading pane, but a refresh that keeps the same
@@ -113,22 +139,24 @@ public final class MailboxModel {
 
     /// Downloads (or reuses) one attachment and returns the file to open.
     public func downloadAttachment(_ attachment: StoredAttachment) async throws -> URL {
-        guard let messageID = selectedMessageID, let folderID = selectedFolderID else {
+        guard let messageID = selectedMessageID else {
             throw MailGatewayError.unsupported
         }
+        let folder = messages.first { $0.serverID == messageID }?.folderID ?? selectedFolderID ?? ""
         return try await service.downloadAttachment(
-            folderID: folderID, messageID: messageID, attachment: attachment
+            folderID: folder, messageID: messageID, attachment: attachment
         )
     }
 
     /// Shows a cached body immediately; otherwise fetches it and stores it.
     public func loadBody() async {
         if case .loading = detailState { return }
-        guard let messageID = selectedMessageID, let folderID = selectedFolderID else {
+        guard let messageID = selectedMessageID else {
             detailState = .none
             return
         }
         if loadedBodyFor == messageID, case .loaded = detailState { return }
+        let folderID = messages.first { $0.serverID == messageID }?.folderID ?? selectedFolderID ?? ""
         attachments = (try? service.attachments(folderID: folderID, messageID: messageID)) ?? []
         if let cached = try? service.body(folderID: folderID, serverID: messageID), !cached.isEmpty {
             detailState = .loaded(cached)

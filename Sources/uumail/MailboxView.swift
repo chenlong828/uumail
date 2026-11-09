@@ -24,6 +24,7 @@ struct MailboxView: View {
             }
             .navigationTitle(model.folders.first(where: { $0.serverID == model.selectedFolderID })?.displayName ?? "收件箱")
             .navigationSplitViewColumnWidth(min: 280, ideal: 380)
+            .searchable(text: $model.searchQuery, placement: .toolbar, prompt: "搜索邮件")
             .toolbar {
                 ToolbarItemGroup(placement: .primaryAction) {
                     Button {

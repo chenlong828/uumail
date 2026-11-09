@@ -40,7 +40,7 @@ struct UumailApp: App {
             configuration: configuration,
             databasePath: MailService.defaultDatabasePath()
         )
-        model = MailboxModel(service: service)
+        model = MailboxModel(service: service, notifier: SystemNotificationPoster())
     }
 
     private static func restoreModel() -> MailboxModel? {
@@ -73,7 +73,7 @@ struct UumailApp: App {
         ) else {
             return nil
         }
-        return MailboxModel(service: service)
+        return MailboxModel(service: service, notifier: SystemNotificationPoster())
     }
 
     #if DEBUG

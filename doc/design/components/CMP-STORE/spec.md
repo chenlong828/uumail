@@ -69,7 +69,8 @@ component: CMP-STORE
 | `applyBody` / `body`（正文分表，HTML 标记） | ✅ | 2 个用例 |
 | `attachments` 元数据表 + 缓存标记 | ✅ | 随正文/同步用例 |
 | outbox / 草稿（入队、失败重试、草稿不排队） | ✅ | 3 个用例 |
-| `page` / `messageDetail` / `searchLocal` | ⬜ | — |
+| `searchLocal`（FTS5 trigram，中文子串命中） | ✅ | 3 个用例 |
+| `page` / `messageDetail` | ⬜ | — |
 
 `createAccount` 目前返回 `draft` 态账号；账号状态机随 UI 工序补齐。
 

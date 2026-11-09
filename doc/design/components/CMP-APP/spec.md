@@ -36,6 +36,8 @@ component: CMP-APP
 | 刷新与失败状态 | `MailboxModel.refresh()` | 单测（失败保留缓存） |
 | 三栏 + 正文阅读（WKWebView，禁 JS，CSP 阻止远程资源，单封可放行） | `MessageBodyView.swift` | 真机：点选邮件拉取 HTML 并渲染；3 个模型单测 |
 | 附件条：点击下载到缓存并打开 | `MessageBodyView.swift` | 待真机附件验证 |
+| 搜索框（本地 FTS，跨文件夹） | `MailboxView` searchable | 1 个模型单测 |
+| 新邮件系统通知 | `Notifications.swift` | 1 个通知单测；权限拒绝静默 |
 | 撰写：新建 / 回复 / 转发 / 存草稿 / 发送 | `ComposeView.swift`、`ComposeModel.swift` | 5 个模型单测；待真机发信验证 |
 
 ## 待办

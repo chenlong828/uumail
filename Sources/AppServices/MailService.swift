@@ -140,6 +140,10 @@ public final class MailService: MailServiceProtocol, MailSendService, @unchecked
         return base.appendingPathComponent("\(digest)-\(safeName)")
     }
 
+    public func searchLocal(query: String, limit: Int = 50) throws -> [StoredMessage] {
+        try store.searchLocal(account: accountID, query: query, limit: limit)
+    }
+
     public func messages(folderID: String, limit: Int) throws -> [StoredMessage] {
         try store.messages(account: accountID, folder: folderID, limit: limit)
     }
@@ -173,6 +177,7 @@ public protocol MailServiceProtocol: AnyObject, Sendable {
     func messages(folderID: String, limit: Int) throws -> [StoredMessage]
     func body(folderID: String, serverID: String) throws -> String?
     func fetchBody(folderID: String, serverID: String) async throws -> String
+    func searchLocal(query: String, limit: Int) throws -> [StoredMessage]
     func attachments(folderID: String, messageID: String) throws -> [StoredAttachment]
     func downloadAttachment(folderID: String, messageID: String, attachment: StoredAttachment) async throws -> URL
 }
