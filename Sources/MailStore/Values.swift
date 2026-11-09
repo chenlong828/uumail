@@ -130,6 +130,40 @@ public struct StoredMessage: Equatable, Sendable {
     }
 }
 
+public struct MailDraft: Equatable, Sendable {
+    public var to: String
+    public var cc: String?
+    public var subject: String
+    public var body: String
+    public var inReplyTo: String?
+    public var references: String?
+    public var isDraft: Bool
+
+    public init(to: String, cc: String?, subject: String, body: String,
+                inReplyTo: String? = nil, references: String? = nil, isDraft: Bool = false) {
+        self.to = to
+        self.cc = cc
+        self.subject = subject
+        self.body = body
+        self.inReplyTo = inReplyTo
+        self.references = references
+        self.isDraft = isDraft
+    }
+}
+
+public struct StoredOutboxItem: Equatable, Sendable {
+    public var id: String
+    public var to: String
+    public var cc: String?
+    public var subject: String
+    public var body: String
+    public var inReplyTo: String?
+    public var references: String?
+    public var state: String
+    public var attempts: Int
+    public var lastError: String?
+}
+
 public enum MailStoreError: Error, Equatable, Sendable {
     case folderNotFound(account: AccountID, folder: String)
     case accountNotFound(AccountID)

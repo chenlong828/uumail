@@ -96,6 +96,28 @@ public final class MailStore: @unchecked Sendable {
             try db.execute(sql: "ALTER TABLE message_bodies ADD COLUMN is_html INTEGER NOT NULL DEFAULT 0")
         }
 
+        migrator.registerMigration("v5_outbox") { db in
+            try db.execute(sql: """
+                CREATE TABLE outbox (
+                    id TEXT PRIMARY KEY,
+                    account_id TEXT NOT NULL,
+                    to_recipients TEXT NOT NULL,
+                    cc TEXT,
+                    subject TEXT NOT NULL,
+                    body TEXT NOT NULL,
+                    in_reply_to TEXT,
+                    refs TEXT,
+                    is_draft INTEGER NOT NULL DEFAULT 0,
+                    state TEXT NOT NULL,
+                    attempts INTEGER NOT NULL DEFAULT 0,
+                    last_error TEXT,
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL
+                );
+                CREATE INDEX idx_outbox_state ON outbox(account_id, state);
+                """)
+        }
+
         migrator.registerMigration("v4_attachments") { db in
             try db.execute(sql: """
                 CREATE TABLE attachments (
@@ -424,6 +446,79 @@ public final class MailStore: @unchecked Sendable {
                 arguments: [cachePath, Date().timeIntervalSince1970, id.raw, folderID, messageID, fileReference]
             )
         }
+    }
+
+    // MARK: - Outbox / drafts
+
+    @discardableResult
+    public func saveDraft(account id: AccountID, draft: MailDraft) throws -> String {
+        try enqueueOutbox(account: id, draft: draft, state: draft.isDraft ? "draft" : "queued")
+    }
+
+    @discardableResult
+    public func enqueueOutbox(account id: AccountID, draft: MailDraft) throws -> String {
+        try enqueueOutbox(account: id, draft: draft, state: "queued")
+    }
+
+    private func enqueueOutbox(account id: AccountID, draft: MailDraft, state: String) throws -> String {
+        let outboxID = UUID().uuidString
+        let now = Date().timeIntervalSince1970
+        try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO outbox (id, account_id, to_recipients, cc, subject, body,
+                                        in_reply_to, refs, is_draft, state, attempts,
+                                        created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+                    """,
+                arguments: [outboxID, id.raw, draft.to, draft.cc ?? "", draft.subject, draft.body,
+                            draft.inReplyTo, draft.references, draft.isDraft ? 1 : 0, state, now, now]
+            )
+        }
+        return outboxID
+    }
+
+    public func pendingOutbox(account id: AccountID) throws -> [StoredOutboxItem] {
+        try dbQueue.read { db in
+            try Row.fetchAll(
+                db,
+                sql: """
+                    SELECT id, to_recipients, cc, subject, body, in_reply_to, refs, state, attempts, last_error
+                    FROM outbox WHERE account_id = ? AND state IN ('queued', 'failed')
+                    ORDER BY created_at
+                    """,
+                arguments: [id.raw]
+            ).map(Self.outboxItem)
+        }
+    }
+
+    public func markOutboxSent(account id: AccountID, outboxID: String) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: "DELETE FROM outbox WHERE account_id = ? AND id = ?",
+                arguments: [id.raw, outboxID]
+            )
+        }
+    }
+
+    public func markOutboxFailed(account id: AccountID, outboxID: String, error: String) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                    UPDATE outbox SET state = 'failed', attempts = attempts + 1, last_error = ?, updated_at = ?
+                    WHERE account_id = ? AND id = ?
+                    """,
+                arguments: [error, Date().timeIntervalSince1970, id.raw, outboxID]
+            )
+        }
+    }
+
+    private static func outboxItem(_ row: Row) -> StoredOutboxItem {
+        StoredOutboxItem(
+            id: row["id"], to: row["to_recipients"], cc: row["cc"], subject: row["subject"],
+            body: row["body"], inReplyTo: row["in_reply_to"], references: row["refs"],
+            state: row["state"], attempts: row["attempts"], lastError: row["last_error"]
+        )
     }
 
     /// Drops one collection's local mirror (messages, previews and cursor) so a full

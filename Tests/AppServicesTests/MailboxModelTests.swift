@@ -167,3 +167,79 @@ struct MailboxModelBodyTests {
         #expect(message.contains("offline"))
     }
 }
+
+@Suite("MIME and sending")
+struct MimeAndSendTests {
+    @Test("MIME has the headers the gateway needs and a base64 body")
+    func mimeShape() {
+        let draft = MailDraft(
+            to: "a@b.c", cc: "c@d.e", subject: "周报",
+            body: "line1\nline2", inReplyTo: "<id@x>", references: "<id@x>"
+        )
+        let data = MimeBuilder.build(from: "me@corp.test", draft: draft, messageID: "new@corp.test")
+        let text = String(decoding: data, as: UTF8.self)
+
+        #expect(text.contains("From: me@corp.test"))
+        #expect(text.contains("To: a@b.c"))
+        #expect(text.contains("Cc: c@d.e"))
+        #expect(text.contains("Subject: =?UTF-8?B?"), "non-ASCII subject must be RFC 2047 encoded")
+        #expect(text.contains("In-Reply-To: <id@x>"))
+        #expect(text.contains("References: <id@x>"))
+        #expect(text.contains("Content-Transfer-Encoding: base64"))
+        #expect(text.contains(Data("line1\nline2".utf8).base64EncodedString(options: [.lineLength76Characters])))
+    }
+}
+
+import EASClient
+
+actor SendStubTransport: EASHTTPTransport {
+    private(set) var requests: [EASHTTPRequest] = []
+    private let status: Int
+    private let body: Data
+
+    init(status: Int = 200, body: Data = Data()) {
+        self.status = status
+        self.body = body
+    }
+
+    func send(_ request: EASHTTPRequest) async throws -> EASHTTPResponse {
+        requests.append(request)
+        return EASHTTPResponse(status: status, headers: [:], body: body)
+    }
+}
+
+@Suite("MailService send")
+struct MailServiceSendTests {
+    private func service(_ transport: SendStubTransport) throws -> MailService {
+        try MailService(
+            configuration: EASConfiguration(
+                host: "mail.corp.test", account: "jdoe", password: "x",
+                domain: "CORP", deviceID: "DEV"
+            ),
+            databasePath: ":memory:",
+            transport: transport,
+            policyKey: "1"
+        )
+    }
+
+    @Test("a successful send clears the outbox")
+    func sendSuccess() async throws {
+        let transport = SendStubTransport()
+        let service = try service(transport)
+        _ = try await service.send(MailDraft(to: "a@b.c", cc: nil, subject: "hi", body: "text"))
+        #expect(try service.pendingOutbox().isEmpty)
+        #expect(await transport.requests.count == 1)
+    }
+
+    @Test("a failed send keeps the item for retry")
+    func sendFailure() async throws {
+        let transport = SendStubTransport(status: 401)
+        let service = try service(transport)
+        await #expect(throws: MailGatewayError.authFailed) {
+            _ = try await service.send(MailDraft(to: "a@b.c", cc: nil, subject: "hi", body: "text"))
+        }
+        let pending = try service.pendingOutbox()
+        #expect(pending.count == 1)
+        #expect(pending.first?.state == "failed")
+    }
+}

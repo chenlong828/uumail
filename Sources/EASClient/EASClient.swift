@@ -514,13 +514,33 @@ public actor EASClient {
         return data
     }
 
+    // MARK: SendMail
+
+    /// Sends a raw RFC822 message. The gateway answers `200` with a zero-byte body on
+    /// success, so the empty-body device heuristic must not apply here.
+    @discardableResult
+    public func send(mime: Data, clientID: String? = nil) async throws -> String {
+        if policyKey == nil {
+            try await provision()
+        }
+        let identifier = (clientID ?? UUID().uuidString).uppercased()
+        let body = try codec.encode(.children("SendMail", [
+            .text("ClientId", identifier),
+            .empty("SaveInSentItems"),
+            .opaque("Mime", mime),
+        ]))
+        _ = try await call("SendMail", body: body, treatEmptyBodyAsSuccess: true)
+        return identifier
+    }
+
     // MARK: Transport plumbing
 
     private func call(
         _ command: String,
         body: Data,
         policyKey overrideKey: String? = nil,
-        extraParameters: [String: String] = [:]
+        extraParameters: [String: String] = [:],
+        treatEmptyBodyAsSuccess: Bool = false
     ) async throws -> EASHTTPResponse {
         var components = URLComponents(url: configuration.endpoint, resolvingAgainstBaseURL: false)!
         var items = [
@@ -539,7 +559,12 @@ public actor EASClient {
         )
         let (response, elapsed) = try await perform(request)
         captureCookie(from: response)
-        try ensureSuccess(response, elapsed: elapsed, command: command)
+        try ensureSuccess(
+            response,
+            elapsed: elapsed,
+            command: command,
+            treatEmptyBodyAsSuccess: treatEmptyBodyAsSuccess
+        )
         return response
     }
 
@@ -588,12 +613,18 @@ public actor EASClient {
         }
     }
 
-    private func ensureSuccess(_ response: EASHTTPResponse, elapsed: TimeInterval, command: String) throws {
+    private func ensureSuccess(
+        _ response: EASHTTPResponse,
+        elapsed: TimeInterval,
+        command: String,
+        treatEmptyBodyAsSuccess: Bool = false
+    ) throws {
         switch response.status {
         case 200:
             if response.body.isEmpty {
-                // OPTIONS never carries a body; everything else must.
-                if command != "OPTIONS" {
+                // OPTIONS never carries a body; everything else must — except SendMail,
+                // whose success contract is exactly "200 with zero bytes".
+                if command != "OPTIONS" && !treatEmptyBodyAsSuccess {
                     throw EASError.deviceNotRegistered
                 }
             }

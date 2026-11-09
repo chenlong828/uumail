@@ -465,3 +465,39 @@ struct EASAttachmentTests {
         #expect(doc.path("ItemOperations", "Fetch", "FileReference")?.stringValue() == "ref-1")
     }
 }
+
+@Suite("EASClient send")
+struct EASSendTests {
+    @Test("SendMail succeeds on 200 with a zero-byte body")
+    func sendsMail() async throws {
+        let stub = StubTransport(responses: [EASHTTPResponse(status: 200, headers: [:], body: Data())])
+        let client = EASClient(configuration: makeConfiguration(), transport: stub, policyKey: "1")
+        let mime = Data("From: a@b.c\r\nSubject: hi\r\n\r\nbody".utf8)
+        let clientID = try await client.send(mime: mime)
+
+        #expect(clientID.count == 36)
+        let request = try #require(await stub.recorded.first?.request)
+        let doc = try WBXMLCodec.standard().decode(try #require(request.body))
+        #expect(doc.path("SendMail", "ClientId")?.stringValue() == clientID)
+        #expect(doc.path("SendMail", "SaveInSentItems") != nil)
+        #expect(doc.path("SendMail", "Mime")?.opaque == mime)
+    }
+
+    @Test("a non-empty 200 is still treated as success for SendMail")
+    func nonEmptyBodyIsSuccess() async throws {
+        let codec = try! WBXMLCodec.standard()
+        let errorBody = try! codec.encode(.children("SendMail", [.text("Status", "1")]))
+        let stub = StubTransport(responses: [EASHTTPResponse(status: 200, headers: [:], body: errorBody)])
+        let client = EASClient(configuration: makeConfiguration(), transport: stub, policyKey: "1")
+        _ = try await client.send(mime: Data("x".utf8))
+    }
+
+    @Test("401 on SendMail is an auth failure")
+    func authFailure() async {
+        let stub = StubTransport(responses: [EASHTTPResponse(status: 401, headers: [:], body: Data())])
+        let client = EASClient(configuration: makeConfiguration(), transport: stub, policyKey: "1")
+        await #expect(throws: EASError.authFailed) {
+            _ = try await client.send(mime: Data("x".utf8))
+        }
+    }
+}

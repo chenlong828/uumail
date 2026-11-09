@@ -218,3 +218,40 @@ struct MailStoreBodyTests {
         #expect(try store.body(account: id, folder: "13", serverID: "1") == nil)
     }
 }
+
+@Suite("MailStore outbox")
+struct MailStoreOutboxTests {
+    private func seeded() throws -> (MailStore, AccountID) {
+        let store = try MailStore.inMemory()
+        let id = try store.createAccount(NewAccount(displayName: "工作", address: "jdoe@corp.test", host: "mail.corp.test"))
+        return (store, id)
+    }
+
+    @Test("queued items appear in pending; marking sent removes them")
+    func queueAndSend() throws {
+        let (store, id) = try seeded()
+        let outboxID = try store.enqueueOutbox(account: id, draft: MailDraft(to: "a@b.c", cc: nil, subject: "hi", body: "text"))
+        #expect(try store.pendingOutbox(account: id).map(\.id) == [outboxID])
+        try store.markOutboxSent(account: id, outboxID: outboxID)
+        #expect(try store.pendingOutbox(account: id).isEmpty)
+    }
+
+    @Test("a failed item stays pending with its error and attempt count")
+    func failedStaysPending() throws {
+        let (store, id) = try seeded()
+        let outboxID = try store.enqueueOutbox(account: id, draft: MailDraft(to: "a@b.c", cc: nil, subject: "hi", body: "text"))
+        try store.markOutboxFailed(account: id, outboxID: outboxID, error: "offline")
+        let pending = try store.pendingOutbox(account: id)
+        #expect(pending.count == 1)
+        #expect(pending.first?.state == "failed")
+        #expect(pending.first?.attempts == 1)
+        #expect(pending.first?.lastError == "offline")
+    }
+
+    @Test("drafts are stored but not pending")
+    func draftsAreNotPending() throws {
+        let (store, id) = try seeded()
+        _ = try store.saveDraft(account: id, draft: MailDraft(to: "a@b.c", cc: nil, subject: "draft", body: "", isDraft: true))
+        #expect(try store.pendingOutbox(account: id).isEmpty)
+    }
+}

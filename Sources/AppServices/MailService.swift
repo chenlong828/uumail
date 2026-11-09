@@ -9,14 +9,22 @@ import SyncEngine
 public final class MailService: MailServiceProtocol, @unchecked Sendable {
     public let store: MailStore
     public let accountID: AccountID
+    private let configuration: EASConfiguration
     private let client: EASClient
     private let engine: SyncEngine
 
-    public init(configuration: EASConfiguration, databasePath: String) throws {
+    public init(
+        configuration: EASConfiguration,
+        databasePath: String,
+        transport: (any EASHTTPTransport)? = nil,
+        policyKey: String? = nil
+    ) throws {
+        self.configuration = configuration
         store = try MailStore(path: databasePath)
         client = EASClient(
             configuration: configuration,
-            transport: URLSessionTransport(configuration: configuration)
+            transport: transport ?? URLSessionTransport(configuration: configuration),
+            policyKey: policyKey
         )
         accountID = try Self.existingOrNewAccount(store: store, configuration: configuration)
         engine = SyncEngine(
@@ -47,6 +55,45 @@ public final class MailService: MailServiceProtocol, @unchecked Sendable {
         } catch {
             throw EASGateway.map(error)
         }
+    }
+
+    // MARK: - Sending
+
+    /// `account@domain` derived from the server host, matching the probe's From header.
+    public var senderAddress: String {
+        if let dot = configuration.host.firstIndex(of: ".") {
+            return "\(configuration.account)@\(configuration.host[configuration.host.index(after: dot)...])"
+        }
+        return configuration.account
+    }
+
+    /// Enqueues then attempts delivery. A failure leaves the item in `failed` for retry.
+    @discardableResult
+    public func send(_ draft: MailDraft) async throws -> String {
+        let outboxID = try store.enqueueOutbox(account: accountID, draft: draft)
+        do {
+            let mime = MimeBuilder.build(
+                from: senderAddress,
+                draft: draft,
+                messageID: "\(UUID().uuidString)@\(configuration.host)"
+            )
+            try await client.send(mime: mime, clientID: outboxID)
+            try store.markOutboxSent(account: accountID, outboxID: outboxID)
+            return outboxID
+        } catch {
+            try store.markOutboxFailed(account: accountID, outboxID: outboxID, error: String(describing: error))
+            throw EASGateway.map(error)
+        }
+    }
+
+    public func saveDraft(_ draft: MailDraft) throws -> String {
+        var stored = draft
+        stored.isDraft = true
+        return try store.saveDraft(account: accountID, draft: stored)
+    }
+
+    public func pendingOutbox() throws -> [StoredOutboxItem] {
+        try store.pendingOutbox(account: accountID)
     }
 
     public func attachments(folderID: String, messageID: String) throws -> [StoredAttachment] {
