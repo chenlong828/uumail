@@ -87,6 +87,45 @@ public struct FolderSyncResult: Equatable, Sendable {
     public let syncKey: String
 }
 
+public struct EASMessage: Equatable, Sendable {
+    public var serverID: String
+    public var subject: String?
+    public var from: String?
+    public var to: String?
+    public var dateReceived: String?
+    public var isRead: Bool?
+    public var importance: Int?
+    public var bodyPreview: String?
+
+    public init(
+        serverID: String,
+        subject: String? = nil,
+        from: String? = nil,
+        to: String? = nil,
+        dateReceived: String? = nil,
+        isRead: Bool? = nil,
+        importance: Int? = nil,
+        bodyPreview: String? = nil
+    ) {
+        self.serverID = serverID
+        self.subject = subject
+        self.from = from
+        self.to = to
+        self.dateReceived = dateReceived
+        self.isRead = isRead
+        self.importance = importance
+        self.bodyPreview = bodyPreview
+    }
+}
+
+public struct SyncResult: Equatable, Sendable {
+    public var added: [EASMessage]
+    public var changed: [EASMessage]
+    public var removedServerIDs: [String]
+    public var syncKey: String
+    public var moreAvailable: Bool
+}
+
 public struct EASServerCapabilities: Equatable, Sendable {
     public let protocolVersions: [String]
     public let commands: [String]
@@ -271,6 +310,101 @@ public actor EASClient {
             ))
         }
         return FolderSyncResult(folders: folders, syncKey: newKey)
+    }
+
+    // MARK: Sync
+
+    public func sync(
+        collectionID: String,
+        syncKey: String = "0",
+        window: Int = 25,
+        bodyPreviewCharacters: Int = 500
+    ) async throws -> SyncResult {
+        if policyKey == nil {
+            try await provision()
+        }
+        var options: [WBXMLElement] = [.text("FilterType", "0")]
+        if bodyPreviewCharacters > 0 {
+            options.append(.children("BodyPreference", [
+                .text("Type", "1"),
+                .text("TruncationSize", String(bodyPreviewCharacters)),
+            ]))
+        }
+        let body = try codec.encode(.children("Sync", [
+            .children("Collections", [
+                .children("Collection", [
+                    .text("SyncKey", syncKey),
+                    .text("CollectionId", collectionID),
+                    .text("WindowSize", String(window)),
+                    .children("Options", options),
+                ]),
+            ]),
+        ]))
+        let response = try await call("Sync", body: body)
+        let document = try decode(response)
+
+        guard let syncNode = document.child("Sync"),
+              let collection = syncNode.path("Collections", "Collection"),
+              let status = collection.child("Status")?.stringValue()
+        else {
+            throw EASError.malformedResponse("Sync: missing Collection/Status")
+        }
+        switch status {
+        case "1":
+            break
+        case "3", "4":
+            throw EASError.syncKeyInvalid
+        default:
+            throw EASError.permanent(status: response.status, detail: "Sync status=\(status)")
+        }
+
+        guard let newKey = collection.child("SyncKey")?.stringValue() else {
+            throw EASError.malformedResponse("Sync: missing SyncKey")
+        }
+
+        var added: [EASMessage] = []
+        var changed: [EASMessage] = []
+        var removed: [String] = []
+        for command in collection.child("Commands")?.children ?? [] {
+            switch command.name {
+            case "Add":
+                if let message = parseMessage(command) { added.append(message) }
+            case "Change":
+                if let message = parseMessage(command) { changed.append(message) }
+            case "Delete":
+                if let serverID = command.child("ServerId")?.stringValue() {
+                    removed.append(serverID)
+                }
+            default:
+                break
+            }
+        }
+
+        return SyncResult(
+            added: added,
+            changed: changed,
+            removedServerIDs: removed,
+            syncKey: newKey,
+            moreAvailable: syncNode.child("MoreAvailable") != nil
+        )
+    }
+
+    private func parseMessage(_ command: WBXMLNode) -> EASMessage? {
+        guard let serverID = command.child("ServerId")?.stringValue() else { return nil }
+        let application = command.child("ApplicationData")
+        func value(_ name: String) -> String? {
+            application?.child(name)?.stringValue()
+        }
+        return EASMessage(
+            serverID: serverID,
+            subject: value("Subject"),
+            from: value("From"),
+            to: value("To"),
+            dateReceived: value("DateReceived"),
+            isRead: value("Read").flatMap { $0 == "1" },
+            importance: value("Importance").flatMap(Int.init),
+            bodyPreview: application?.path("Body", "Data")?.stringValue()
+        )
     }
 
     // MARK: Transport plumbing

@@ -43,6 +43,10 @@ public struct WBXMLElement: Equatable, Sendable {
     public static func opaque(_ name: String, _ data: Data) -> WBXMLElement {
         WBXMLElement(name, .opaque(data))
     }
+
+    public static func empty(_ name: String) -> WBXMLElement {
+        WBXMLElement(name, .empty)
+    }
 }
 
 /// Parsed WBXML tree. `page` is kept for diagnostics; lookups are by element name.

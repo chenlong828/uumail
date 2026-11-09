@@ -244,3 +244,112 @@ struct EASClientTests {
         }
     }
 }
+
+@Suite("EASClient sync")
+struct EASSyncTests {
+    private func syncResponse(
+        status: String,
+        syncKey: String,
+        adds: [EASMessage],
+        moreAvailable: Bool = false
+    ) -> Data {
+        var commands: [WBXMLElement] = []
+        for message in adds {
+            var fields: [WBXMLElement] = []
+            if let subject = message.subject { fields.append(.text("Subject", subject)) }
+            if let from = message.from { fields.append(.text("From", from)) }
+            if let date = message.dateReceived { fields.append(.text("DateReceived", date)) }
+            if let read = message.isRead { fields.append(.text("Read", read ? "1" : "0")) }
+            if let preview = message.bodyPreview {
+                fields.append(.children("Body", [.text("Data", preview)]))
+            }
+            commands.append(.children("Add", [
+                .text("ServerId", message.serverID),
+                .children("ApplicationData", fields),
+            ]))
+        }
+        var collection: [WBXMLElement] = [
+            .text("SyncKey", syncKey),
+            .text("CollectionId", "13"),
+            .text("Status", status),
+        ]
+        if !commands.isEmpty {
+            collection.append(.children("Commands", commands))
+        }
+        var sync: [WBXMLElement] = [.children("Collections", [.children("Collection", collection)])]
+        if moreAvailable {
+            sync.append(.empty("MoreAvailable"))
+        }
+        return try! WBXMLCodec.standard().encode(.children("Sync", sync))
+    }
+
+    @Test("sync parses envelopes and the new key")
+    func parsesEnvelopes() async throws {
+        let stub = StubTransport(responses: [
+            EASHTTPResponse(status: 200, headers: [:], body: syncResponse(
+                status: "1",
+                syncKey: "43",
+                adds: [
+                    EASMessage(
+                        serverID: "123",
+                        subject: "Hello",
+                        from: "a@b.c",
+                        to: "me@x.y",
+                        dateReceived: "2026-11-08T05:11:18.000Z",
+                        isRead: false,
+                        importance: 1,
+                        bodyPreview: "preview text"
+                    )
+                ]
+            ))
+        ])
+        let client = EASClient(configuration: makeConfiguration(), transport: stub, policyKey: "1")
+        let result = try await client.sync(collectionID: "13", syncKey: "42", window: 25)
+
+        #expect(result.syncKey == "43")
+        #expect(result.moreAvailable == false)
+        #expect(result.added.count == 1)
+        let message = try #require(result.added.first)
+        #expect(message.serverID == "123")
+        #expect(message.subject == "Hello")
+        #expect(message.isRead == false)
+        #expect(message.bodyPreview == "preview text")
+
+        let request = try #require(await stub.recorded.first?.request)
+        let body = try #require(request.body)
+        let document = try WBXMLCodec.standard().decode(body)
+        let collection = try #require(document.path("Sync", "Collections", "Collection"))
+        #expect(collection.child("SyncKey")?.stringValue() == "42")
+        #expect(collection.child("CollectionId")?.stringValue() == "13")
+        #expect(document.child("Sync")?.child("SyncKey") == nil, "a top-level SyncKey makes Exchange answer Status=4")
+        #expect(collection.child("Class") == nil)
+    }
+
+    @Test("MoreAvailable is reported so the caller keeps pulling")
+    func moreAvailable() async throws {
+        let stub = StubTransport(responses: [
+            EASHTTPResponse(status: 200, headers: [:], body: syncResponse(
+                status: "1", syncKey: "44", adds: [], moreAvailable: true
+            ))
+        ])
+        let client = EASClient(configuration: makeConfiguration(), transport: stub, policyKey: "1")
+        let result = try await client.sync(collectionID: "13")
+        #expect(result.moreAvailable == true)
+        #expect(result.syncKey == "44")
+    }
+
+    @Test("Sync status 3 and 4 mean the key is invalid")
+    func invalidKey() async {
+        for status in ["3", "4"] {
+            let stub = StubTransport(responses: [
+                EASHTTPResponse(status: 200, headers: [:], body: syncResponse(
+                    status: status, syncKey: "0", adds: []
+                ))
+            ])
+            let client = EASClient(configuration: makeConfiguration(), transport: stub, policyKey: "1")
+            await #expect(throws: EASError.syncKeyInvalid) {
+                _ = try await client.sync(collectionID: "13", syncKey: "42")
+            }
+        }
+    }
+}
