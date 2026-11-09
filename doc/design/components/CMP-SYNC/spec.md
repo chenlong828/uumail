@@ -1,7 +1,7 @@
 ---
 layer: design
 module: sync
-status: planned
+status: active
 updated: 2026-11-09
 component: CMP-SYNC
 ---

@@ -1,7 +1,7 @@
 ---
 layer: design
 module: store
-status: planned
+status: active
 updated: 2026-11-09
 component: CMP-STORE
 ---
