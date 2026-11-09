@@ -70,6 +70,29 @@ struct UumailCtl {
                 print("[4] inbox: NOT FOUND")
             }
 
+        case "send":
+            guard let to = value(of: "--to", in: arguments) else {
+                FileHandle.standardError.write(Data("send: --to <address> is required\n".utf8))
+                exit(2)
+            }
+            let service = try MailService(
+                configuration: configuration,
+                databasePath: value(of: "--db", in: arguments) ?? ".build/outbox.sqlite"
+            )
+            let draft = MailDraft(
+                to: to,
+                cc: nil,
+                subject: value(of: "--subject", in: arguments) ?? "uumail 测试",
+                body: value(of: "--body", in: arguments) ?? "这是一封来自 uumail 的测试邮件。"
+            )
+            do {
+                let id = try await service.send(draft)
+                print("sent: outbox \(id) cleared")
+            } catch let error as MailGatewayError {
+                print("send failed: \(error) (item kept for retry)")
+                exit(3)
+            }
+
         case "ping":
             let heartbeat = Int(value(of: "--heartbeat", in: arguments) ?? "10") ?? 10
             let folders = try await client.folderSync()
@@ -200,6 +223,7 @@ struct UumailCtl {
           provision            run the two-step policy handshake
           folders [--json]     list the folder hierarchy
           diagnose             OPTIONS -> Provision -> FolderSync
+          send --to <addr> [--subject s] [--body b] [--db path]   send one message
           ping [--heartbeat N] long-poll the inbox and report status/elapsed
           seed                 store the env account in the login Keychain
           store --db <path>    sync folders into a local SQLite store
