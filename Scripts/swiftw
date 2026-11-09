@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# SwiftPM wrapper for this machine.
+# Two environment quirks, both local to this project:
+#   1. the file sandbox blocks ~/Library caches, so all SwiftPM caches live under .build/
+#   2. SwiftPM's own manifest sandbox cannot nest inside the outer sandbox, hence --disable-sandbox
+set -euo pipefail
+cd "$(dirname "$0")/.."
+export CLANG_MODULE_CACHE_PATH="$PWD/.build/clang-module-cache"
+mkdir -p "$CLANG_MODULE_CACHE_PATH"
+command=$1
+shift
+exec swift "$command" --disable-sandbox \
+  --scratch-path .build \
+  --cache-path .build/spm-cache \
+  --config-path .build/spm-config \
+  --security-path .build/spm-security \
+  "$@"

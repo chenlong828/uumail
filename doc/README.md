@@ -17,7 +17,7 @@ macOS 原生邮件客户端，只走 Exchange ActiveSync（以「一台已登记
 
 - **现在能回答什么**：能不能用 EAS 收信发信？能，见 playbook 的能力矩阵。首版做什么？单账号、最小策略握手、本机联系人、不做 OAuth（2026-11-09 确认）。
 - **还不能回答什么**：Ping、MoveItems 未验证；本地保留策略与附件缓存上限未定（`plan/open-questions.md`）。
-- **下一步**：`plan/roadmap.md` 的 W-M1-01（账号接入与设备身份）可立项，前置 `REQ-0001` 已 `accepted`。
+- **下一步**：W-M1-03 收件箱增量同步（`Sync` 命令 + 消息表 + SyncEngine）。W-M1-01 的协议与落库已完成，UI 与账号状态机待补。
 
 ## 目录约定
 

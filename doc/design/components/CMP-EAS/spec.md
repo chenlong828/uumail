@@ -10,7 +10,7 @@ component: CMP-EAS
 
 ## 模块卡
 
-- 状态：`planned`（协议已在真实网关验证，代码未落地；验证证据见 `history/works/2026-11-09-eas-probe/`）
+- 状态：`active`（只读命令已落地并通过真实网关验证；Sync/正文/附件/发送未实现）
 - 单元：组件
 - 层 / 类型：L0；技术边界（防腐层）
 - 业务价值：把 EAS 的 WBXML、HTTP、状态码、版本差异与网关怪癖挡在领域契约之外。没有它，协议细节会渗进同步编排与 UI。
@@ -43,6 +43,14 @@ component: CMP-EAS
 | `CMP-EAS#ping` | `Ping` | ⚠️ 未验证 | 未通过前按轮询排期 |
 
 实测环境与参数细节见 `design/components/CMP-EAS/playbook.md`（同目录）。
+
+### 实现进度（2026-11-09）
+
+| 能力 | 代码 | 测试 |
+|---|---|---|
+| 编解码（NUL 字符串/opaque/code page） | ✅ `WBXML.swift` | golden 字节 + 回环 |
+| `options` / `provision` / `folderSync` | ✅ `EASClient.swift` | stub 传输 + 真实网关 |
+| `sync` / `fetchBody` / `fetchAttachment` / `send` / `moveItems` / `search` / `ping` | ⬜ | — |
 
 ## 契约卡：MailGateway / EASClient v1（planned）
 

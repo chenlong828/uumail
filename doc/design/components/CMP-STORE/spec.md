@@ -10,7 +10,7 @@ component: CMP-STORE
 
 ## 模块卡
 
-- 状态：`planned`（只有职责、契约与验证计划，无代码）
+- 状态：`active`（schema v1 与文件夹快照已落地；消息、正文、outbox、FTS 未实现）
 - 单元：组件
 - 层 / 类型：L1a；领域基础（数据服务）
 - 业务价值：为列表、阅读、搜索、发送占位提供**唯一权威本地副本**；没有它，同一封邮件会以三种口径出现在三个模块里。
@@ -58,6 +58,16 @@ component: CMP-STORE
 | sync_state | CMP-STORE | `applySyncBatch` | CMP-SYNC | 强一致（与批次同事务） |
 | outbox | CMP-STORE | `enqueueOutbound` / `markOutboundResult` | CMP-OUT、UI | 强一致 |
 | fts | CMP-STORE | 随批次事务增量更新 | 搜索 | 最终一致（≤ 1 批次延迟） |
+
+### 实现进度（2026-11-09）
+
+| 契约 | 代码 | 测试 |
+|---|---|---|
+| schema v1：accounts / device_profiles / folders / sync_state | ✅ | 迁移随 `MailStore.inMemory()` 走通 |
+| `applyFolderSnapshot` | ✅ | 幂等、软删、复活、回滚、未知账号 |
+| `applySyncBatch` / `page` / `messageDetail` / `searchLocal` / outbox | ⬜ | — |
+
+`createAccount` 目前返回 `draft` 态账号；账号状态机随 UI 工序补齐。
 
 ## 验证计划
 
