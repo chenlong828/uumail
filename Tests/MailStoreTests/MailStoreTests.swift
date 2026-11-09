@@ -294,3 +294,19 @@ struct MailStoreSearchTests {
         #expect(try store.searchLocal(account: id, query: "   ").isEmpty)
     }
 }
+
+@Suite("MailStore short queries")
+struct MailStoreShortQueryTests {
+    @Test("two-character CJK queries fall back to LIKE and still match")
+    func shortQuery() throws {
+        let store = try MailStore.inMemory()
+        let id = try store.createAccount(NewAccount(displayName: "工作", address: "jdoe@corp.test", host: "mail.corp.test"))
+        try store.applyFolderSnapshot(account: id, folders: [
+            MailFolder(serverID: "13", parentID: "0", displayName: "收件箱", type: 2),
+        ], syncKey: "1")
+        try store.applySyncBatch(account: id, folder: "13", added: [
+            MailMessage(serverID: "1", subject: "周报 1109", sender: "a@corp.test", receivedRaw: "2026-11-08T05:11:18.000Z"),
+        ], changed: [], removedServerIDs: [], syncKey: "2")
+        #expect(try store.searchLocal(account: id, query: "周报").map(\.serverID) == ["1"])
+    }
+}

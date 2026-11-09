@@ -16,7 +16,15 @@ struct UumailApp: App {
             Group {
                 if let model {
                     MailboxView(model: model)
-                        .task { await model.refresh() }
+                        .task {
+                            await model.refresh()
+                            // Ping is unsupported by the gateway (always Status=4), so the
+                            // client polls. Five minutes keeps the session cheap.
+                            while !Task.isCancelled {
+                                try? await Task.sleep(for: .seconds(300))
+                                await model.refresh()
+                            }
+                        }
                 } else {
                     AccountSetupView { saved in
                         try apply(saved)

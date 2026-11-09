@@ -141,6 +141,16 @@ public struct SyncResult: Equatable, Sendable {
     public var moreAvailable: Bool
 }
 
+public struct PingResult: Equatable, Sendable {
+    public var hasChanges: Bool
+    public var status: Int
+
+    public init(hasChanges: Bool, status: Int) {
+        self.hasChanges = hasChanges
+        self.status = status
+    }
+}
+
 public struct EASServerCapabilities: Equatable, Sendable {
     public let protocolVersions: [String]
     public let commands: [String]
@@ -481,6 +491,35 @@ public actor EASClient {
             throw EASError.malformedResponse("ItemOperations: missing Body/Data")
         }
         return data
+    }
+
+    // MARK: Ping
+
+    /// Long poll for changes on one collection. The gateway holds the request up to
+    /// `heartbeatSeconds` and answers with the changed folders, if any.
+    public func ping(collectionID: String, heartbeatSeconds: Int = 300) async throws -> PingResult {
+        if policyKey == nil {
+            try await provision()
+        }
+        let body = try codec.encode(.children("Ping", [
+            .text("HeartbeatInterval", String(heartbeatSeconds)),
+            .children("Folders", [
+                .children("Folder", [.text("Id", collectionID)]),
+            ]),
+        ]))
+        let response = try await call("Ping", body: body, treatEmptyBodyAsSuccess: true)
+        guard !response.body.isEmpty else {
+            // A zero-byte answer means the gateway dropped the long poll; treat as no change.
+            return PingResult(hasChanges: false, status: 0)
+        }
+        let document = try decode(response)
+        guard let statusText = document.path("Ping", "Status")?.stringValue(),
+              let status = Int(statusText)
+        else {
+            throw EASError.malformedResponse("Ping: missing Status")
+        }
+        let changed = document.path("Ping", "Folders", "Folder") != nil
+        return PingResult(hasChanges: changed, status: status)
     }
 
     // MARK: Attachments

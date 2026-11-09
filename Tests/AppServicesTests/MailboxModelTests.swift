@@ -376,3 +376,38 @@ struct NotificationTests {
         #expect(notifier.posts.first?.1 == "3 封新邮件")
     }
 }
+
+@Suite("Attachment cache")
+struct AttachmentCacheTests {
+    @Test("pruning removes the oldest files until the budget is met")
+    func prunesOldestFirst() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("uumail-cache-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let sizes = [10, 10, 10] // 30 bytes total, budget 20
+        for (index, size) in sizes.enumerated() {
+            let url = dir.appendingPathComponent("f\(index).bin")
+            try Data(repeating: 0, count: size).write(to: url)
+            try FileManager.default.setAttributes(
+                [.modificationDate: Date(timeIntervalSinceNow: TimeInterval(index))],
+                ofItemAtPath: url.path
+            )
+        }
+
+        let removed = try AttachmentCache.prune(directory: dir, maxBytes: 20)
+        #expect(removed == 1)
+        let remaining = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+        #expect(remaining.count == 2)
+        #expect(!remaining.contains("f0.bin"), "oldest file goes first")
+    }
+
+    @Test("under budget nothing is removed")
+    func noopWhenSmall() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("uumail-cache-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try Data(repeating: 0, count: 5).write(to: dir.appendingPathComponent("a.bin"))
+        #expect(try AttachmentCache.prune(directory: dir, maxBytes: 100) == 0)
+    }
+}

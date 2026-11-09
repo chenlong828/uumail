@@ -554,6 +554,31 @@ public final class MailStore: @unchecked Sendable {
     public func searchLocal(account id: AccountID, query: String, limit: Int = 50) throws -> [StoredMessage] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
+        // FTS5 trigram needs at least three characters; short CJK queries fall back to LIKE.
+        if trimmed.count < 3 {
+            return try dbQueue.read { db in
+                try Row.fetchAll(
+                    db,
+                    sql: """
+                        SELECT m.server_id, m.folder_id, m.subject, m.sender, m.received_raw, m.is_read, b.text AS preview
+                        FROM messages m
+                        LEFT JOIN message_bodies b
+                            ON b.account_id = m.account_id AND b.folder_id = m.folder_id AND b.server_id = m.server_id
+                        WHERE m.account_id = ? AND m.deleted_at IS NULL
+                          AND (m.subject LIKE ? OR m.sender LIKE ? OR b.text LIKE ?)
+                        ORDER BY m.received_raw DESC
+                        LIMIT ?
+                        """,
+                    arguments: [id.raw, "%\(trimmed)%", "%\(trimmed)%", "%\(trimmed)%", limit]
+                ).map { row in
+                    StoredMessage(
+                        serverID: row["server_id"], subject: row["subject"], sender: row["sender"],
+                        receivedRaw: row["received_raw"], isRead: (row["is_read"] as Int) == 1,
+                        bodyPreview: row["preview"], folderID: row["folder_id"]
+                    )
+                }
+            }
+        }
         return try dbQueue.read { db in
             try Row.fetchAll(
                 db,

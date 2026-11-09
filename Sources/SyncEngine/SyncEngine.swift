@@ -13,6 +13,7 @@ public actor SyncEngine {
     private let window: Int
     private let maxRounds: Int
     private let filterType: Int
+    private let sleeper: @Sendable (Duration) async -> Void
 
     private var state: SyncState = .idle
     private var consecutiveFailures = 0
@@ -23,7 +24,8 @@ public actor SyncEngine {
         account: AccountRef,
         window: Int = 25,
         maxRounds: Int = 5,
-        filterType: Int = 5
+        filterType: Int = 5,
+        sleeper: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
     ) {
         self.gateway = gateway
         self.store = store
@@ -31,6 +33,7 @@ public actor SyncEngine {
         self.window = window
         self.maxRounds = maxRounds
         self.filterType = filterType
+        self.sleeper = sleeper
     }
 
     public func currentState() -> SyncState { state }
@@ -38,6 +41,17 @@ public actor SyncEngine {
     /// Folder hierarchy then inbox. Safe to call repeatedly; the first call after a
     /// fresh install performs the two-request bootstrap.
     public func syncOnce() async throws -> SyncReport {
+        do {
+            return try await runSync()
+        } catch MailGatewayError.throttled(let retryAfter) {
+            // The server asked us to slow down; wait once and retry a single time.
+            let seconds = min(max(retryAfter ?? 30, 1), 300)
+            await sleeper(.seconds(seconds))
+            return try await runSync()
+        }
+    }
+
+    private func runSync() async throws -> SyncReport {
         do {
             try await gateway.provisionIfNeeded()
             let folders = try await refreshFolders()

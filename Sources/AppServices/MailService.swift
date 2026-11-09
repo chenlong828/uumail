@@ -117,6 +117,7 @@ public final class MailService: MailServiceProtocol, MailSendService, @unchecked
             withIntermediateDirectories: true
         )
         try data.write(to: destination, options: .atomic)
+        _ = try? AttachmentCache.prune(directory: destination.deletingLastPathComponent())
         try store.markAttachmentCached(
             account: accountID,
             folder: folderID,

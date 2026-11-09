@@ -19,7 +19,7 @@ updated: 2026-11-09
 | M1 只读客户端 | 账号接入、文件夹树、列表、正文、附件、离线缓存 | 五个只读场景（SCN-0001…0005）全部 `verified` | 未开始 |
 | M2 发送与草稿 | Outbox、SendMail、回复/转发、草稿、Sent 镜像 | send-message 场景 `verified`；离线发送可在联网后只发一次 | 未开始 |
 | M3 体验 | Ping、通知、本地搜索、错误恢复与空态 | 新邮件端到端 ≤ 60s 可见（Ping 或轮询）；搜索、通知场景 `verified` | 未开始 |
-| M4 加固 | 策略、限流、安全、性能 | 真机矩阵通过；架构测试与性能基线进 CI | 未开始 |
+| M4 加固 | 策略、限流、安全、性能 | 限流退避、缓存上限、安全审计、5k 性能基线已落 | 进行中 |
 
 ## 工序
 
@@ -32,7 +32,7 @@ updated: 2026-11-09
 | W-M1-04 正文渲染与附件下载 | M1 | W-M1-03 | CMP-STORE、CMP-EAS、AttachmentCache | SCN-0004、SCN-0005 `verified` |
 | W-M2-01 Outbox 与发信 | M2 | W-M1-04 | CMP-OUT、CMP-EAS | 进行中：协议、队列、撰写界面已通；待真机发信验证 |
 | W-M2-02 回复/转发与草稿 | M2 | W-M2-01 | CMP-OUT、CMP-STORE | 回复/转发、草稿两个场景 `verified` |
-| W-M3-01 Ping 与通知 | M3 | W-M2-01 | CMP-SYNC、通知策略 | Ping 能力结论落 playbook；通知场景 `verified` |
+| W-M3-01 Ping 与通知 | M3 | W-M2-01 | CMP-SYNC、通知策略 | Ping 实测不支持 → 轮询；通知已落地 |
 | W-M3-02 本地搜索 | M3 | W-M1-03 | CMP-STORE | 搜索场景 `verified`；FTS 不扫正文列 |
 
 ## 批次纪律

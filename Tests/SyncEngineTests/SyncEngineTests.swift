@@ -14,15 +14,18 @@ actor FakeGateway: MailGateway {
     private var folderListing: FolderListing
     private var deltas: [String: MessageDelta]
     private var provisionError: MailGatewayError?
+    private var remainingThrottles: Int
 
     init(
         folderListing: FolderListing,
         deltas: [String: MessageDelta],
-        provisionError: MailGatewayError? = nil
+        provisionError: MailGatewayError? = nil,
+        throttles: Int = 0
     ) {
         self.folderListing = folderListing
         self.deltas = deltas
         self.provisionError = provisionError
+        self.remainingThrottles = throttles
     }
 
     func provisionIfNeeded() async throws {
@@ -32,6 +35,10 @@ actor FakeGateway: MailGateway {
 
     func fetchFolders(syncKey: String) async throws -> FolderListing {
         calls.append(.folders(syncKey: syncKey))
+        if remainingThrottles > 0 {
+            remainingThrottles -= 1
+            throw MailGatewayError.throttled(retryAfterSeconds: 2)
+        }
         return folderListing
     }
 
@@ -211,5 +218,47 @@ struct SyncEngineTests {
         await #expect(throws: MailGatewayError.unsupported) {
             _ = try await engine.syncOnce()
         }
+    }
+}
+
+private actor SleepRecorder {
+    private(set) var durations: [Duration] = []
+    func add(_ duration: Duration) { durations.append(duration) }
+}
+
+@Suite("SyncEngine throttle")
+struct SyncEngineThrottleTests {
+    @Test("a throttled run waits for Retry-After and retries once")
+    func retriesAfterThrottle() async throws {
+        let gateway = FakeGateway(
+            folderListing: FolderListing(
+                folders: [FolderSummary(serverID: "13", parentID: "0", displayName: "收件箱", type: 2)],
+                syncKey: "1"
+            ),
+            deltas: dangerousDeltas(),
+            throttles: 1
+        )
+        let store = FakeStore()
+        let sleeps = SleepRecorder()
+        let engine = SyncEngine(
+            gateway: gateway,
+            store: store,
+            account: AccountRef("a"),
+            sleeper: { duration in await sleeps.add(duration) }
+        )
+        let report = try await engine.syncOnce()
+        #expect(report.folders == 1)
+        #expect(await sleeps.durations.count == 1)
+        #expect(await sleeps.durations.first == .seconds(2))
+    }
+
+    private func dangerousDeltas() -> [String: MessageDelta] {
+        [
+            "0": MessageDelta(added: [], changed: [], removedServerIDs: [], syncKey: "10", moreAvailable: false),
+            "10": MessageDelta(
+                added: [MessageSummary(serverID: "1")], changed: [], removedServerIDs: [],
+                syncKey: "11", moreAvailable: false
+            ),
+        ]
     }
 }

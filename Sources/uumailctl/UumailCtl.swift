@@ -70,6 +70,19 @@ struct UumailCtl {
                 print("[4] inbox: NOT FOUND")
             }
 
+        case "ping":
+            let heartbeat = Int(value(of: "--heartbeat", in: arguments) ?? "10") ?? 10
+            let folders = try await client.folderSync()
+            guard let inbox = folders.folders.first(where: { $0.type == 2 }) else {
+                print("no inbox")
+                exit(2)
+            }
+            let started = Date()
+            let result = try await client.ping(collectionID: inbox.serverID, heartbeatSeconds: heartbeat)
+            let elapsed = Int(Date().timeIntervalSince(started))
+            print("ping: status=\(result.status) changes=\(result.hasChanges) elapsed=\(elapsed)s heartbeat=\(heartbeat)s")
+            exit(0)
+
         case "seed":
             // Writes the account into the login Keychain so the app starts configured.
             // The password never touches a file: it comes from the environment.
@@ -187,6 +200,7 @@ struct UumailCtl {
           provision            run the two-step policy handshake
           folders [--json]     list the folder hierarchy
           diagnose             OPTIONS -> Provision -> FolderSync
+          ping [--heartbeat N] long-poll the inbox and report status/elapsed
           seed                 store the env account in the login Keychain
           store --db <path>    sync folders into a local SQLite store
           sync --db <path>     sync the inbox into the store (read-only on the server)
