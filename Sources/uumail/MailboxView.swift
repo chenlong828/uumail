@@ -1,10 +1,12 @@
 import AppKit
 import AppServices
 import MailStore
+import SyncEngine
 import SwiftUI
 
 struct MailboxView: View {
     @Bindable var model: MailboxModel
+    @State private var compose: ComposeModel?
 
     var body: some View {
         NavigationSplitView {
@@ -23,7 +25,24 @@ struct MailboxView: View {
             .navigationTitle(model.folders.first(where: { $0.serverID == model.selectedFolderID })?.displayName ?? "收件箱")
             .navigationSplitViewColumnWidth(min: 280, ideal: 380)
             .toolbar {
-                ToolbarItem(placement: .primaryAction) {
+                ToolbarItemGroup(placement: .primaryAction) {
+                    Button {
+                        compose = ComposeModel(mode: .new)
+                    } label: {
+                        Label("新建", systemImage: "square.and.pencil")
+                    }
+                    Button {
+                        reply()
+                    } label: {
+                        Label("回复", systemImage: "arrowshape.turn.up.left")
+                    }
+                    .disabled(selectedMessage == nil)
+                    Button {
+                        forward()
+                    } label: {
+                        Label("转发", systemImage: "arrowshape.turn.up.right")
+                    }
+                    .disabled(selectedMessage == nil)
                     Button {
                         Task { await model.refresh() }
                     } label: {
@@ -31,6 +50,13 @@ struct MailboxView: View {
                     }
                     .disabled(model.state == .syncing)
                 }
+            }
+            .sheet(item: $compose) { draft in
+                ComposeView(
+                    compose: draft,
+                    service: model.sendService ?? NullSendService(),
+                    onClose: { compose = nil }
+                )
             }
         } detail: {
             MessageBodyView(
@@ -45,6 +71,28 @@ struct MailboxView: View {
             )
             .navigationTitle("阅读")
         }
+    }
+
+    private var selectedMessage: StoredMessage? {
+        model.messages.first { $0.serverID == model.selectedMessageID }
+    }
+
+    private func reply() {
+        guard let message = selectedMessage else { return }
+        let html: String? = {
+            if case .loaded(let html) = model.detailState { return html }
+            return nil
+        }()
+        compose = ComposeModel.replySeed(sender: message.sender, subject: message.subject, html: html)
+    }
+
+    private func forward() {
+        guard let message = selectedMessage else { return }
+        let html: String? = {
+            if case .loaded(let html) = model.detailState { return html }
+            return nil
+        }()
+        compose = ComposeModel.forwardSeed(subject: message.subject, html: html)
     }
 
     private var messageList: some View {
@@ -139,4 +187,9 @@ struct MailboxView: View {
         output.dateFormat = "MM-dd HH:mm"
         return output.string(from: date)
     }
+}
+
+private final class NullSendService: MailSendService, @unchecked Sendable {
+    func send(_ draft: MailDraft) async throws -> String { throw MailGatewayError.unsupported }
+    func saveDraft(_ draft: MailDraft) throws -> String { throw MailGatewayError.unsupported }
 }

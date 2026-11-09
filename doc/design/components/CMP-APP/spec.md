@@ -36,9 +36,10 @@ component: CMP-APP
 | 刷新与失败状态 | `MailboxModel.refresh()` | 单测（失败保留缓存） |
 | 三栏 + 正文阅读（WKWebView，禁 JS，CSP 阻止远程资源，单封可放行） | `MessageBodyView.swift` | 真机：点选邮件拉取 HTML 并渲染；3 个模型单测 |
 | 附件条：点击下载到缓存并打开 | `MessageBodyView.swift` | 待真机附件验证 |
-| 撰写 | ⬜ | — |
+| 撰写：新建 / 回复 / 转发 / 存草稿 / 发送 | `ComposeView.swift`、`ComposeModel.swift` | 5 个模型单测；待真机发信验证 |
 
 ## 待办
 
-- 邮件详情区未实现，点选邮件暂无反馈。
+- 回复未带真实 `Message-ID`（本地只存 ServerId），会话归并依赖服务器；需在 M3 补 `InternetMessageId` 存储。
+- 撰写暂不支持加附件；发送成功后无本地 Sent 镜像（依赖服务器 `SaveInSentItems`）。
 - 无账号时表单空白；考虑 DEBUG 下支持从探针 `.env` 导入。

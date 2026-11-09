@@ -44,6 +44,9 @@ public final class MailboxModel {
     }
 
     private let service: any MailServiceProtocol
+
+    /// The same object in the app; tests can leave it nil.
+    public var sendService: (any MailSendService)? { service as? any MailSendService }
     private var loadedBodyFor: String?
 
     public init(service: any MailServiceProtocol) {

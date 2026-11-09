@@ -243,3 +243,78 @@ struct MailServiceSendTests {
         #expect(pending.first?.state == "failed")
     }
 }
+
+final class FakeSendService: MailSendService, @unchecked Sendable {
+    nonisolated(unsafe) var sent: [MailDraft] = []
+    nonisolated(unsafe) var drafts: [MailDraft] = []
+    nonisolated(unsafe) var error: Error?
+
+    func send(_ draft: MailDraft) async throws -> String {
+        if let error { throw error }
+        sent.append(draft)
+        return UUID().uuidString
+    }
+
+    func saveDraft(_ draft: MailDraft) throws -> String {
+        drafts.append(draft)
+        return UUID().uuidString
+    }
+}
+
+@Suite("ComposeModel")
+@MainActor
+struct ComposeModelTests {
+    @Test("reply prefills the sender, keeps a single Re: prefix and quotes the body")
+    func replySeed() {
+        let compose = ComposeModel.replySeed(
+            sender: "\"张三\" <zhang@corp.test>",
+            subject: "Re: 周报",
+            html: "<p>hello</p><p>world</p>"
+        )
+        #expect(compose.to == "zhang@corp.test")
+        #expect(compose.subject == "Re: 周报")
+        #expect(compose.body.contains("hello"))
+        #expect(compose.body.contains("原邮件"))
+    }
+
+    @Test("forward prefixes Fwd: and does not address anyone")
+    func forwardSeed() {
+        let compose = ComposeModel.forwardSeed(subject: "周报", html: "<div>hi</div>")
+        #expect(compose.subject == "Fwd: 周报")
+        #expect(compose.to.isEmpty)
+        #expect(!compose.canSend)
+    }
+
+    @Test("send reports success and clears the editor state")
+    func sendSuccess() async {
+        let service = FakeSendService()
+        let compose = ComposeModel(mode: .new, to: "a@b.c", subject: "hi", body: "text")
+        await compose.send(using: service)
+        #expect(compose.state == .sent)
+        #expect(service.sent.count == 1)
+        #expect(service.sent.first?.to == "a@b.c")
+    }
+
+    @Test("a failed send keeps the text and surfaces the error")
+    func sendFailure() async {
+        let service = FakeSendService()
+        service.error = MailGatewayError.offline
+        let compose = ComposeModel(mode: .new, to: "a@b.c", subject: "hi", body: "text")
+        await compose.send(using: service)
+        guard case .failed(let message) = compose.state else {
+            Issue.record("expected failed state")
+            return
+        }
+        #expect(message.contains("offline"))
+        #expect(compose.body == "text")
+    }
+
+    @Test("save draft does not send")
+    func saveDraft() {
+        let service = FakeSendService()
+        let compose = ComposeModel(mode: .new, to: "a@b.c", subject: "draft", body: "wip")
+        compose.saveDraft(using: service)
+        #expect(service.drafts.count == 1)
+        #expect(service.sent.isEmpty)
+    }
+}

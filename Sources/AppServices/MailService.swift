@@ -6,7 +6,7 @@ import SyncEngine
 
 /// Composition root shared by the app and the CLI: owns the store, the client and the
 /// sync engine for the single configured account.
-public final class MailService: MailServiceProtocol, @unchecked Sendable {
+public final class MailService: MailServiceProtocol, MailSendService, @unchecked Sendable {
     public let store: MailStore
     public let accountID: AccountID
     private let configuration: EASConfiguration
