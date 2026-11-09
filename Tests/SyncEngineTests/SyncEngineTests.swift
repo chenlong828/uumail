@@ -35,7 +35,7 @@ actor FakeGateway: MailGateway {
         return folderListing
     }
 
-    func fetchMessages(collectionID: String, syncKey: String, window: Int) async throws -> MessageDelta {
+    func fetchMessages(collectionID: String, syncKey: String, window: Int, filterType: Int) async throws -> MessageDelta {
         calls.append(.messages(collection: collectionID, key: syncKey))
         guard let delta = deltas[syncKey] else {
             throw MailGatewayError.syncKeyInvalid

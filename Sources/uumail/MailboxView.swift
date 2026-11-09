@@ -1,0 +1,111 @@
+import AppServices
+import MailStore
+import SwiftUI
+
+struct MailboxView: View {
+    @Bindable var model: MailboxModel
+
+    var body: some View {
+        NavigationSplitView {
+            List(model.folders, id: \.serverID, selection: $model.selectedFolderID) { folder in
+                Label(folder.displayName, systemImage: icon(for: folder.type))
+                    .tag(folder.serverID)
+            }
+            .navigationSplitViewColumnWidth(min: 180, ideal: 220)
+            .navigationTitle("文件夹")
+        } detail: {
+            VStack(spacing: 0) {
+                messageList
+                Divider()
+                statusBar
+            }
+            .navigationTitle(model.folders.first(where: { $0.serverID == model.selectedFolderID })?.displayName ?? "收件箱")
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        Task { await model.refresh() }
+                    } label: {
+                        Label("刷新", systemImage: "arrow.clockwise")
+                    }
+                    .disabled(model.state == .syncing)
+                }
+            }
+        }
+    }
+
+    private var messageList: some View {
+        List(model.messages, id: \.serverID) { message in
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Circle()
+                    .fill(message.isRead ? Color.clear : Color.accentColor)
+                    .frame(width: 6, height: 6)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(message.subject ?? "(无主题)")
+                        .fontWeight(message.isRead ? .regular : .semibold)
+                        .lineLimit(1)
+                    Text(message.sender ?? "")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Text(Self.displayDate(message.receivedRaw))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 2)
+        }
+        .overlay {
+            if model.messages.isEmpty {
+                ContentUnavailableView(
+                    model.state == .syncing ? "正在同步…" : "没有邮件",
+                    systemImage: "tray"
+                )
+            }
+        }
+    }
+
+    private var statusBar: some View {
+        HStack {
+            switch model.state {
+            case .idle:
+                Text(model.lastSyncedAt.map { "上次同步 \(Self.displayDate(ISO8601DateFormatter().string(from: $0)))" } ?? "就绪")
+            case .syncing:
+                ProgressView().controlSize(.small)
+                Text("同步中…")
+            case .failed(let message):
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                Text(message).lineLimit(1)
+            }
+            Spacer()
+            Text("\(model.messages.count) 封")
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+    }
+
+    private func icon(for type: Int) -> String {
+        switch type {
+        case 2: "tray.full"
+        case 3: "doc.text"
+        case 4: "trash"
+        case 5: "paperplane"
+        case 6: "tray.and.arrow.up"
+        case 8: "person.crop.circle"
+        case 11: "calendar"
+        default: "folder"
+        }
+    }
+
+    private static func displayDate(_ raw: String?) -> String {
+        guard let raw else { return "" }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let date = formatter.date(from: raw) else { return String(raw.prefix(16)) }
+        let output = DateFormatter()
+        output.dateFormat = "MM-dd HH:mm"
+        return output.string(from: date)
+    }
+}

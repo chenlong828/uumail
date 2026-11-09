@@ -12,6 +12,7 @@ public actor SyncEngine {
     private let account: AccountRef
     private let window: Int
     private let maxRounds: Int
+    private let filterType: Int
 
     private var state: SyncState = .idle
     private var consecutiveFailures = 0
@@ -21,13 +22,15 @@ public actor SyncEngine {
         store: any SyncStore,
         account: AccountRef,
         window: Int = 25,
-        maxRounds: Int = 5
+        maxRounds: Int = 5,
+        filterType: Int = 5
     ) {
         self.gateway = gateway
         self.store = store
         self.account = account
         self.window = window
         self.maxRounds = maxRounds
+        self.filterType = filterType
     }
 
     public func currentState() -> SyncState { state }
@@ -89,7 +92,7 @@ public actor SyncEngine {
             if key == "0" {
                 // First sync of a collection: SyncKey=0 answers with a key and no items.
                 let bootstrap = try await gateway.fetchMessages(
-                    collectionID: inbox.serverID, syncKey: "0", window: window
+                    collectionID: inbox.serverID, syncKey: "0", window: window, filterType: filterType
                 )
                 key = bootstrap.syncKey
                 continue
@@ -97,7 +100,7 @@ public actor SyncEngine {
 
             do {
                 let delta = try await gateway.fetchMessages(
-                    collectionID: inbox.serverID, syncKey: key, window: window
+                    collectionID: inbox.serverID, syncKey: key, window: window, filterType: filterType
                 )
                 try await store.applySyncBatch(account, folder: inbox.serverID, delta: delta)
                 added += delta.added.count

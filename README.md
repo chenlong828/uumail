@@ -25,6 +25,7 @@ doc/                 文档根（需求、计划、设计、工序、历史五�
 ./Scripts/swiftw build
 ./Scripts/swiftw test
 ./Scripts/swiftw run uumailctl diagnose
+./Scripts/make-app.sh && open .build/uumail.app   # 图形界面
 ```
 
 `Scripts/swiftw` 只是把三件本机必须的事包起来：SwiftPM 缓存放进 `.build/`、关闭嵌套 sandbox、固定 scratch 路径。直接用 `swift build` 会让 clang 模块缓存写到工作区外而被拒。
@@ -37,6 +38,7 @@ doc/                 文档根（需求、计划、设计、工序、历史五�
 set -a; . ~/working/公网邮箱访问/.env; set +a
 export EAS_HOST EAS_USER EAS_PASS EAS_DOMAIN EAS_DEVICE_ID
 ./Scripts/swiftw run uumailctl diagnose
+./Scripts/make-app.sh && open .build/uumail.app   # 图形界面
 ```
 
 `diagnose` 只发 `OPTIONS → Provision → FolderSync`，不改服务器数据。

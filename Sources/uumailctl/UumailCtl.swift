@@ -1,3 +1,4 @@
+import AppServices
 import Darwin
 import EASClient
 import Foundation
@@ -74,22 +75,16 @@ struct UumailCtl {
                 FileHandle.standardError.write(Data("sync: --db <path> is required\n".utf8))
                 exit(2)
             }
-            let store = try MailStore(path: path)
-            let accountID = try existingOrNewAccount(store: store, configuration: configuration)
-            let engine = SyncEngine(
-                gateway: EASGateway(client: client),
-                store: StoreAdapter(store: store, account: accountID),
-                account: AccountRef(accountID.raw)
-            )
+            let service = try MailService(configuration: configuration, databasePath: path)
             do {
-                let report = try await engine.syncOnce()
+                let report = try await service.syncOnce()
                 print("synced: \(report.folders) folders, +\(report.added) added, ~\(report.changed) changed, -\(report.removed) removed, \(report.rounds) rounds, key \(report.syncKey)")
             } catch let error as MailGatewayError {
-                print("sync failed: \(error), state: \(await engine.currentState())")
+                print("sync failed: \(error)")
                 exit(3)
             }
-            if let inbox = try store.folders(account: accountID).first(where: { $0.type == 2 }) {
-                let stored = try store.messages(account: accountID, folder: inbox.serverID, limit: 10)
+            if let inbox = try service.folders().first(where: { $0.type == 2 }) {
+                let stored = try service.messages(folderID: inbox.serverID, limit: 10)
                 print("latest \(stored.count) in \(inbox.displayName):")
                 for message in stored {
                     print("  [\(message.receivedRaw ?? "")] \(message.subject ?? "(no subject)") <- \(message.sender ?? "")")

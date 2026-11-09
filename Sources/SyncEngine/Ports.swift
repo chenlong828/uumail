@@ -14,7 +14,7 @@ public struct AccountRef: Hashable, Sendable {
 public protocol MailGateway: Sendable {
     func provisionIfNeeded() async throws
     func fetchFolders(syncKey: String) async throws -> FolderListing
-    func fetchMessages(collectionID: String, syncKey: String, window: Int) async throws -> MessageDelta
+    func fetchMessages(collectionID: String, syncKey: String, window: Int, filterType: Int) async throws -> MessageDelta
 }
 
 /// Store port: implemented by MailStore at the composition root, or by a fake in tests.

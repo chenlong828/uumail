@@ -43,6 +43,13 @@ public struct StoredFolder: Equatable, Sendable {
     public var parentID: String?
     public var displayName: String
     public var type: Int
+
+    public init(serverID: String, parentID: String?, displayName: String, type: Int) {
+        self.serverID = serverID
+        self.parentID = parentID
+        self.displayName = displayName
+        self.type = type
+    }
 }
 
 public struct MailMessage: Equatable, Sendable {
@@ -83,6 +90,22 @@ public struct StoredMessage: Equatable, Sendable {
     public var receivedRaw: String?
     public var isRead: Bool
     public var bodyPreview: String?
+
+    public init(
+        serverID: String,
+        subject: String?,
+        sender: String?,
+        receivedRaw: String?,
+        isRead: Bool,
+        bodyPreview: String?
+    ) {
+        self.serverID = serverID
+        self.subject = subject
+        self.sender = sender
+        self.receivedRaw = receivedRaw
+        self.isRead = isRead
+        self.bodyPreview = bodyPreview
+    }
 }
 
 public enum MailStoreError: Error, Equatable, Sendable {

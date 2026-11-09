@@ -318,12 +318,14 @@ public actor EASClient {
         collectionID: String,
         syncKey: String = "0",
         window: Int = 25,
+        filterType: Int = 5,
         bodyPreviewCharacters: Int = 500
     ) async throws -> SyncResult {
         if policyKey == nil {
             try await provision()
         }
-        var options: [WBXMLElement] = [.text("FilterType", "0")]
+        // FilterType: 0 = all, 1..7 = 1d/3d/1w/2w/1m/3m/6m. Default is one month.
+        var options: [WBXMLElement] = [.text("FilterType", String(filterType))]
         if bodyPreviewCharacters > 0 {
             options.append(.children("BodyPreference", [
                 .text("Type", "1"),
