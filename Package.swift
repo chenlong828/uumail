@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .library(name: "EASClient", targets: ["EASClient"]),
         .library(name: "MailStore", targets: ["MailStore"]),
+        .library(name: "SyncEngine", targets: ["SyncEngine"]),
         .executable(name: "uumailctl", targets: ["uumailctl"]),
     ],
     dependencies: [
@@ -21,11 +22,13 @@ let package = Package(
             name: "MailStore",
             dependencies: [.product(name: "GRDB", package: "GRDB.swift")]
         ),
+        .target(name: "SyncEngine"),
         .executableTarget(
             name: "uumailctl",
-            dependencies: ["EASClient", "MailStore"]
+            dependencies: ["EASClient", "MailStore", "SyncEngine"]
         ),
         .testTarget(name: "EASClientTests", dependencies: ["EASClient"]),
         .testTarget(name: "MailStoreTests", dependencies: ["MailStore"]),
+        .testTarget(name: "SyncEngineTests", dependencies: ["SyncEngine"]),
     ]
 )

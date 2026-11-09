@@ -58,7 +58,8 @@ OPTIONS（裸 URL）
 - `OPTIONS` 必须打**裸 URL**，带 `?Cmd=` 会被网关吞成 `200` 空响应。
 - `Provision` 的 `DeviceInformation` 必须**直接挂在 `Provision` 下**，多包一层 `Settings` 会得到 `Status=2`。
 - `PolicyType` 用 `MS-EAS-Provisioning-WBXML`，且**不能带 `Data`**。
-- `SyncKey=0` 的首次 Sync 只返回新 key，必须用新 key 再 Sync 才拿到条目；`MoreAvailable` 时继续拉。
+- `SyncKey=0` 的首次 Sync 只返回新 key，必须用新 key 再 Sync 才拿到条目。
+- **分页靠「本轮新增数」判断，不能只信 `MoreAvailable`**（2026-11-09 实测）：服务器每轮最多回 `WindowSize` 条，`MoreAvailable` 常常不出现，但下一轮仍有 25 条。客户端应循环调用，直到某轮新增数少于窗口大小；`MoreAvailable` 只作为提前继续的附加信号。
 - `Sync` 请求体保持最小：`Sync/Collections/Collection/{SyncKey, CollectionId, WindowSize, Options}`。多出的顶层 `SyncKey`、`Class`、`GetChanges` 会让 Exchange 回 `Sync/Status=4`。
 - `FolderSync` 每次按 `SyncKey=0` 取全量树；增量 key 只用于发现「树变了」。
 

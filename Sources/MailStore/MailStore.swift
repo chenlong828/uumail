@@ -324,6 +324,25 @@ public final class MailStore: @unchecked Sendable {
         }
     }
 
+    /// Drops one collection's local mirror (messages, previews and cursor) so a full
+    /// re-sync can rebuild it. Used when the server answers Sync status 3/4.
+    public func resetCollection(account id: AccountID, folder: String) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: "DELETE FROM message_bodies WHERE account_id = ? AND folder_id = ?",
+                arguments: [id.raw, folder]
+            )
+            try db.execute(
+                sql: "DELETE FROM messages WHERE account_id = ? AND folder_id = ?",
+                arguments: [id.raw, folder]
+            )
+            try db.execute(
+                sql: "DELETE FROM sync_state WHERE account_id = ? AND collection = ?",
+                arguments: [id.raw, folder]
+            )
+        }
+    }
+
     // MARK: - Sync state
 
     public func syncKey(account id: AccountID, collection: String) throws -> String? {

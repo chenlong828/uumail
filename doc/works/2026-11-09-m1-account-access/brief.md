@@ -33,6 +33,10 @@ updated: 2026-11-09
 | T-1109-04 | change | CMP-STORE | done | `CMP-STORE/spec.md`、architecture §5 |
 | T-1109-05 | change | uumailctl | done | playbook §7 诊断步骤、CMP-EAS 契约 |
 | T-1109-06 | verify | CMP-EAS | done | 真实网关只读验证（README 记录在 result） |
+| T-1109-07 | change | CMP-EAS | done | `Sync` 命令与信封解析 |
+| T-1109-08 | change | CMP-STORE | done | messages/message_bodies 迁移与 `applySyncBatch` |
+| T-1109-09 | change | CMP-SYNC | done | SyncEngine 分页环 + 适配器 + CLI `sync` |
+| T-1109-10 | verify | CMP-SYNC | done | 真机收信：5 轮 × 25 封入本地库 |
 
 ## 领取的开放问题
 

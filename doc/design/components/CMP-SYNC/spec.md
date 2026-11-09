@@ -10,7 +10,7 @@ component: CMP-SYNC
 
 ## 模块卡
 
-- 状态：`planned`
+- 状态：`active`（`syncOnce` 已落地：文件夹刷新 + 收件箱分页；`start/stop/stateStream` 未实现）
 - 单元：组件
 - 层 / 类型：L2；整合层用例编排（单账号）
 - 业务价值：把「服务器状态」变成「本地可见的新状态」，并保证每个集合的 SyncKey 不丢不重。没有它，UI 会自己直连协议层，SyncKey 逻辑散落各处。
@@ -54,6 +54,16 @@ component: CMP-SYNC
 | SCN-0003 收件箱同步 | `sync(inbox, key)` → `applySyncBatch` → 若有 `MoreAvailable` 继续 | key 失效（status 3/4）→ 清集合重建；`throttled` → 退避 |
 | SCN-0004 正文 | 列表命中 → 缺正文 → `fetchBody` → `applySyncBatch`（更新正文） | 失败保留占位，退避重取 |
 | SCN-0005 附件 | `fetchAttachment` → 写 AttachmentCache → 更新元数据 | 断点续传、超限提示 |
+
+### 实现进度（2026-11-09）
+
+| 契约 | 代码 | 测试 |
+|---|---|---|
+| `syncOnce()`：Provision → FolderSync → 收件箱分页 → 落库 | ✅ `SyncEngine.swift` | 6 个用例（bootstrap、增量、重建、分页、设备拒绝、无收件箱） |
+| `start/stop/stateStream` | ⬜（当前状态只可读） | — |
+| 退避与限流 | ⬜ | — |
+
+**实测口径**：分页停止条件用「本轮新增 < WindowSize」，`MoreAvailable` 不可靠（见 playbook §3）。
 
 ## 验证计划
 

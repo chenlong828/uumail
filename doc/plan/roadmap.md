@@ -28,7 +28,7 @@ updated: 2026-11-09
 | W-DOC-01 文档基线 | — | M0 结论 | 全仓 | 已完成：五态文档树成立，架构草案按实测校正（`history/works/2026-11-09-doc-baseline/`） |
 | W-M1-01 账号接入与设备身份（`works/2026-11-09-m1-account-access/`） | M1 | W-DOC-01；REQ-0001 已 accepted | CMP-EAS、CMP-STORE | 进行中：协议与落库已通，UI 与账号状态机待补 |
 | W-M1-02 文件夹树同步 | M1 | W-M1-01 | CMP-SYNC、CMP-STORE | SCN-0002 `verified` |
-| W-M1-03 收件箱增量同步 | M1 | W-M1-02 | CMP-SYNC、CMP-STORE、CMP-EAS | SCN-0003 `verified`；SyncKey 原子提交契约测试绿 |
+| W-M1-03 收件箱增量同步 | M1 | W-M1-02 | CMP-SYNC、CMP-STORE、CMP-EAS | 进行中：分页与原子提交已通，初始同步深度待定；SCN-0003 待 `verified` |
 | W-M1-04 正文渲染与附件下载 | M1 | W-M1-03 | CMP-STORE、CMP-EAS、AttachmentCache | SCN-0004、SCN-0005 `verified` |
 | W-M2-01 Outbox 与发信 | M2 | W-M1-04 | CMP-OUT、CMP-EAS | SCN-0006 `verified` |
 | W-M2-02 回复/转发与草稿 | M2 | W-M2-01 | CMP-OUT、CMP-STORE | 回复/转发、草稿两个场景 `verified` |

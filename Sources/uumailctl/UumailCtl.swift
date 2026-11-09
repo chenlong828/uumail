@@ -2,6 +2,7 @@ import Darwin
 import EASClient
 import Foundation
 import MailStore
+import SyncEngine
 
 @main
 struct UumailCtl {
@@ -69,70 +70,30 @@ struct UumailCtl {
             }
 
         case "sync":
-            // Composition-root glue for the probe stage: wires the gateway to the store
-            // directly. The SyncEngine component replaces this once it exists.
             guard let path = value(of: "--db", in: arguments) else {
                 FileHandle.standardError.write(Data("sync: --db <path> is required\n".utf8))
                 exit(2)
             }
             let store = try MailStore(path: path)
             let accountID = try existingOrNewAccount(store: store, configuration: configuration)
-
-            if try store.folders(account: accountID).isEmpty {
-                let folders = try await client.folderSync()
-                try store.applyFolderSnapshot(
-                    account: accountID,
-                    folders: folders.folders.map {
-                        MailFolder(serverID: $0.serverID, parentID: $0.parentID, displayName: $0.displayName, type: $0.type)
-                    },
-                    syncKey: folders.syncKey
-                )
-                print("folders: \(folders.folders.count) stored")
+            let engine = SyncEngine(
+                gateway: EASGateway(client: client),
+                store: StoreAdapter(store: store, account: accountID),
+                account: AccountRef(accountID.raw)
+            )
+            do {
+                let report = try await engine.syncOnce()
+                print("synced: \(report.folders) folders, +\(report.added) added, ~\(report.changed) changed, -\(report.removed) removed, \(report.rounds) rounds, key \(report.syncKey)")
+            } catch let error as MailGatewayError {
+                print("sync failed: \(error), state: \(await engine.currentState())")
+                exit(3)
             }
-
-            guard let inbox = try store.folders(account: accountID).first(where: { $0.type == 2 }) else {
-                FileHandle.standardError.write(Data("sync: no inbox folder\n".utf8))
-                exit(2)
-            }
-
-            var key = try store.syncKey(account: accountID, collection: inbox.serverID) ?? "0"
-
-            if key == "0" {
-                // First sync: `SyncKey=0` answers with a fresh key and no items. The window
-                // only arrives on the follow-up call, so both requests finish before any
-                // write — advancing the key without its window would silently skip mail.
-                let bootstrap = try await client.sync(collectionID: inbox.serverID, syncKey: "0")
-                let window = try await client.sync(collectionID: inbox.serverID, syncKey: bootstrap.syncKey)
-                try store.applySyncBatch(
-                    account: accountID,
-                    folder: inbox.serverID,
-                    added: window.added.map(Self.mailMessage),
-                    changed: window.changed.map(Self.mailMessage),
-                    removedServerIDs: window.removedServerIDs,
-                    syncKey: window.syncKey
-                )
-                print("initial sync: +\(window.added.count) added, key \(window.syncKey), more=\(window.moreAvailable)")
-                key = window.syncKey
-            }
-
-            for round in 1...5 {
-                let delta = try await client.sync(collectionID: inbox.serverID, syncKey: key)
-                try store.applySyncBatch(
-                    account: accountID,
-                    folder: inbox.serverID,
-                    added: delta.added.map(Self.mailMessage),
-                    changed: delta.changed.map(Self.mailMessage),
-                    removedServerIDs: delta.removedServerIDs,
-                    syncKey: delta.syncKey
-                )
-                print("round \(round): +\(delta.added.count) added, -\(delta.removedServerIDs.count) removed, key \(delta.syncKey), more=\(delta.moreAvailable)")
-                key = delta.syncKey
-                if !delta.moreAvailable { break }
-            }
-            let stored = try store.messages(account: accountID, folder: inbox.serverID, limit: 20)
-            print("stored \(stored.count) messages in \(inbox.displayName)")
-            for message in stored.prefix(10) {
-                print("  [\(message.receivedRaw ?? "")] \(message.subject ?? "(no subject)") <- \(message.sender ?? "")")
+            if let inbox = try store.folders(account: accountID).first(where: { $0.type == 2 }) {
+                let stored = try store.messages(account: accountID, folder: inbox.serverID, limit: 10)
+                print("latest \(stored.count) in \(inbox.displayName):")
+                for message in stored {
+                    print("  [\(message.receivedRaw ?? "")] \(message.subject ?? "(no subject)") <- \(message.sender ?? "")")
+                }
             }
 
         case "store":
@@ -179,19 +140,6 @@ struct UumailCtl {
                 address: "\(configuration.account)@\(configuration.host)",
                 host: configuration.host
             )
-        )
-    }
-
-    private static func mailMessage(_ message: EASMessage) -> MailMessage {
-        MailMessage(
-            serverID: message.serverID,
-            subject: message.subject,
-            sender: message.from,
-            recipients: message.to,
-            receivedRaw: message.dateReceived,
-            isRead: message.isRead ?? false,
-            importance: message.importance,
-            bodyPreview: message.bodyPreview
         )
     }
 
