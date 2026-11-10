@@ -217,6 +217,64 @@ struct MailStoreBodyTests {
         let id = try store.createAccount(NewAccount(displayName: "工作", address: "jdoe@corp.test", host: "mail.corp.test"))
         #expect(try store.body(account: id, folder: "13", serverID: "1") == nil)
     }
+
+    @Test("a sync preview rides on the envelope and never counts as a body")
+    func previewIsNotABody() throws {
+        let store = try MailStore.inMemory()
+        let id = try store.createAccount(NewAccount(displayName: "工作", address: "jdoe@corp.test", host: "mail.corp.test"))
+        try store.applyFolderSnapshot(account: id, folders: [
+            MailFolder(serverID: "13", parentID: "0", displayName: "收件箱", type: 2),
+        ], syncKey: "1")
+        try store.applySyncBatch(account: id, folder: "13", added: [
+            MailMessage(serverID: "1", subject: "A", receivedRaw: "2026-11-08T05:11:18.000Z",
+                        bodyPreview: "摘要前 500 字"),
+        ], changed: [], removedServerIDs: [], syncKey: "2")
+
+        #expect(try store.body(account: id, folder: "13", serverID: "1") == nil,
+                "the preview must not short-circuit the real body fetch")
+        #expect(try store.messages(account: id, folder: "13").first?.bodyPreview == "摘要前 500 字")
+
+        try store.applyBody(account: id, folder: "13", serverID: "1", html: "<p>完整正文</p>")
+        #expect(try store.body(account: id, folder: "13", serverID: "1")?.text == "<p>完整正文</p>")
+        #expect(try store.messages(account: id, folder: "13").first?.bodyPreview == "摘要前 500 字")
+    }
+
+    @Test("a resync does not overwrite a fetched body with the preview")
+    func resyncKeepsFetchedBody() throws {
+        let store = try MailStore.inMemory()
+        let id = try store.createAccount(NewAccount(displayName: "工作", address: "jdoe@corp.test", host: "mail.corp.test"))
+        try store.applyFolderSnapshot(account: id, folders: [
+            MailFolder(serverID: "13", parentID: "0", displayName: "收件箱", type: 2),
+        ], syncKey: "1")
+        try store.applySyncBatch(account: id, folder: "13", added: [
+            MailMessage(serverID: "1", subject: "A", receivedRaw: "2026-11-08T05:11:18.000Z",
+                        bodyPreview: "摘要"),
+        ], changed: [], removedServerIDs: [], syncKey: "2")
+        try store.applyBody(account: id, folder: "13", serverID: "1", html: "<p>完整正文</p>")
+
+        try store.applySyncBatch(account: id, folder: "13", added: [], changed: [
+            MailMessage(serverID: "1", subject: "A", receivedRaw: "2026-11-08T05:11:18.000Z",
+                        isRead: true, bodyPreview: "摘要"),
+        ], removedServerIDs: [], syncKey: "3")
+
+        #expect(try store.body(account: id, folder: "13", serverID: "1")?.text == "<p>完整正文</p>")
+    }
+
+    @Test("a message is searchable by its preview before the body arrives")
+    func previewSearchable() throws {
+        let store = try MailStore.inMemory()
+        let id = try store.createAccount(NewAccount(displayName: "工作", address: "jdoe@corp.test", host: "mail.corp.test"))
+        try store.applyFolderSnapshot(account: id, folders: [
+            MailFolder(serverID: "13", parentID: "0", displayName: "收件箱", type: 2),
+        ], syncKey: "1")
+        try store.applySyncBatch(account: id, folder: "13", added: [
+            MailMessage(serverID: "1", subject: "A", receivedRaw: "2026-11-08T05:11:18.000Z",
+                        bodyPreview: "五矿证券拜访会议纪要正文"),
+        ], changed: [], removedServerIDs: [], syncKey: "2")
+
+        #expect(try store.searchLocal(account: id, query: "会议纪要").map(\.serverID) == ["1"])
+        #expect(try store.searchLocal(account: id, query: "会议").map(\.serverID) == ["1"])
+    }
 }
 
 @Suite("MailStore outbox")

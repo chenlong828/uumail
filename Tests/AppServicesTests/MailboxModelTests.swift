@@ -30,14 +30,15 @@ final class FakeService: MailServiceProtocol, @unchecked Sendable {
     }
 
     nonisolated(unsafe) var cachedBody: String?
-    nonisolated(unsafe) var fetchBodyResult: Result<String, Error> = .success("<html><body>hi</body></html>")
+    nonisolated(unsafe) var fetchBodyResult: Result<FetchedMessageBody, Error> =
+        .success(FetchedMessageBody(html: "<html><body>hi</body></html>"))
     nonisolated(unsafe) private(set) var fetchBodyCalls = 0
 
     func body(folderID: String, serverID: String) throws -> String? {
         cachedBody
     }
 
-    func fetchBody(folderID: String, serverID: String) async throws -> String {
+    func fetchBody(folderID: String, serverID: String) async throws -> FetchedMessageBody {
         fetchBodyCalls += 1
         return try fetchBodyResult.get()
     }
@@ -138,7 +139,7 @@ struct MailboxModelBodyTests {
         let model = model(service)
         await model.loadBody()
 
-        #expect(model.detailState == .loaded("<html>cached</html>"))
+        #expect(model.detailState == .loaded(MailboxModel.BodyContent(html: "<html>cached</html>")))
         #expect(service.fetchBodyCalls == 0)
     }
 
@@ -148,11 +149,11 @@ struct MailboxModelBodyTests {
             folderList: [StoredFolder(serverID: "13", parentID: "0", displayName: "收件箱", type: 2)],
             messageList: [StoredMessage(serverID: "1", subject: "A", sender: "a@b.c", receivedRaw: nil, isRead: true, bodyPreview: nil)]
         )
-        service.fetchBodyResult = .success("<html>fetched</html>")
+        service.fetchBodyResult = .success(FetchedMessageBody(html: "<html>fetched</html>"))
         let model = model(service)
         await model.loadBody()
 
-        #expect(model.detailState == .loaded("<html>fetched</html>"))
+        #expect(model.detailState == .loaded(MailboxModel.BodyContent(html: "<html>fetched</html>")))
         #expect(service.fetchBodyCalls == 1)
     }
 
@@ -171,6 +172,59 @@ struct MailboxModelBodyTests {
             return
         }
         #expect(message.contains("offline"))
+    }
+
+    @Test("a sync preview does not stand in for the body, so the real fetch still runs")
+    func previewDoesNotBlockFetch() async {
+        let service = FakeService(
+            folderList: [StoredFolder(serverID: "13", parentID: "0", displayName: "收件箱", type: 2)],
+            messageList: [StoredMessage(serverID: "1", subject: "A", sender: "a@b.c", receivedRaw: nil,
+                                        isRead: true, bodyPreview: "第一行\n第二行")]
+        )
+        service.fetchBodyResult = .success(FetchedMessageBody(html: "<p>完整正文</p>"))
+        let model = model(service)
+        await model.loadBody()
+
+        #expect(service.fetchBodyCalls == 1)
+        #expect(model.detailState == .loaded(MailboxModel.BodyContent(html: "<p>完整正文</p>")))
+    }
+
+    @Test("a failed fetch keeps the preview readable instead of blanking the pane")
+    func failedFetchKeepsPreview() async {
+        let service = FakeService(
+            folderList: [StoredFolder(serverID: "13", parentID: "0", displayName: "收件箱", type: 2)],
+            messageList: [StoredMessage(serverID: "1", subject: "A", sender: "a@b.c", receivedRaw: nil,
+                                        isRead: true, bodyPreview: "第一行\n第二行")]
+        )
+        service.fetchBodyResult = .failure(MailGatewayError.offline)
+        let model = model(service)
+        await model.loadBody()
+
+        guard case .loaded(let content) = model.detailState else {
+            Issue.record("expected the preview to stay on screen")
+            return
+        }
+        #expect(content.isPreview)
+        #expect(content.error?.contains("offline") == true)
+        #expect(content.html.contains("第一行\n第二行"), "a preview keeps its own line breaks")
+    }
+
+    @Test("a truncated body is flagged so the pane can say so")
+    func truncatedBody() async {
+        let service = FakeService(
+            folderList: [StoredFolder(serverID: "13", parentID: "0", displayName: "收件箱", type: 2)],
+            messageList: [StoredMessage(serverID: "1", subject: "A", sender: "a@b.c", receivedRaw: nil, isRead: true, bodyPreview: nil)]
+        )
+        service.fetchBodyResult = .success(FetchedMessageBody(html: "<p>很长</p>", isTruncated: true))
+        let model = model(service)
+        await model.loadBody()
+
+        guard case .loaded(let content) = model.detailState else {
+            Issue.record("expected a loaded body")
+            return
+        }
+        #expect(content.isTruncated)
+        #expect(!content.isPreview)
     }
 }
 

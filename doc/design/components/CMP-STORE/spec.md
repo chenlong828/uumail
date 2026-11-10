@@ -41,7 +41,8 @@ component: CMP-STORE
 - 前置 / 后置 / 不变量：
   - 批次失败整批回滚，`sync_state.sync_key` 保持旧值；
   - 同一 `(account, folder, server_id)` 重复写入不产生第二行；
-  - 列表查询不扫正文表；`deleted_at` 软删除与服务器删除同步。
+  - 列表查询不扫正文表；`deleted_at` 软删除与服务器删除同步；
+  - Sync 摘要（前 500 字符纯文本）只落 `messages.preview`，永不写 `message_bodies`——正文表只存真正文，否则阅读页会把摘要当成正文（v7）。
 - 错误模式：`conflict`（同键不同内容，保留服务器版本并记日志）、`staleCursor`（游标失效，返回首页）、`storageFull`（可重试，提示清理）、`corruptIndex`（重建 FTS 后可重试）。前三个不可重试，后者可重试一次。
 - 幂等 / 顺序 / 并发：批次幂等；同集合串行写；读连接可并发，WAL 下不阻塞写。
 - 超时 / 取消 / 背压：单事务 ≤ 2s；超过则拆批（由调用方 CMP-SYNC 决定批次大小）。
@@ -54,7 +55,7 @@ component: CMP-STORE
 | 实体 | 唯一写入口 | 写契约 | 读方 | 一致性 |
 |---|---|---|---|---|
 | folders | CMP-STORE | `applyFolderSnapshot` | CMP-SYNC、UI | 强一致 |
-| messages / message_bodies / attachments | CMP-STORE | `applySyncBatch` | UI、搜索 | 强一致 |
+| messages（含 preview 摘要）/ message_bodies / attachments | CMP-STORE | `applySyncBatch` | UI、搜索 | 强一致 |
 | sync_state | CMP-STORE | `applySyncBatch` | CMP-SYNC | 强一致（与批次同事务） |
 | outbox | CMP-STORE | `enqueueOutbound` / `markOutboundResult` | CMP-OUT、UI | 强一致 |
 | fts | CMP-STORE | 随批次事务增量更新 | 搜索 | 最终一致（≤ 1 批次延迟） |
@@ -67,6 +68,7 @@ component: CMP-STORE
 | `applyFolderSnapshot` | ✅ | 幂等、软删、复活、回滚、未知账号 |
 | `applySyncBatch` | ✅ | 5 个用例 |
 | `applyBody` / `body`（正文分表，HTML 标记） | ✅ | 2 个用例 |
+| v7：摘要与正文分家（`messages.preview`）；搜索用 `COALESCE(正文, 摘要)` | ✅ | 摘要不落正文表、重同步不覆盖正文、仅摘要可搜 |
 | `attachments` 元数据表 + 缓存标记 | ✅ | 随正文/同步用例 |
 | outbox / 草稿（入队、失败重试、草稿不排队） | ✅ | 3 个用例 |
 | `searchLocal`（FTS5 trigram；≥3 字走索引，2 字回退 LIKE） | ✅ | 4 个用例 |

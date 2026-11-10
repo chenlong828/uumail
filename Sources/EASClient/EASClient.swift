@@ -445,27 +445,71 @@ public actor EASClient {
 
     // MARK: Body fetch
 
+    /// What the gateway answered for one body request. `payload` is HTML when `isHTML`
+    /// is true and plain text otherwise; presentation is the caller's problem.
+    public struct FetchedBody: Equatable, Sendable {
+        public var payload: String
+        public var isHTML: Bool
+        public var isTruncated: Bool
+
+        public init(payload: String, isHTML: Bool, isTruncated: Bool) {
+            self.payload = payload
+            self.isHTML = isHTML
+            self.isTruncated = isTruncated
+        }
+    }
+
     /// Fetches one message body through ItemOperations. Type 2 is HTML; the gateway
-    /// truncates at `truncationSize` characters and flags the body as truncated.
+    /// truncates at `truncationSize` characters and flags the body with `Truncated`.
+    /// When that flag comes back set, one more request goes out without a truncation
+    /// limit, so the reader is not silently handed half a message.
+    ///
+    /// The cap is deliberately far above a normal mail body: this gateway measures it in
+    /// bytes and raises `Truncated` at 20 000 even when nothing was cut, which would cost
+    /// every message a second round trip.
     public func fetchBody(
         collectionID: String,
         serverID: String,
-        truncationSize: Int = 20_000
-    ) async throws -> String {
+        truncationSize: Int = 200_000
+    ) async throws -> FetchedBody {
+        let limited = try await fetchBodyOnce(
+            collectionID: collectionID, serverID: serverID, truncationSize: truncationSize
+        )
+        guard limited.isTruncated else { return limited }
+        // Everything here is still usable: a failed second request must not cost the caller
+        // the partial body it already has.
+        guard let full = try? await fetchBodyOnce(
+            collectionID: collectionID, serverID: serverID, truncationSize: nil
+        ) else {
+            return limited
+        }
+        // An unflagged answer is authoritative: the flag is the gateway's, not a size guess.
+        if !full.isTruncated { return full }
+        return full.payload.count > limited.payload.count ? full : limited
+    }
+
+    private func fetchBodyOnce(
+        collectionID: String,
+        serverID: String,
+        truncationSize: Int?
+    ) async throws -> FetchedBody {
         if policyKey == nil {
             try await provision()
         }
+        var preference: [WBXMLElement] = [.text("Type", "2")]
+        if let truncationSize {
+            preference.append(.text("TruncationSize", String(truncationSize)))
+        }
+        // Order matters: this gateway answers ItemOperations status 2 (protocol error) when
+        // `Options` trails CollectionId/ServerId, and status 1 when it follows Store.
         let body = try codec.encode(.children("ItemOperations", [
             .children("Fetch", [
                 .text("Store", "Mailbox"),
+                .children("Options", [
+                    .children("BodyPreference", preference),
+                ]),
                 .text("CollectionId", collectionID),
                 .text("ServerId", serverID),
-                .children("Options", [
-                    .children("BodyPreference", [
-                        .text("Type", "2"),
-                        .text("TruncationSize", String(truncationSize)),
-                    ]),
-                ]),
             ]),
         ]))
         let response = try await call("ItemOperations", body: body)
@@ -487,10 +531,19 @@ public actor EASClient {
         guard fetchStatus == "1" else {
             throw EASError.permanent(status: response.status, detail: "Fetch status=\(fetchStatus)")
         }
-        guard let data = fetch.path("Properties", "Body", "Data")?.stringValue() else {
+        guard let bodyNode = fetch.path("Properties", "Body"),
+              let data = bodyNode.child("Data")?.stringValue()
+        else {
             throw EASError.malformedResponse("ItemOperations: missing Body/Data")
         }
-        return data
+        // Type 2 is HTML; a gateway that cannot produce it answers with plain text (1) or
+        // echoes our preference, so treat anything that is not explicitly HTML as text.
+        let isHTML = bodyNode.child("Type")?.stringValue() == "2"
+        return FetchedBody(
+            payload: data,
+            isHTML: isHTML,
+            isTruncated: bodyNode.child("Truncated")?.stringValue() == "1"
+        )
     }
 
     // MARK: Ping

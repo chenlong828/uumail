@@ -141,6 +141,21 @@ public final class MailStore: @unchecked Sendable {
                 );
                 """)
         }
+        // Previews are envelope data: they belong on `messages` and never in the body
+        // table, which holds fetched bodies only (see doc/design/components/CMP-STORE/spec.md).
+        migrator.registerMigration("v7_preview_split") { db in
+            try db.execute(sql: "ALTER TABLE messages ADD COLUMN preview TEXT")
+            try db.execute(sql: """
+                UPDATE messages SET preview = (
+                    SELECT b.text FROM message_bodies b
+                    WHERE b.account_id = messages.account_id
+                      AND b.folder_id = messages.folder_id
+                      AND b.server_id = messages.server_id
+                      AND b.is_html = 0
+                );
+                DELETE FROM message_bodies WHERE is_html = 0;
+                """)
+        }
         try migrator.migrate(dbQueue)
     }
 
@@ -290,8 +305,8 @@ public final class MailStore: @unchecked Sendable {
                     sql: """
                         INSERT INTO messages
                             (account_id, folder_id, server_id, subject, sender, recipients,
-                             received_raw, is_read, importance, deleted_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
+                             received_raw, is_read, importance, preview, deleted_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
                         ON CONFLICT(account_id, folder_id, server_id) DO UPDATE SET
                             subject = excluded.subject,
                             sender = excluded.sender,
@@ -299,13 +314,14 @@ public final class MailStore: @unchecked Sendable {
                             received_raw = excluded.received_raw,
                             is_read = excluded.is_read,
                             importance = excluded.importance,
+                            preview = COALESCE(excluded.preview, messages.preview),
                             deleted_at = NULL,
                             updated_at = excluded.updated_at
                         """,
                     arguments: [
                         id.raw, folderID, message.serverID, message.subject, message.sender,
                         message.recipients, message.receivedRaw, message.isRead ? 1 : 0,
-                        message.importance, now,
+                        message.importance, message.bodyPreview, now,
                     ]
                 )
                 for attachment in message.attachments {
@@ -321,18 +337,8 @@ public final class MailStore: @unchecked Sendable {
                         arguments: [id.raw, folderID, message.serverID, attachment.fileReference, attachment.displayName, attachment.size]
                     )
                 }
-                if let preview = message.bodyPreview {
-                    try db.execute(
-                        sql: """
-                            INSERT INTO message_bodies (account_id, folder_id, server_id, text, fetched_at)
-                            VALUES (?, ?, ?, ?, ?)
-                            ON CONFLICT(account_id, folder_id, server_id) DO UPDATE SET
-                                text = excluded.text,
-                                fetched_at = excluded.fetched_at
-                            """,
-                        arguments: [id.raw, folderID, message.serverID, preview, now]
-                    )
-                }
+                // The preview rides on the envelope upsert above: it must never land in
+                // `message_bodies`, or the reading pane mistakes it for the fetched body.
                 try Self.reindexMessage(db, account: id, folder: folderID, serverID: message.serverID)
             }
 
@@ -365,10 +371,8 @@ public final class MailStore: @unchecked Sendable {
             try Row.fetchAll(
                 db,
                 sql: """
-                    SELECT m.server_id, m.folder_id, m.subject, m.sender, m.received_raw, m.is_read, b.text AS preview
+                    SELECT m.server_id, m.folder_id, m.subject, m.sender, m.received_raw, m.is_read, m.preview
                     FROM messages m
-                    LEFT JOIN message_bodies b
-                        ON b.account_id = m.account_id AND b.folder_id = m.folder_id AND b.server_id = m.server_id
                     WHERE m.account_id = ? AND m.folder_id = ? AND m.deleted_at IS NULL
                     ORDER BY m.received_raw DESC, m.server_id DESC
                     LIMIT ?
@@ -560,16 +564,17 @@ public final class MailStore: @unchecked Sendable {
                 try Row.fetchAll(
                     db,
                     sql: """
-                        SELECT m.server_id, m.folder_id, m.subject, m.sender, m.received_raw, m.is_read, b.text AS preview
+                        SELECT m.server_id, m.folder_id, m.subject, m.sender, m.received_raw, m.is_read,
+                               COALESCE(NULLIF(b.text, ''), m.preview) AS preview
                         FROM messages m
                         LEFT JOIN message_bodies b
                             ON b.account_id = m.account_id AND b.folder_id = m.folder_id AND b.server_id = m.server_id
                         WHERE m.account_id = ? AND m.deleted_at IS NULL
-                          AND (m.subject LIKE ? OR m.sender LIKE ? OR b.text LIKE ?)
+                          AND (m.subject LIKE ? OR m.sender LIKE ? OR b.text LIKE ? OR m.preview LIKE ?)
                         ORDER BY m.received_raw DESC
                         LIMIT ?
                         """,
-                    arguments: [id.raw, "%\(trimmed)%", "%\(trimmed)%", "%\(trimmed)%", limit]
+                    arguments: [id.raw, "%\(trimmed)%", "%\(trimmed)%", "%\(trimmed)%", "%\(trimmed)%", limit]
                 ).map { row in
                     StoredMessage(
                         serverID: row["server_id"], subject: row["subject"], sender: row["sender"],
@@ -583,7 +588,8 @@ public final class MailStore: @unchecked Sendable {
             try Row.fetchAll(
                 db,
                 sql: """
-                    SELECT m.server_id, m.folder_id, m.subject, m.sender, m.received_raw, m.is_read, b.text AS preview
+                    SELECT m.server_id, m.folder_id, m.subject, m.sender, m.received_raw, m.is_read,
+                           COALESCE(NULLIF(b.text, ''), m.preview) AS preview
                     FROM messages_fts f
                     JOIN messages m ON m.rowid = f.rowid
                     LEFT JOIN message_bodies b
@@ -613,8 +619,14 @@ public final class MailStore: @unchecked Sendable {
         let sender = try String.fetchOne(db, sql: "SELECT sender FROM messages WHERE rowid = ?", arguments: [rowid])
         let body = try String.fetchOne(
             db,
-            sql: "SELECT text FROM message_bodies WHERE account_id = ? AND folder_id = ? AND server_id = ?",
-            arguments: [id.raw, folder, serverID]
+            sql: """
+                SELECT COALESCE(NULLIF(b.text, ''), m.preview)
+                FROM messages m
+                LEFT JOIN message_bodies b
+                    ON b.account_id = m.account_id AND b.folder_id = m.folder_id AND b.server_id = m.server_id
+                WHERE m.rowid = ?
+                """,
+            arguments: [rowid]
         )
         try db.execute(sql: "DELETE FROM messages_fts WHERE rowid = ?", arguments: [rowid])
         try db.execute(

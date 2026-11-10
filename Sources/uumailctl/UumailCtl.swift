@@ -93,6 +93,26 @@ struct UumailCtl {
                 exit(3)
             }
 
+        case "body":
+            guard let folder = value(of: "--folder", in: arguments),
+                  let server = value(of: "--server", in: arguments) else {
+                FileHandle.standardError.write(Data("body: --folder <id> --server <id> are required\n".utf8))
+                exit(2)
+            }
+            if let path = value(of: "--db", in: arguments) {
+                // Goes through the real composition root, so the store side of the read
+                // path (HTML conversion + body table) is exercised too.
+                let service = try MailService(configuration: configuration, databasePath: path)
+                let stored = try await service.fetchBody(folderID: folder, serverID: server)
+                let cached = try service.body(folderID: folder, serverID: server) ?? ""
+                print("body: truncated=\(stored.isTruncated) chars=\(stored.html.count) stored=\(cached.count)")
+                print(stored.html.prefix(1_000))
+                exit(0)
+            }
+            let fetched = try await client.fetchBody(collectionID: folder, serverID: server)
+            print("body: type=\(fetched.isHTML ? "html" : "text") truncated=\(fetched.isTruncated) chars=\(fetched.payload.count)")
+            print(fetched.payload.prefix(3_000))
+
         case "ping":
             let heartbeat = Int(value(of: "--heartbeat", in: arguments) ?? "10") ?? 10
             let folders = try await client.folderSync()
@@ -224,6 +244,7 @@ struct UumailCtl {
           folders [--json]     list the folder hierarchy
           diagnose             OPTIONS -> Provision -> FolderSync
           send --to <addr> [--subject s] [--body b] [--db path]   send one message
+          body --folder <id> --server <id> [--db path]   fetch one body; with --db also store it
           ping [--heartbeat N] long-poll the inbox and report status/elapsed
           seed                 store the env account in the login Keychain
           store --db <path>    sync folders into a local SQLite store

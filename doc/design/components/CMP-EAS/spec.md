@@ -35,7 +35,7 @@ component: CMP-EAS
 | `CMP-EAS#provision` | `Provision` | ✅ | 两步；PolicyKey 常驻 header |
 | `CMP-EAS#folderSync` | `FolderSync` | ✅ | 每次取全量树，增量 key 只用于监测变更 |
 | `CMP-EAS#sync` | `Sync` | ✅ | 请求体最小化；窗口 25 |
-| `CMP-EAS#fetchBody` | `ItemOperations`/`Fetch` | ✅ | 2 万字符 HTML |
+| `CMP-EAS#fetchBody` | `ItemOperations`/`Fetch` | ✅ | `Options` 须在 `Store` 之后、id 之前；先取 20 万字符 HTML，`Truncated=1` 才免上限重取；返回体标注 HTML/纯文本与截断（坑见 playbook §5.1） |
 | `CMP-EAS#fetchAttachment` | `ItemOperations` | ✅ | `FileReference` 直取 |
 | `CMP-EAS#send` | `SendMail` | ✅ | MIME 为 opaque 原始字节，返回 `200` + 0B |
 | `CMP-EAS#moveItems` | `MoveItems` | ⚠️ 未验证 | M1 不依赖；删除/移动先做本地意图 |
@@ -64,6 +64,7 @@ component: CMP-EAS
   - `search(_ query: SearchQuery) async throws -> SearchResult`
   - `ping(collection: CollectionRef, key: SyncKey) async throws -> PingResult`
 - 不变量：所有请求带 `DeviceId` 与协议版本头；`PolicyKey` 缺失时先 Provision；WBXML 编码以真实样本为准（NUL 结尾字符串、opaque blob）。
+- 不变量：`fetchBody` 必须读 `Body/Truncated` 与 `Body/Type`——截断要续取，纯文本回退不能被当成 HTML 渲染。
 - 错误映射（实测）：
 
 | 现象 | 领域错误 | 可重试 | 调用方应对 |

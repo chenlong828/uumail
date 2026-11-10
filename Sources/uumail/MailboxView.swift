@@ -80,8 +80,9 @@ struct MailboxView: View {
 
     private func reply() {
         guard let message = selectedMessage else { return }
+        // A preview is only the first screenful: do not quote it as if it were the message.
         let html: String? = {
-            if case .loaded(let html) = model.detailState { return html }
+            if case .loaded(let content) = model.detailState, !content.isPreview { return content.html }
             return nil
         }()
         compose = ComposeModel.replySeed(sender: message.sender, subject: message.subject, html: html)
@@ -89,8 +90,9 @@ struct MailboxView: View {
 
     private func forward() {
         guard let message = selectedMessage else { return }
+        // A preview is only the first screenful: do not quote it as if it were the message.
         let html: String? = {
-            if case .loaded(let html) = model.detailState { return html }
+            if case .loaded(let content) = model.detailState, !content.isPreview { return content.html }
             return nil
         }()
         compose = ComposeModel.forwardSeed(subject: message.subject, html: html)

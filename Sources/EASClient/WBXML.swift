@@ -130,7 +130,12 @@ public struct WBXMLCodec: Sendable {
                 let token = UInt8(number)
                 tokenForName[Key(page: page, name: name)] = token
                 nameForToken[page, default: [:]][token] = name
-                if pageOfName[name] == nil {
+                // Several pages define the same tag (CollectionId lives on 0, 6 and 8). Pick the
+                // lowest page deterministically: JSON dictionary order is not stable in Swift,
+                // and an arbitrary pick sends ItemOperations to a page the gateway rejects.
+                if let known = pageOfName[name] {
+                    pageOfName[name] = min(known, page)
+                } else {
                     pageOfName[name] = page
                 }
             }

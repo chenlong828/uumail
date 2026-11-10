@@ -356,8 +356,17 @@ struct EASSyncTests {
 
 @Suite("EASClient body fetch")
 struct EASBodyTests {
-    private func bodyResponse(html: String) -> Data {
+    private func bodyResponse(
+        html: String,
+        type: String = "2",
+        truncated: Bool = false
+    ) -> Data {
         let codec = try! WBXMLCodec.standard()
+        var body: [WBXMLElement] = [.text("Type", type)]
+        if truncated {
+            body.append(.text("Truncated", "1"))
+        }
+        body.append(.text("Data", html))
         return try! codec.encode(.children("ItemOperations", [
             .text("Status", "1"),
             .children("Response", [
@@ -366,10 +375,7 @@ struct EASBodyTests {
                     .text("CollectionId", "13"),
                     .text("ServerId", "101"),
                     .children("Properties", [
-                        .children("Body", [
-                            .text("Type", "2"),
-                            .text("Data", html),
-                        ]),
+                        .children("Body", body),
                     ]),
                 ]),
             ]),
@@ -382,16 +388,55 @@ struct EASBodyTests {
             EASHTTPResponse(status: 200, headers: [:], body: bodyResponse(html: "<html>hello</html>"))
         ])
         let client = EASClient(configuration: makeConfiguration(), transport: stub, policyKey: "1")
-        let html = try await client.fetchBody(collectionID: "13", serverID: "101")
+        let body = try await client.fetchBody(collectionID: "13", serverID: "101")
 
-        #expect(html == "<html>hello</html>")
+        #expect(body.payload == "<html>hello</html>")
+        #expect(body.isHTML)
+        #expect(!body.isTruncated)
         let request = try #require(await stub.recorded.first?.request)
         let document = try WBXMLCodec.standard().decode(try #require(request.body))
         #expect(document.path("ItemOperations", "Fetch", "Store")?.stringValue() == "Mailbox")
         #expect(document.path("ItemOperations", "Fetch", "CollectionId")?.stringValue() == "13")
         #expect(document.path("ItemOperations", "Fetch", "ServerId")?.stringValue() == "101")
         #expect(document.path("ItemOperations", "Fetch", "Options", "BodyPreference", "Type")?.stringValue() == "2")
-        #expect(document.path("ItemOperations", "Fetch", "Options", "BodyPreference", "TruncationSize")?.stringValue() == "20000")
+        #expect(document.path("ItemOperations", "Fetch", "Options", "BodyPreference", "TruncationSize")?.stringValue() == "200000")
+
+        // Order is load-bearing: the gateway answers status 2 when Options trails the ids.
+        let fetch = try #require(document.path("ItemOperations", "Fetch"))
+        #expect(fetch.children.map(\.name) == ["Store", "Options", "CollectionId", "ServerId"])
+    }
+
+    @Test("a truncated body is re-requested without a limit instead of silently cut")
+    func truncatedBodyIsRetried() async throws {
+        let stub = StubTransport(responses: [
+            EASHTTPResponse(status: 200, headers: [:],
+                            body: bodyResponse(html: String(repeating: "a", count: 120), truncated: true)),
+            EASHTTPResponse(status: 200, headers: [:],
+                            body: bodyResponse(html: String(repeating: "a", count: 400))),
+        ])
+        let client = EASClient(configuration: makeConfiguration(), transport: stub, policyKey: "1")
+        let body = try await client.fetchBody(collectionID: "13", serverID: "101", truncationSize: 100)
+
+        #expect(body.payload.count == 400)
+        #expect(!body.isTruncated)
+
+        let second = try #require(await stub.recorded.last?.request)
+        let document = try WBXMLCodec.standard().decode(try #require(second.body))
+        #expect(document.path("ItemOperations", "Fetch", "Options", "BodyPreference", "TruncationSize") == nil,
+                "the retry must not cap the body again")
+    }
+
+    @Test("plain text answers are marked so the pane does not render them as HTML")
+    func plainTextAnswer() async throws {
+        let stub = StubTransport(responses: [
+            EASHTTPResponse(status: 200, headers: [:],
+                            body: bodyResponse(html: "第一行\n第二行", type: "1"))
+        ])
+        let client = EASClient(configuration: makeConfiguration(), transport: stub, policyKey: "1")
+        let body = try await client.fetchBody(collectionID: "13", serverID: "101")
+
+        #expect(!body.isHTML)
+        #expect(body.payload == "第一行\n第二行")
     }
 
     @Test("ItemOperations status 2 is a failure, not an empty body")

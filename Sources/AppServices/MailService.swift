@@ -47,11 +47,13 @@ public final class MailService: MailServiceProtocol, MailSendService, @unchecked
         try store.body(account: accountID, folder: folderID, serverID: serverID)?.text
     }
 
-    public func fetchBody(folderID: String, serverID: String) async throws -> String {
+    /// Fetches one body, stores it as HTML and reports whether the gateway had to truncate it.
+    public func fetchBody(folderID: String, serverID: String) async throws -> FetchedMessageBody {
         do {
-            let html = try await client.fetchBody(collectionID: folderID, serverID: serverID)
+            let fetched = try await client.fetchBody(collectionID: folderID, serverID: serverID)
+            let html = fetched.isHTML ? fetched.payload : HTMLText.fromPlainText(fetched.payload)
             try store.applyBody(account: accountID, folder: folderID, serverID: serverID, html: html)
-            return html
+            return FetchedMessageBody(html: html, isTruncated: fetched.isTruncated)
         } catch {
             throw EASGateway.map(error)
         }
@@ -171,13 +173,24 @@ public final class MailService: MailServiceProtocol, MailSendService, @unchecked
     }
 }
 
+/// One fetched body, already converted to HTML, with the gateway's truncation verdict.
+public struct FetchedMessageBody: Equatable, Sendable {
+    public var html: String
+    public var isTruncated: Bool
+
+    public init(html: String, isTruncated: Bool = false) {
+        self.html = html
+        self.isTruncated = isTruncated
+    }
+}
+
 /// The app shell's whole view of the mail world. Tests substitute a fake.
 public protocol MailServiceProtocol: AnyObject, Sendable {
     func syncOnce() async throws -> SyncReport
     func folders() throws -> [StoredFolder]
     func messages(folderID: String, limit: Int) throws -> [StoredMessage]
     func body(folderID: String, serverID: String) throws -> String?
-    func fetchBody(folderID: String, serverID: String) async throws -> String
+    func fetchBody(folderID: String, serverID: String) async throws -> FetchedMessageBody
     func searchLocal(query: String, limit: Int) throws -> [StoredMessage]
     func attachments(folderID: String, messageID: String) throws -> [StoredAttachment]
     func downloadAttachment(folderID: String, messageID: String, attachment: StoredAttachment) async throws -> URL
