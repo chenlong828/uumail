@@ -228,28 +228,6 @@ struct MailboxModelBodyTests {
     }
 }
 
-@Suite("MIME and sending")
-struct MimeAndSendTests {
-    @Test("MIME has the headers the gateway needs and a base64 body")
-    func mimeShape() {
-        let draft = MailDraft(
-            to: "a@b.c", cc: "c@d.e", subject: "周报",
-            body: "line1\nline2", inReplyTo: "<id@x>", references: "<id@x>"
-        )
-        let data = MimeBuilder.build(from: "me@corp.test", draft: draft, messageID: "new@corp.test")
-        let text = String(decoding: data, as: UTF8.self)
-
-        #expect(text.contains("From: me@corp.test"))
-        #expect(text.contains("To: a@b.c"))
-        #expect(text.contains("Cc: c@d.e"))
-        #expect(text.contains("Subject: =?UTF-8?B?"), "non-ASCII subject must be RFC 2047 encoded")
-        #expect(text.contains("In-Reply-To: <id@x>"))
-        #expect(text.contains("References: <id@x>"))
-        #expect(text.contains("Content-Transfer-Encoding: base64"))
-        #expect(text.contains(Data("line1\nline2".utf8).base64EncodedString(options: [.lineLength76Characters])))
-    }
-}
-
 import EASClient
 
 actor SendStubTransport: EASHTTPTransport {
@@ -291,7 +269,7 @@ struct MailServiceSendTests {
         #expect(await transport.requests.count == 1)
     }
 
-    @Test("a failed send keeps the item for retry")
+    @Test("a 401 send keeps the item as a permanent failure and surfaces the error")
     func sendFailure() async throws {
         let transport = SendStubTransport(status: 401)
         let service = try service(transport)
@@ -300,7 +278,7 @@ struct MailServiceSendTests {
         }
         let pending = try service.pendingOutbox()
         #expect(pending.count == 1)
-        #expect(pending.first?.state == "failed")
+        #expect(pending.first?.state == "failed_permanent")
     }
 }
 

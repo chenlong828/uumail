@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import MailDomain
 
 /// The single writer for the local mail database (see `doc/design/components/CMP-STORE/spec.md`).
 /// This slice owns accounts, device profiles, folders and sync state; message tables arrive
@@ -156,6 +157,13 @@ public final class MailStore: @unchecked Sendable {
                 DELETE FROM message_bodies WHERE is_html = 0;
                 """)
         }
+        // Outbox v2 (architecture spec §4.4 / D7): explicit retry state plus the
+        // lease and backoff columns. Additive migration, forward-only.
+        migrator.registerMigration("v8_outbox_v2") { db in
+            try db.execute(sql: "ALTER TABLE outbox ADD COLUMN sending_since REAL")
+            try db.execute(sql: "ALTER TABLE outbox ADD COLUMN next_attempt_at REAL")
+            try db.execute(sql: "UPDATE outbox SET state = 'failed_retryable' WHERE state = 'failed'")
+        }
         try migrator.migrate(dbQueue)
     }
 
@@ -183,10 +191,53 @@ public final class MailStore: @unchecked Sendable {
         }
     }
 
-    public func account(_ id: AccountID) throws -> (displayName: String, address: String)? {
+    /// The stored account as sending needs it: the address is the From header and the
+    /// host is the Message-ID domain (never hardcoded by `Outbox`).
+    public func account(_ id: AccountID) throws -> (displayName: String, address: String, host: String)? {
         try dbQueue.read { db in
-            try Row.fetchOne(db, sql: "SELECT display_name, address FROM accounts WHERE id = ?", arguments: [id.raw])
-                .map { ($0["display_name"], $0["address"]) }
+            try Row.fetchOne(
+                db,
+                sql: "SELECT display_name, address, host FROM accounts WHERE id = ?",
+                arguments: [id.raw]
+            ).map { ($0["display_name"], $0["address"], $0["host"]) }
+        }
+    }
+
+    /// Marks a provisioned account usable. Account setup calls this after folders land.
+    public func markAccountReady(_ id: AccountID) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: "UPDATE accounts SET state = 'ready' WHERE id = ?",
+                arguments: [id.raw]
+            )
+            guard db.changesCount == 1 else {
+                throw MailStoreError.accountNotFound(id)
+            }
+        }
+    }
+
+    /// Drops an account that never received mail (failed setup rollback). Refuses to
+    /// cascade over messages, so a half-configured account cannot delete history.
+    public func discardAccount(_ id: AccountID) throws {
+        try dbQueue.write { db in
+            guard try Bool.fetchOne(
+                db,
+                sql: "SELECT EXISTS(SELECT 1 FROM accounts WHERE id = ?)",
+                arguments: [id.raw]
+            ) == true else {
+                throw MailStoreError.accountNotFound(id)
+            }
+            let messageCount = try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM messages WHERE account_id = ?",
+                arguments: [id.raw]
+            ) ?? 0
+            guard messageCount == 0 else {
+                throw MailStoreError.accountNotEmpty(id)
+            }
+            try db.execute(sql: "DELETE FROM folders WHERE account_id = ?", arguments: [id.raw])
+            try db.execute(sql: "DELETE FROM sync_state WHERE account_id = ?", arguments: [id.raw])
+            try db.execute(sql: "DELETE FROM accounts WHERE id = ?", arguments: [id.raw])
         }
     }
 
@@ -493,47 +544,165 @@ public final class MailStore: @unchecked Sendable {
         return outboxID
     }
 
+    /// Everything the compose status line shows: rows still waiting, sending, or failed.
     public func pendingOutbox(account id: AccountID) throws -> [StoredOutboxItem] {
         try dbQueue.read { db in
             try Row.fetchAll(
                 db,
                 sql: """
-                    SELECT id, to_recipients, cc, subject, body, in_reply_to, refs, state, attempts, last_error
-                    FROM outbox WHERE account_id = ? AND state IN ('queued', 'failed')
-                    ORDER BY created_at
+                    SELECT id, to_recipients, cc, subject, body, in_reply_to, refs, state,
+                           attempts, last_error, next_attempt_at
+                    FROM outbox
+                    WHERE account_id = ?
+                      AND state IN ('queued', 'sending', 'failed_retryable', 'failed_permanent')
+                    ORDER BY created_at, id
                     """,
                 arguments: [id.raw]
             ).map(Self.outboxItem)
         }
     }
 
-    public func markOutboxSent(account id: AccountID, outboxID: String) throws {
-        try dbQueue.write { db in
-            try db.execute(
-                sql: "DELETE FROM outbox WHERE account_id = ? AND id = ?",
-                arguments: [id.raw, outboxID]
-            )
+    /// Atomically claims the oldest deliverable row for `account` and stamps the lease.
+    ///
+    /// Deliverable: `queued`, a `failed_retryable` row whose backoff has elapsed, or a
+    /// `sending` row whose lease expired (a crashed process). The `UPDATE … RETURNING`
+    /// is one statement, so two processes cannot claim the same row.
+    public func claimOutbox(account id: AccountID, now: Date, lease: Duration) throws -> OutboxItem? {
+        let stamp = now.timeIntervalSince1970
+        let expiredBefore = stamp - Self.seconds(of: lease)
+        return try dbQueue.write { db in
+            try Row.fetchOne(
+                db,
+                sql: """
+                    UPDATE outbox
+                    SET state = 'sending', sending_since = ?, updated_at = ?
+                    WHERE account_id = ?
+                      AND id = (
+                          SELECT id FROM outbox
+                          WHERE account_id = ?
+                            AND (
+                                state = 'queued'
+                                OR (state = 'failed_retryable'
+                                    AND (next_attempt_at IS NULL OR next_attempt_at <= ?))
+                                OR (state = 'sending'
+                                    AND (sending_since IS NULL OR sending_since <= ?))
+                            )
+                          ORDER BY created_at, id
+                          LIMIT 1
+                      )
+                    RETURNING id, to_recipients, cc, subject, body, in_reply_to, refs,
+                              state, attempts, last_error, next_attempt_at
+                    """,
+                arguments: [stamp, stamp, id.raw, id.raw, stamp, expiredBefore]
+            ).map(Self.outboxItem)
         }
     }
 
-    public func markOutboxFailed(account id: AccountID, outboxID: String, error: String) throws {
+    /// A successful delivery is final: the row disappears.
+    public func markOutboxSent(account id: AccountID, outboxID: OutboxID) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: "DELETE FROM outbox WHERE account_id = ? AND id = ? AND state = 'sending'",
+                arguments: [id.raw, outboxID.raw]
+            )
+            guard db.changesCount == 1 else {
+                throw MailStoreError.outboxNotClaimable(account: id, outboxID: outboxID)
+            }
+        }
+    }
+
+    /// Records the delivery failure. Retryable rows get `next_attempt_at`; permanent
+    /// rows keep their content and error but are never claimed automatically again.
+    public func markOutboxFailed(
+        account id: AccountID,
+        outboxID: OutboxID,
+        error: String,
+        retryable: Bool,
+        nextAttempt: Date?
+    ) throws {
+        let state = retryable ? "failed_retryable" : "failed_permanent"
+        let next = nextAttempt?.timeIntervalSince1970
         try dbQueue.write { db in
             try db.execute(
                 sql: """
-                    UPDATE outbox SET state = 'failed', attempts = attempts + 1, last_error = ?, updated_at = ?
-                    WHERE account_id = ? AND id = ?
+                    UPDATE outbox
+                    SET state = ?, attempts = attempts + 1, last_error = ?,
+                        next_attempt_at = ?, sending_since = NULL, updated_at = ?
+                    WHERE account_id = ? AND id = ? AND state = 'sending'
                     """,
-                arguments: [error, Date().timeIntervalSince1970, id.raw, outboxID]
+                arguments: [state, error, next, Date().timeIntervalSince1970, id.raw, outboxID.raw]
             )
+            guard db.changesCount == 1 else {
+                throw MailStoreError.outboxNotClaimable(account: id, outboxID: outboxID)
+            }
         }
     }
 
-    private static func outboxItem(_ row: Row) -> StoredOutboxItem {
-        StoredOutboxItem(
+    /// Returns a row to the queue: after an aborted delivery, or when the user asks to
+    /// retry a failed item. Failed rows become `queued` and are claimable immediately.
+    public func releaseOutbox(account id: AccountID, outboxID: OutboxID) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                    UPDATE outbox
+                    SET state = 'queued', sending_since = NULL, next_attempt_at = NULL, updated_at = ?
+                    WHERE account_id = ? AND id = ?
+                      AND state IN ('sending', 'failed_retryable', 'failed_permanent')
+                    """,
+                arguments: [Date().timeIntervalSince1970, id.raw, outboxID.raw]
+            )
+            guard db.changesCount == 1 else {
+                throw MailStoreError.outboxNotClaimable(account: id, outboxID: outboxID)
+            }
+        }
+    }
+
+    /// Cancels a row that has not been delivered. `sending` is deliberately excluded:
+    /// the caller marks intent and settles after the in-flight delivery returns.
+    public func cancelOutbox(account id: AccountID, outboxID: OutboxID) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                    UPDATE outbox
+                    SET state = 'canceled', sending_since = NULL, next_attempt_at = NULL, updated_at = ?
+                    WHERE account_id = ? AND id = ?
+                      AND state IN ('queued', 'failed_retryable', 'failed_permanent')
+                    """,
+                arguments: [Date().timeIntervalSince1970, id.raw, outboxID.raw]
+            )
+            guard db.changesCount == 1 else {
+                throw MailStoreError.outboxNotClaimable(account: id, outboxID: outboxID)
+            }
+        }
+    }
+
+    public func outboxItem(account id: AccountID, id outboxID: OutboxID) throws -> OutboxItem? {
+        try dbQueue.read { db in
+            try Row.fetchOne(
+                db,
+                sql: """
+                    SELECT id, to_recipients, cc, subject, body, in_reply_to, refs, state,
+                           attempts, last_error, next_attempt_at
+                    FROM outbox WHERE account_id = ? AND id = ?
+                    """,
+                arguments: [id.raw, outboxID.raw]
+            ).map(Self.outboxItem)
+        }
+    }
+
+    private static func outboxItem(_ row: Row) -> OutboxItem {
+        let nextAttempt: Double? = row["next_attempt_at"]
+        return OutboxItem(
             id: row["id"], to: row["to_recipients"], cc: row["cc"], subject: row["subject"],
             body: row["body"], inReplyTo: row["in_reply_to"], references: row["refs"],
-            state: row["state"], attempts: row["attempts"], lastError: row["last_error"]
+            state: row["state"], attempts: row["attempts"], lastError: row["last_error"],
+            nextAttemptAt: nextAttempt.map(Date.init(timeIntervalSince1970:))
         )
+    }
+
+    private static func seconds(of duration: Duration) -> TimeInterval {
+        let components = duration.components
+        return Double(components.seconds) + Double(components.attoseconds) / 1e18
     }
 
     /// Drops one collection's local mirror (messages, previews and cursor) so a full

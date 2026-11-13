@@ -11,6 +11,17 @@ public struct AccountID: Hashable, Sendable, CustomStringConvertible {
     public var description: String { raw }
 }
 
+/// Identity of one queued send intent. It doubles as the EAS `ClientId` idempotency key.
+public struct OutboxID: Hashable, Sendable, CustomStringConvertible {
+    public let raw: String
+
+    public init(_ raw: String) {
+        self.raw = raw
+    }
+
+    public var description: String { raw }
+}
+
 /// A mailbox folder as the domain knows it: no protocol shape, no database row.
 public struct Folder: Equatable, Sendable {
     public var serverID: String
@@ -198,6 +209,8 @@ public struct OutboxItem: Equatable, Sendable {
     public var state: String
     public var attempts: Int
     public var lastError: String?
+    /// Earliest time a `failed_retryable` row may be claimed again.
+    public var nextAttemptAt: Date?
 
     public init(
         id: String,
@@ -209,7 +222,8 @@ public struct OutboxItem: Equatable, Sendable {
         references: String?,
         state: String,
         attempts: Int,
-        lastError: String?
+        lastError: String?,
+        nextAttemptAt: Date? = nil
     ) {
         self.id = id
         self.to = to
@@ -221,6 +235,7 @@ public struct OutboxItem: Equatable, Sendable {
         self.state = state
         self.attempts = attempts
         self.lastError = lastError
+        self.nextAttemptAt = nextAttemptAt
     }
 }
 

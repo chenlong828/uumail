@@ -1,4 +1,5 @@
 import Foundation
+import MailDomain
 import Testing
 
 @testable import MailStore
@@ -285,25 +286,130 @@ struct MailStoreOutboxTests {
         return (store, id)
     }
 
-    @Test("queued items appear in pending; marking sent removes them")
-    func queueAndSend() throws {
-        let (store, id) = try seeded()
-        let outboxID = try store.enqueueOutbox(account: id, draft: MailDraft(to: "a@b.c", cc: nil, subject: "hi", body: "text"))
-        #expect(try store.pendingOutbox(account: id).map(\.id) == [outboxID])
-        try store.markOutboxSent(account: id, outboxID: outboxID)
-        #expect(try store.pendingOutbox(account: id).isEmpty)
+    private func now() -> Date { Date(timeIntervalSince1970: 1_700_000_000) }
+
+    private func draft() -> MailDraft {
+        MailDraft(to: "a@b.c", cc: nil, subject: "hi", body: "text")
     }
 
-    @Test("a failed item stays pending with its error and attempt count")
+    @Test("a claimed row appears in pending; marking it sent removes it")
+    func queueAndSend() throws {
+        let (store, id) = try seeded()
+        let raw = try store.enqueueOutbox(account: id, draft: draft())
+        let outboxID = OutboxID(raw)
+        #expect(try store.pendingOutbox(account: id).map(\.id) == [raw])
+
+        let claimed = try #require(try store.claimOutbox(account: id, now: now(), lease: .seconds(120)))
+        #expect(claimed.id == raw)
+        #expect(claimed.state == "sending")
+
+        try store.markOutboxSent(account: id, outboxID: outboxID)
+        #expect(try store.pendingOutbox(account: id).isEmpty)
+        #expect(try store.outboxItem(account: id, id: outboxID) == nil)
+    }
+
+    @Test("a retryable failure keeps content, error, attempt count and next attempt")
     func failedStaysPending() throws {
         let (store, id) = try seeded()
-        let outboxID = try store.enqueueOutbox(account: id, draft: MailDraft(to: "a@b.c", cc: nil, subject: "hi", body: "text"))
-        try store.markOutboxFailed(account: id, outboxID: outboxID, error: "offline")
+        let outboxID = OutboxID(try store.enqueueOutbox(account: id, draft: draft()))
+        _ = try store.claimOutbox(account: id, now: now(), lease: .seconds(120))
+        let next = now().addingTimeInterval(30)
+        try store.markOutboxFailed(
+            account: id, outboxID: outboxID, error: "offline", retryable: true, nextAttempt: next
+        )
+
         let pending = try store.pendingOutbox(account: id)
         #expect(pending.count == 1)
-        #expect(pending.first?.state == "failed")
+        #expect(pending.first?.state == "failed_retryable")
         #expect(pending.first?.attempts == 1)
         #expect(pending.first?.lastError == "offline")
+        #expect(pending.first?.nextAttemptAt == next)
+        #expect(pending.first?.body == "text")
+    }
+
+    @Test("a permanent failure is kept but has no next attempt")
+    func permanentFailure() throws {
+        let (store, id) = try seeded()
+        let outboxID = OutboxID(try store.enqueueOutbox(account: id, draft: draft()))
+        _ = try store.claimOutbox(account: id, now: now(), lease: .seconds(120))
+        try store.markOutboxFailed(
+            account: id, outboxID: outboxID, error: "authFailed", retryable: false, nextAttempt: nil
+        )
+
+        let item = try #require(try store.outboxItem(account: id, id: outboxID))
+        #expect(item.state == "failed_permanent")
+        #expect(item.attempts == 1)
+        #expect(item.nextAttemptAt == nil)
+        // It stays visible for the compose status line, but is not auto-claimable.
+        #expect(try store.pendingOutbox(account: id).map(\.id) == [outboxID.raw])
+        #expect(try store.claimOutbox(account: id, now: now().addingTimeInterval(86_400), lease: .seconds(120)) == nil)
+    }
+
+    @Test("a second claim returns nil while the lease is live")
+    func singleClaim() throws {
+        let (store, id) = try seeded()
+        let raw = try store.enqueueOutbox(account: id, draft: draft())
+        #expect(try store.claimOutbox(account: id, now: now(), lease: .seconds(120))?.id == raw)
+        #expect(try store.claimOutbox(account: id, now: now(), lease: .seconds(120)) == nil)
+    }
+
+    @Test("a failed retryable row is claimable only once its backoff elapsed")
+    func backoffGating() throws {
+        let (store, id) = try seeded()
+        let raw = try store.enqueueOutbox(account: id, draft: draft())
+        let outboxID = OutboxID(raw)
+        _ = try store.claimOutbox(account: id, now: now(), lease: .seconds(120))
+        try store.markOutboxFailed(
+            account: id, outboxID: outboxID, error: "offline",
+            retryable: true, nextAttempt: now().addingTimeInterval(30)
+        )
+
+        #expect(try store.claimOutbox(account: id, now: now(), lease: .seconds(120)) == nil)
+        #expect(try store.claimOutbox(account: id, now: now().addingTimeInterval(29), lease: .seconds(120)) == nil)
+        #expect(try store.claimOutbox(account: id, now: now().addingTimeInterval(30), lease: .seconds(120))?.id == raw)
+    }
+
+    @Test("an expired sending lease is reclaimable; a live one is not")
+    func expiredLease() throws {
+        let (store, id) = try seeded()
+        let raw = try store.enqueueOutbox(account: id, draft: draft())
+        #expect(try store.claimOutbox(account: id, now: now(), lease: .seconds(120))?.id == raw)
+
+        #expect(try store.claimOutbox(account: id, now: now().addingTimeInterval(119), lease: .seconds(120)) == nil)
+        #expect(try store.claimOutbox(account: id, now: now().addingTimeInterval(120), lease: .seconds(120))?.id == raw)
+    }
+
+    @Test("release returns a claimed row to the queue")
+    func release() throws {
+        let (store, id) = try seeded()
+        let raw = try store.enqueueOutbox(account: id, draft: draft())
+        let outboxID = OutboxID(raw)
+        _ = try store.claimOutbox(account: id, now: now(), lease: .seconds(120))
+
+        try store.releaseOutbox(account: id, outboxID: outboxID)
+        #expect(try store.outboxItem(account: id, id: outboxID)?.state == "queued")
+        #expect(try store.claimOutbox(account: id, now: now(), lease: .seconds(120))?.id == raw)
+    }
+
+    @Test("cancel records a canceled row that is neither pending nor claimable")
+    func cancel() throws {
+        let (store, id) = try seeded()
+        let outboxID = OutboxID(try store.enqueueOutbox(account: id, draft: draft()))
+
+        try store.cancelOutbox(account: id, outboxID: outboxID)
+        #expect(try store.outboxItem(account: id, id: outboxID)?.state == "canceled")
+        #expect(try store.pendingOutbox(account: id).isEmpty)
+        #expect(try store.claimOutbox(account: id, now: now(), lease: .seconds(120)) == nil)
+    }
+
+    @Test("marking a row that was never claimed reports outboxNotClaimable")
+    func unclaimedMark() throws {
+        let (store, id) = try seeded()
+        let outboxID = OutboxID(try store.enqueueOutbox(account: id, draft: draft()))
+
+        #expect(throws: MailStoreError.outboxNotClaimable(account: id, outboxID: outboxID)) {
+            try store.markOutboxSent(account: id, outboxID: outboxID)
+        }
     }
 
     @Test("drafts are stored but not pending")
@@ -311,6 +417,56 @@ struct MailStoreOutboxTests {
         let (store, id) = try seeded()
         _ = try store.saveDraft(account: id, draft: MailDraft(to: "a@b.c", cc: nil, subject: "draft", body: "", isDraft: true))
         #expect(try store.pendingOutbox(account: id).isEmpty)
+    }
+}
+
+@Suite("MailStore account lifecycle")
+struct MailStoreAccountLifecycleTests {
+    private func seeded() throws -> (MailStore, AccountID) {
+        let store = try MailStore.inMemory()
+        let id = try store.createAccount(NewAccount(displayName: "工作", address: "jdoe@corp.test", host: "mail.corp.test"))
+        return (store, id)
+    }
+
+    @Test("account() exposes the stored host that sending uses")
+    func accountHost() throws {
+        let (store, id) = try seeded()
+        let account = try #require(try store.account(id))
+        #expect(account.address == "jdoe@corp.test")
+        #expect(account.host == "mail.corp.test")
+    }
+
+    @Test("discardAccount removes an account that never received mail")
+    func discardEmpty() throws {
+        let (store, id) = try seeded()
+        try store.discardAccount(id)
+        #expect(try store.accounts().isEmpty)
+        #expect(try store.account(id) == nil)
+    }
+
+    @Test("discardAccount refuses to drop an account that owns messages")
+    func discardNotEmpty() throws {
+        let (store, id) = try seeded()
+        try store.applyFolderSnapshot(account: id, folders: [
+            MailFolder(serverID: "13", parentID: "0", displayName: "收件箱", type: 2),
+        ], syncKey: "1")
+        try store.applySyncBatch(account: id, folder: "13", added: [
+            MailMessage(serverID: "1", subject: "hi", sender: "a@corp.test", receivedRaw: "2026-11-08T05:11:18.000Z"),
+        ], changed: [], removedServerIDs: [], syncKey: "2")
+
+        #expect(throws: MailStoreError.accountNotEmpty(id)) {
+            try store.discardAccount(id)
+        }
+        #expect(try store.accounts() == [id])
+    }
+
+    @Test("markAccountReady requires an existing account")
+    func markReady() throws {
+        let (store, id) = try seeded()
+        try store.markAccountReady(id)
+        #expect(throws: MailStoreError.accountNotFound(AccountID("missing"))) {
+            try store.markAccountReady(AccountID("missing"))
+        }
     }
 }
 

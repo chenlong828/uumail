@@ -1,10 +1,10 @@
 import Foundation
-import MailStore
+import MailDomain
 
 /// Minimal RFC822 builder: UTF-8 text body, optional reply headers.
 /// Attachments are not part of M2's first slice.
 public enum MimeBuilder {
-    public static func build(from: String, draft: MailDraft, messageID: String, date: Date = Date()) -> Data {
+    public static func build(from: String, draft: Draft, messageID: String, date: Date = Date()) -> Data {
         var lines: [String] = []
         lines.append("From: \(from)")
         lines.append("To: \(draft.to)")

@@ -2,7 +2,9 @@ import CryptoKit
 import EASAdapter
 import EASClient
 import Foundation
+import MailDomain
 import MailStore
+import Outbox
 import SyncEngine
 
 /// Composition root shared by the app and the CLI: owns the store, the client and the
@@ -10,9 +12,9 @@ import SyncEngine
 public final class MailService: MailServiceProtocol, MailSendService, @unchecked Sendable {
     public let store: MailStore
     public let accountID: AccountID
-    private let configuration: EASConfiguration
     private let gateway: EASAdapter
     private let engine: SyncEngine
+    private let outbox: Outbox
 
     public init(
         configuration: EASConfiguration,
@@ -20,7 +22,6 @@ public final class MailService: MailServiceProtocol, MailSendService, @unchecked
         transport: (any EASHTTPTransport)? = nil,
         policyKey: String? = nil
     ) throws {
-        self.configuration = configuration
         store = try MailStore(path: databasePath)
         let client = EASClient(
             configuration: configuration,
@@ -34,6 +35,7 @@ public final class MailService: MailServiceProtocol, MailSendService, @unchecked
             store: StoreAdapter(store: store),
             account: accountID
         )
+        outbox = Outbox(store: store, gateway: gateway, clock: SystemMailClock())
     }
 
     public func syncOnce() async throws -> SyncReport {
@@ -59,31 +61,17 @@ public final class MailService: MailServiceProtocol, MailSendService, @unchecked
 
     // MARK: - Sending
 
-    /// `account@domain` derived from the server host, matching the probe's From header.
-    public var senderAddress: String {
-        if let dot = configuration.host.firstIndex(of: ".") {
-            return "\(configuration.account)@\(configuration.host[configuration.host.index(after: dot)...])"
-        }
-        return configuration.account
-    }
-
-    /// Enqueues then attempts delivery. A failure leaves the item in `failed` for retry.
+    /// Enqueues the draft and makes one delivery attempt. A failure leaves the row in
+    /// the outbox (retryable/permanent) and rethrows the classified `MailError`.
     @discardableResult
     public func send(_ draft: MailDraft) async throws -> String {
-        let outboxID = try store.enqueueOutbox(account: accountID, draft: draft)
-        do {
-            let mime = MimeBuilder.build(
-                from: senderAddress,
-                draft: draft,
-                messageID: "\(UUID().uuidString)@\(configuration.host)"
-            )
-            try await gateway.send(mime: mime, clientID: outboxID)
-            try store.markOutboxSent(account: accountID, outboxID: outboxID)
-            return outboxID
-        } catch {
-            try store.markOutboxFailed(account: accountID, outboxID: outboxID, error: String(describing: error))
+        let outboxID = try await outbox.enqueue(draft, account: accountID)
+        if let outcome = await outbox.flushOnce(account: accountID),
+           outcome.outboxID == outboxID,
+           let error = outcome.error {
             throw error
         }
+        return outboxID.raw
     }
 
     public func saveDraft(_ draft: MailDraft) throws -> String {
@@ -187,4 +175,14 @@ public protocol MailServiceProtocol: AnyObject, Sendable {
     func searchLocal(query: String, limit: Int) throws -> [StoredMessage]
     func attachments(folderID: String, messageID: String) throws -> [StoredAttachment]
     func downloadAttachment(folderID: String, messageID: String, attachment: StoredAttachment) async throws -> URL
+}
+
+/// Transitional system clock for the Outbox lease/timeout. Moves to `Composition`
+/// with the other platform adapters in T-1110-08.
+struct SystemMailClock: MailClock {
+    var now: Date { Date() }
+
+    func sleep(for duration: Duration) async throws {
+        try await Task.sleep(for: duration)
+    }
 }

@@ -29,5 +29,10 @@ public enum MailStoreError: Error, Equatable, Sendable {
     case folderNotFound(account: AccountID, folder: String)
     case accountNotFound(AccountID)
     case invalidFolder(reason: String)
+    /// The outbox row is not in a state that allows the requested transition
+    /// (or a concurrent process already settled it).
+    case outboxNotClaimable(account: AccountID, outboxID: OutboxID)
+    /// `discardAccount` refuses to drop an account that still owns messages.
+    case accountNotEmpty(AccountID)
     case database(String)
 }
