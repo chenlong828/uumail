@@ -42,4 +42,34 @@ struct ConfigurationSourceTests {
         try store.delete()
         #expect(try store.load() == configuration)
     }
+
+    @Test("the setup credentials fall back to the login store when the environment is not a DEBUG source")
+    func setupCredentialsUseTheLoginStoreByDefault() throws {
+        let configuration = makeAssemblyConfiguration()
+        let login = RecordingCredentialStore()
+        let chosen = ConfigurationSource.setupCredentials(
+            environment: [:],
+            configuration: configuration,
+            credentials: login
+        )
+        try chosen.save(configuration)
+        #expect(login.saveCalls == 1)
+        #expect(login.saved == configuration)
+    }
+
+    #if DEBUG
+    @Test("the DEBUG environment credentials are kept in-process, not written to the login store")
+    func debugSetupCredentialsStayInProcess() throws {
+        let configuration = makeAssemblyConfiguration()
+        let login = RecordingCredentialStore()
+        let chosen = ConfigurationSource.setupCredentials(
+            environment: debugEnvironment,
+            configuration: configuration,
+            credentials: login
+        )
+        try chosen.save(configuration)
+        #expect(login.saveCalls == 0, "the login Keychain must stay untouched")
+        #expect(try chosen.load() == configuration)
+    }
+    #endif
 }

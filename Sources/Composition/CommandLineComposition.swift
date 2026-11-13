@@ -1,4 +1,3 @@
-import EASAdapter
 import EASClient
 import Foundation
 import MailDomain
@@ -56,18 +55,14 @@ public struct CommandLineComposition {
     /// Builds the CLI object graph for one database. A database without an account row is
     /// bootstrapped through the setup scene (one probe/provision/folder-sync round); the
     /// environment credentials are not written to the login Keychain, which belongs to the
-    /// app's setup flow.
+    /// app's setup flow. `gatewayFactory` exists for assembly tests; production omits it.
     public static func make(
         databasePath: String,
-        configuration: ServerConfiguration
+        configuration: ServerConfiguration,
+        gatewayFactory: GatewayFactory? = nil
     ) async throws -> CommandLineComposition {
         let store = try MailStore(path: databasePath)
-        let easConfiguration = ConfigurationSource.easConfiguration(configuration)
-        let client = EASClient(
-            configuration: easConfiguration,
-            transport: URLSessionTransport(configuration: easConfiguration)
-        )
-        let gateway = EASAdapter(client: client)
+        let gateway = (gatewayFactory ?? { PlatformGateway.make($0) })(configuration)
 
         let account: AccountID
         if let existing = try store.accounts().first {

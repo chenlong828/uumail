@@ -38,6 +38,19 @@ enum ConfigurationSource {
         #endif
     }
 
+    /// The store the setup scene writes to: the login Keychain normally, an in-process
+    /// store when the settings came from the DEBUG environment (spec §7).
+    static func setupCredentials(
+        environment: [String: String],
+        configuration: ServerConfiguration?,
+        credentials: any CredentialStore
+    ) -> any CredentialStore {
+        if let configuration, usesDebugConfiguration(environment) {
+            return EphemeralCredentialStore(configuration: configuration)
+        }
+        return credentials
+    }
+
     #if DEBUG
     private static func debugConfiguration(_ environment: [String: String]) -> ServerConfiguration? {
         guard let host = environment["EAS_HOST"],

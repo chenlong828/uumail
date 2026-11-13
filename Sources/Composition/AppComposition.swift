@@ -1,5 +1,3 @@
-import EASAdapter
-import EASClient
 import Foundation
 import MailDomain
 import MailStore
@@ -26,6 +24,8 @@ public final class AppComposition {
 
     private let store: MailStore
     private let configuration: ServerConfiguration?
+    private let gatewayFactory: GatewayFactory
+    private let notifier: any Notifier
     @ObservationIgnored private var pump: OutboxPump?
     @ObservationIgnored private var bootstrapTask: Task<Void, Never>?
     @ObservationIgnored private var bootstrapAttempted = false
@@ -38,25 +38,55 @@ public final class AppComposition {
             environment: environment,
             credentials: credentials
         )
-        // The DEBUG environment source changes where the settings come from, so its setup
-        // pass must not write them into the login Keychain (spec §7).
-        let setupCredentials: any CredentialStore
-        if let configuration, ConfigurationSource.usesDebugConfiguration(environment) {
-            setupCredentials = EphemeralCredentialStore(configuration: configuration)
-        } else {
-            setupCredentials = credentials
-        }
         guard let store = try? MailStore(path: ConfigurationSource.databasePath(environment: environment)) else {
             return nil
         }
-        return AppComposition(store: store, credentials: setupCredentials, configuration: configuration)
+        return AppComposition(
+            store: store,
+            // The DEBUG environment source must not write the login Keychain (spec §7).
+            credentials: ConfigurationSource.setupCredentials(
+                environment: environment,
+                configuration: configuration,
+                credentials: credentials
+            ),
+            configuration: configuration,
+            gatewayFactory: { PlatformGateway.make($0) },
+            notifier: SystemNotifier()
+        )
     }
 
-    public init(store: MailStore, credentials: any CredentialStore, configuration: ServerConfiguration?) {
+    public convenience init(
+        store: MailStore,
+        credentials: any CredentialStore,
+        configuration: ServerConfiguration?
+    ) {
+        self.init(
+            store: store,
+            credentials: credentials,
+            configuration: configuration,
+            gatewayFactory: { PlatformGateway.make($0) },
+            notifier: SystemNotifier()
+        )
+    }
+
+    public init(
+        store: MailStore,
+        credentials: any CredentialStore,
+        configuration: ServerConfiguration?,
+        gatewayFactory: @escaping GatewayFactory,
+        notifier: any Notifier
+    ) {
         self.store = store
         self.configuration = configuration
+        self.gatewayFactory = gatewayFactory
+        self.notifier = notifier
         let makeScene: AccountSetupSceneFactory = { input in
-            Self.makeSetupScene(store: store, credentials: credentials, input: input)
+            Self.makeSetupScene(
+                store: store,
+                credentials: credentials,
+                input: input,
+                gatewayFactory: gatewayFactory
+            )
         }
         accountSetup = AccountSetupViewModel(makeScene: makeScene, configuration: configuration)
         route = .accountSetup
@@ -115,12 +145,7 @@ public final class AppComposition {
     /// Constructs one mailbox object graph. The pump is attached to the view model's
     /// enqueue hook so a send is delivered without waiting for the next tick.
     private func attachMailbox(configuration: ServerConfiguration, account: AccountID) {
-        let easConfiguration = ConfigurationSource.easConfiguration(configuration)
-        let client = EASClient(
-            configuration: easConfiguration,
-            transport: URLSessionTransport(configuration: easConfiguration)
-        )
-        let gateway = EASAdapter(client: client)
+        let gateway = gatewayFactory(configuration)
         let engine = SyncEngine(gateway: gateway, store: store, account: account)
         let outbox = Outbox(store: store, gateway: gateway, clock: SystemMailClock())
         let pump = OutboxPump(outbox: outbox, account: account)
@@ -131,7 +156,7 @@ public final class AppComposition {
                 gateway: gateway,
                 files: FileAttachmentFiles(directory: AppPaths.attachmentsDirectory)
             ),
-            sync: SyncScene(engine: engine, notifier: SystemNotifier(), clock: SystemMailClock()),
+            sync: SyncScene(engine: engine, notifier: notifier, clock: SystemMailClock()),
             compose: ComposeScene(store: store, outbox: outbox),
             account: account,
             onEnqueued: { pump.signal() }
@@ -142,17 +167,11 @@ public final class AppComposition {
     private nonisolated static func makeSetupScene(
         store: MailStore,
         credentials: any CredentialStore,
-        input: AccountInput
+        input: AccountInput,
+        gatewayFactory: GatewayFactory
     ) -> AccountSetupScene {
-        let configuration = ConfigurationSource.easConfiguration(
-            ConfigurationSource.serverConfiguration(from: input)
-        )
-        let client = EASClient(
-            configuration: configuration,
-            transport: URLSessionTransport(configuration: configuration)
-        )
-        return AccountSetupScene(
-            gateway: EASAdapter(client: client),
+        AccountSetupScene(
+            gateway: gatewayFactory(ConfigurationSource.serverConfiguration(from: input)),
             store: store,
             credentials: credentials
         )

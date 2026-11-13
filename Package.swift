@@ -64,8 +64,14 @@ let package = Package(
         .testTarget(name: "EASClientTests", dependencies: ["EASClient"]),
         .testTarget(name: "MailDomainTests", dependencies: ["MailDomain"]),
         .testTarget(name: "EASAdapterTests", dependencies: ["EASAdapter", "EASClient", "MailDomain"]),
-        .testTarget(name: "CompositionTests", dependencies: ["Composition", "MailDomain", "MailStore", "Outbox"]),
-        .testTarget(name: "MailStoreTests", dependencies: ["MailStore", "MailDomain"]),
+        .testTarget(
+            name: "CompositionTests",
+            dependencies: ["Composition", "MailDomain", "MailStore", "Outbox", "Presentation"]
+        ),
+        .testTarget(
+            name: "MailStoreTests",
+            dependencies: ["MailStore", "MailDomain", .product(name: "GRDB", package: "GRDB.swift")]
+        ),
         .testTarget(name: "OutboxTests", dependencies: ["Outbox", "MailStore", "MailDomain"]),
         .testTarget(name: "SyncEngineTests", dependencies: ["SyncEngine"]),
         .testTarget(name: "ScenesTests", dependencies: ["Scenes", "MailDomain", "MailStore", "SyncEngine", "Outbox"]),
