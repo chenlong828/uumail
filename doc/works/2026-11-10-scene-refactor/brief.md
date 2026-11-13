@@ -72,7 +72,7 @@ updated: 2026-11-13
 | T-1110-04 | change | CMP-PRES | pending | 薄视图模型；视图去 `service`、去编排 | `Sources/Presentation/**`、`Sources/uumail/**` |
 | T-1110-05 | change | CMP-CLI | pending | `uumailctl` 改调场景；删重复账号逻辑 | `Sources/uumailctl/**` |
 | T-1110-06 | change | CMP-OUT | pending | `Outbox` 冷投递、租约、退避；`MailStore` 新增 claim/mark 契约 | `Sources/Outbox/**`、`MailStore.swift` |
-| T-1110-07 | change | CMP-ATT | pending | `AttachmentFiles` 端口与实现；附件流程移入 `ReadScene` | `Sources/Composition/**` |
+| T-1110-07 | change | CMP-ATT | done | `AttachmentFiles` 端口与实现；附件流程移入 `ReadScene` | `Sources/Composition/**` |
 | T-1110-08 | change | CMP-ROOT | pending | `Composition` 组合根；App 启动与轮询迁移；DEBUG 环境入口 | `Sources/Composition/**`、`UumailApp.swift` |
 | T-1110-09 | test | 全仓 | pending | `ScenesTests`/`PresentationTests`/架构 import 脚本 | `Tests/**`、`Scripts/**` |
 | T-1110-10 | docs | 全仓 | pending | 冻结进 `design/architecture.md` 与各 `spec.md`；场景卡状态更新 | `doc/design/**` |
@@ -104,4 +104,5 @@ updated: 2026-11-13
 | 任务 | 日期 | 结论 |
 |---|---|---|
 | T-1110-01 | 2026-11-13 | `MailDomain` 目标落地（`Values/Errors/Configuration/Ports`，仅依赖 Foundation）；`MailStore`、`SyncEngine` 的值类型改为 `typealias`，`SyncStore` 改为同步、网关端口实现 7 个操作；新增 `MailDomainTests` 3 例；83 个测试全绿 |
+| T-1110-07 | 2026-11-13 | `FileAttachmentFiles`（Composition 目标）：确定性文件名、原子写、2 GB 最旧优先淘汰；`AttachmentRef` 增加 `displayName`；3 个单测。附件流程接入 `ReadScene` 随 T-1110-03 |
 | T-1110-02 | 2026-11-13 | 新建 `EASAdapter` 目标（`EASAdapter` 类型 + 唯一错误映射）；`MailService` 的正文/发信/附件改走端口，`isHTML`/`isTruncated` 由 `FetchedBody` 保留（D10）；新增 `EASAdapterTests` 4 例；87 个测试全绿 |

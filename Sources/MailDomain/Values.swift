@@ -239,10 +239,13 @@ public struct FetchedBody: Equatable, Sendable {
 }
 
 /// Reference to a cached attachment file, used by the `AttachmentFiles` port.
+/// `displayName` decides the on-disk file name suffix (the digest prefixes it).
 public struct AttachmentRef: Hashable, Sendable {
     public let fileReference: String
+    public let displayName: String
 
-    public init(fileReference: String) {
+    public init(fileReference: String, displayName: String) {
         self.fileReference = fileReference
+        self.displayName = displayName
     }
 }
