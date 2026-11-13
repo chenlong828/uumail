@@ -1,15 +1,17 @@
 ---
-layer: works
+layer: history
 module: global
-status: active
-updated: 2026-11-09
+status: frozen
+updated: 2026-11-13
 ---
 
 # W-2026-11-09-m4-hardening 结果
 
+> 已归档（2026-11-13）。本文件是过程记忆；Ping、退避与缓存上限的现行结论见 `design/components/CMP-EAS/playbook.md` §5.2、`CMP-SYNC/spec.md`、`CMP-APP/spec.md`。
+
 ## Ping 结论（T-M4-01）
 
-`Ping` 以 `HeartbeatInterval` = 15 / 60 / 300 请求，均在 0 秒内返回 `Status=4`，既非「心跳超时」也非「有变更」。判定：**本网关不支持长轮询**。客户端改为 5 分钟轮询刷新（`UumailApp` 的 task 循环），playbook §3 已记录。
+`Ping` 以 `HeartbeatInterval` = 15 / 60 / 300 请求，均在 0 秒内返回 `Status=4`，既非「心跳超时」也非「有变更」。判定：**本网关不支持长轮询**。客户端改为 5 分钟轮询刷新（`UumailApp` 的 task 循环），`playbook.md` §5.2 已记录。
 
 ## 加固（T-M4-02/03）
 

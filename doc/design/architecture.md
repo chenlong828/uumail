@@ -2,7 +2,7 @@
 layer: design
 module: global
 status: current
-updated: 2026-11-09
+updated: 2026-11-13
 ---
 
 # uumail 架构规格草案（P1）
@@ -15,7 +15,7 @@ macOS 原生邮件客户端，只支持 EAS（Exchange ActiveSync），以手机
 - **协议基线已验证**：2026-11-08 用命令行探针在公司外网打通 EAS 16.1（`OPTIONS → Provision → FolderSync → Sync → ItemOperations → SendMail`）。线格式（NUL 结尾字符串、opaque MIME、最小 Sync 体）与设备登记规则以实测为准，不以规范字面为准；证据见 `history/works/2026-11-09-eas-probe/`，操作细节见 `design/components/CMP-EAS/playbook.md`。
 - **一条主线**：UI 只读写本地库，网络同步全部在后台冷路径。打开邮件、列表滚动、发送入队都不等待网络。
 - **一个不变量**：Sync 批次与新的 SyncKey 必须**同一事务**落库，先写数据后提交 key；否则丢信或重复。
-- **已确认的结构决策（2026-11-09）**：Provision 最小握手；单账号；DeviceId 手填（高级设置）；失败件 24h/100；联系人只做本机通讯录 + 历史；不做 OAuth/Graph。记录见 `history/decisions/2026-11-09-scope-baseline.md`；仍未决的只有本地保留策略与附件缓存上限（`plan/open-questions.md`）。
+- **已确认的结构决策（2026-11-09）**：Provision 最小握手；单账号；DeviceId 手填（高级设置）；失败件 24h/100；联系人只做本机通讯录 + 历史；不做 OAuth/Graph；附件缓存 2 GB + 最旧优先淘汰（`history/decisions/2026-11-09-attachment-cache-cap.md`）。范围决策见 `history/decisions/2026-11-09-scope-baseline.md`；仍未决的只剩本地保留策略（`plan/open-questions.md` Q1）。
 - **定级 P1**：新系统、模块切分、核心 schema、热路径架构，需用户参与边界与契约评审后冻结。
 
 ## 1. 业务能力与约束
@@ -24,7 +24,7 @@ macOS 原生邮件客户端，只支持 EAS（Exchange ActiveSync），以手机
 |---|---|---|---|---|---|
 | 配置账号 | 用户输入服务器、账号、密码、已登记设备 ID | 策略握手、校验、落库设备身份 | 账号、设备档案、凭据 | 分类：认证 / 设备未登记 / 协议被拒 / 策略 | 冷 |
 | 同步文件夹树 | 启动、手动刷新 | 本地文件夹与服务器一致 | folders、sync_state | 保留旧树，标记 stale | 冷 |
-| 拉取邮件 | 轮询/手动（Ping 待验证） | 本地出现新邮件与正文 | messages、bodies | 失败保留 SyncKey，退避重试 | 冷 |
+| 拉取邮件 | 5 分钟轮询/手动（Ping 不支持长轮询） | 本地出现新邮件与正文 | messages、bodies | 失败保留 SyncKey，退避重试 | 冷 |
 | 阅读邮件 | 点击列表 | 渲染正文与附件列表 | 本地读 | 正文缺失时后台 Fetch，先显示占位 | 热 |
 | 发送/回复/转发 | 用户点发送 | 进入 Outbox 并尽快投递 | outbox、MIME | 入队即成功；投递失败显性重试 | 热（入队）/冷（投递） |
 | 草稿 | 保存 | 本地草稿 + Drafts 集合同步 | outbox/drafts | 服务器失败不丢本地稿 | 冷 |
@@ -48,7 +48,7 @@ macOS 原生邮件客户端，只支持 EAS（Exchange ActiveSync），以手机
 **三个最痛失败**：
 
 1. SyncKey 失步 → 重复邮件或漏邮件（对策：原子提交 + 幂等 upsert + status 3/4 全量重建）。
-2. Ping 长连接假死（若可用）→ 新邮件迟迟不到；首版按轮询，M3 验证 Ping 后再启用长连接（对策：心跳上限、超时重连、降级轮询、可观测的 `last_ping_at`）。
+2. 轮询延迟 → 新邮件最多晚一个轮询周期（5 分钟）；Ping 已实测不支持长轮询（`Status=4`），不再作为可选项（对策：轮询间隔可配、`last_sync_at` 可观测、UI 如实标注刷新节奏）。
 3. 发送失败被吞 → 用户以为已发出（对策：Outbox 状态机 + 显性失败 + 可重试分类）。
 
 ## 2. 分层与组件地图
@@ -169,7 +169,7 @@ graph TD
 - 输入输出只用本方稳定类型：`Folder`, `MessageEnvelope`, `SyncBatch`, `MimeMessage`, `SyncKey`, `CollectionRef`。
 - 错误模式（含实测信号）：`authFailed`（`401`，不可重试）、`deviceNotRegistered`（**`200` + 0 字节 body**，或写命令 `401`，不可重试，提示设备登记）、`gatewayRejected`（`444`，缺查询参数，属缺陷）、`protocolRejected`（约 20s 后的 `502`，请求体线格式错）、`policyRequired(449)`（转 Provision）、`syncKeyInvalid`（Sync `Status=3/4`，清集合重建）、`unsupportedVersion`（触发降级）、`throttled`（按 `Retry-After` 退避）、`transient`（重试）、`permanent`（不重试）。完整映射表见 `design/components/CMP-EAS/spec.md`。
 - 幂等：`send` 带客户端幂等键，服务器侧无法保证时由 Outbox 的发送中锁防止重复进入。
-- 超时/取消：单命令显式超时；Ping 单独长超时；取消只作用于本账号串行队列。
+- 超时/取消：单命令显式超时（Sync 60s）；不依赖 Ping 长连接；取消只作用于本账号串行队列。
 
 ### MailStore（数据服务契约）
 
@@ -214,7 +214,7 @@ graph TD
 | 列表分页/阅读 | 热 | 0（纯本地） | 无网可用；正文缺失显示占位 | 读连接 + WAL；不持锁渲染 |
 | 发送入队 | 热 | 0（本地事务） | 入队失败提示重试 | 与同步队列分离 |
 | FolderSync/Sync | 冷 | 1（Gateway） | 退避、保留旧 SyncKey、转 offline | 每账号串行 actor |
-| Ping 长连接（待验证） | 冷 | 1 | 超时重连、降级 5 分钟轮询 | 独立 URLSession |
+| 轮询刷新（5 分钟） | 冷 | 1（Gateway） | 失败保留旧 SyncKey，下一轮再试 | App 内 task 循环，不占 UI 队列 |
 | 正文/附件补拉 | 冷 | 1 | 断点重试、队列上限 3 | 独立并发限制 |
 | 发送投递 | 冷 | 1 | 分类重试，永久失败显性标红 | 与同步队列分离 |
 | FTS 索引 | 冷 | 0 | 重建可重入 | 随事务增量更新 |
@@ -232,11 +232,11 @@ graph TD
 - **`OPTIONS` 必须裸 URL**：带 `?Cmd=` 会被网关吞成 `200` 空响应；裸 URL 才能拿到协议版本、命令列表与 Cookie。
 - **策略握手是必需前置**：两步 `Provision`（`DeviceInformation` 直接挂 `Provision` 下，`PolicyType=MS-EAS-Provisioning-WBXML` 且不带 `Data`），换正式 PolicyKey 后常驻。策略项不解析、不展示，遇到强制策略直接给出可读提示（D9）。
 - **线格式按实测字节实现**：内联字符串是 `0x03 + UTF-8 + 0x00`（NUL 结尾），不是 MS-ASWBXML 的长度前缀；`Mime`、附件走 opaque（`0xC3` + mb_uint 长度 + 原始字节）。写成规范字面会让网关挂 20s 后 `502`。
-- **命令集（首版）**：`FolderSync`、`Sync`、`ItemOperations`（正文与附件）、`SendMail`、`Provision`；`Ping`、`MoveItems`、`Search` 按实测结论取舍——**Ping 未验证**，`Search`/GAL 已确认不可用。
+- **命令集（首版）**：`FolderSync`、`Sync`、`ItemOperations`（正文与附件）、`SendMail`、`Provision`；`Ping`、`MoveItems`、`Search` 按实测结论取舍——**Ping 不支持长轮询**（`Status=4`），`Search`/GAL 已确认不可用，`MoveItems` 未验证。
 - **`Sync` 请求体保持最小**：`Sync/Collections/Collection/{SyncKey, CollectionId, WindowSize, Options}`；多带顶层 `SyncKey`、`Class`、`GetChanges` 会得到 `Sync/Status=4`。首次 `SyncKey=0` 只回新 key，需用新 key 再 Sync 取条目。
 - **SyncKey 状态机**：每集合独立；status 3/4 视为失步，清本地集合后全量重建；窗口 25–50；同集合串行；**批次与 key 同事务**。
-- **Ping**：规格允许长连接，但本网关未验证；M3 前单独探测，不支持则降级 5 分钟轮询，并在 UI 如实体现刷新节奏。
-- **附件**：优先 `FileReference`，旧版本回退 `AttachmentName` 路径；流式写缓存并记录校验；默认上限 25MB。
+- **Ping**：三档心跳（15 / 60 / 300s）均立即返回 `Status=4`，本网关不支持长轮询（2026-11-09 实测，见 playbook §5.2）；客户端固定 5 分钟轮询，UI 如实体现刷新节奏。
+- **附件**：优先 `FileReference`，旧版本回退 `AttachmentName` 路径；流式写缓存并记录校验；单文件上限 25MB，缓存总上限 2 GB、按最旧优先淘汰（`design/components/CMP-APP/spec.md`）。
 - **发送**：`SendMail` 携带 opaque 原始 MIME，`SaveInSentItems=1`，`ClientId` 作幂等键；成功判据是 `200` 且 body 长度 0。回复复用同一通道，加 `In-Reply-To`/`References`。
 - **能力边界（实测）**：列表、HTML 正文、附件、发信、建/删文件夹可用；GAL 与 `Find`/`ResolveRecipients` 不可用，联系人只做本机通讯录 + 收件人历史。
 - **实施纪律**：状态码、元素名以 MS-ASCMD/MS-ASWBXML 为准；请求体线格式以真实抓包为准；两者冲突时以「服务端接受」为最终判据，并记入 playbook。
@@ -249,7 +249,7 @@ graph TD
 |---|---|---|---|
 | D1 | 自研 WBXML 与 EAS 命令层 | Swift 生态无成熟 EAS 客户端库；协议面可控，便于模拟手机 | 引第三方库：维护停滞、无法定制设备身份 |
 | D2 | GRDB + SQLite（WAL + FTS5） | 迁移、事务、FTS、只读连接齐备；比 Core Data 更可预期 | Core Data：FTS 与复杂查询弱；裸 SQLite：迁移与并发自己扛 |
-| D3 | 首版轮询；Ping 验证通过后再加长连接 | 无服务端推送依赖，符合 EAS 客户端模型；Ping 在本网关尚未验证 | 常驻 IMAP 式连接：与 EAS 无关；首版直接押注 Ping：未验证即写进热路径 |
+| D3 | 首版 5 分钟轮询；Ping 不支持长轮询（2026-11-09 实测） | 无服务端推送依赖，符合 EAS 客户端模型；三档心跳均 `Status=4` | 常驻 IMAP 式连接：与 EAS 无关；依赖 Ping 推送：网关不支持 |
 | D4 | 设备身份可配置、协议版本可降级 | 兼容不同服务器与手机识别；不追求 MDM 合规 | 固定 UA 写死：遇策略/版本差异即死 |
 | D5 | WKWebView + 默认阻止远程资源；单封邮件可临时放行 | HTML 邮件是最大攻击面；放行做到「每封一次」，不给全局白名单 | 全局阻止：图片类邮件永远显示不全；默认加载远程内容：追踪与注入风险 |
 | D6 | 发送先入本地 Outbox | 断网可写、失败可重试、UI 不等网络 | 同步发送：网络抖动直接丢信 |
@@ -277,14 +277,14 @@ graph TD
 - **M1 只读客户端**：账号配置、文件夹树、列表、正文渲染、附件下载、本地缓存与离线。
 - **M2 发送与草稿**：Outbox、SendMail、回复/转发、草稿同步、Sent 镜像。
 - **M3 体验**：Ping、通知、本地搜索、错误恢复、空态与加载态。
-- **M4 加固**：策略最小握手的错误文案、限流与退避调优、安全审计、性能调优。
+- **M4 加固**：策略最小握手的错误文案、限流与退避调优、安全审计、性能调优。**已完成（2026-11-09）**：Ping 结论、退避、缓存上限、5k 基线进 playbook §5.2 与 `CMP-SYNC`/`CMP-APP` 规格；过程记忆在 `history/works/2026-11-09-m4-hardening/`。
 
 ## 11. 风险与开放问题
 
 风险清单单一来源是 `plan/risks.md`，开放问题是 `plan/open-questions.md`。本节只留与架构边界直接相关的三条，避免两处维护：
 
 1. **设备身份是外部依赖**：`deviceId` 由公司网关登记，客户端不能自造。网关清理设备或换机时客户端会「看起来成功但拿不到数据」，错误映射与排障步骤必须先于 UI 落地。
-2. **能力边界由服务端决定**：GAL 不可用、Ping 未验证意味着「企业邮箱体验」的一部分在这套环境里不可承诺；UI 不得暴露对应入口。
+2. **能力边界由服务端决定**：GAL 不可用、Ping 不支持长轮询意味着「企业邮箱体验」的一部分在这套环境里不可承诺；UI 不得暴露对应入口。
 3. **协议线格式以实测为准**：规范与实现冲突时按服务端行为实现，并写进 playbook；否则会出现「代码符合规范但网关 502」的不可诊断故障。
 
 ## 12. 定级与确认记录
@@ -298,6 +298,6 @@ graph TD
 **仍待评审**：
 
 1. 模块边界（MailStore 单写入口、SyncEngine 单账号串行、EASClient 唯一协议面）——已按实测环境校准，需在 M1 立项评审中确认。
-2. 本地保留策略与附件缓存上限（`plan/open-questions.md` Q1、Q2）——M1 用真实规模校准。
+2. 本地保留策略（`plan/open-questions.md` Q1）——M1 用真实规模校准；附件缓存上限已定 2 GB + 最旧优先，不再待评。
 
 冻结后：场景卡转 `designed`，契约冻结，再按 `plan/roadmap.md` 拆任务。

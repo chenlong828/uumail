@@ -25,7 +25,7 @@ updated: 2026-11-10
 | 能力 | owner 场景 | 触发 | 结果 | 规则/不变量 | 数据 | 失败语义 | 频率 | 冷/热 | 变化可能性 |
 |---|---|---|---|---|---|---|---|---|---|
 | 账号接入 | `AccountSetupScene` | 用户填表点连接 | 账号 ready + 文件夹树 + 凭据入 Keychain | 顺序固定；失败不留半成品；设备未登记不重试 | accounts、folders、sync_state、Keychain | 分类错误，停在配置页 | 首次/换机 | 冷（用户等待） | 低 |
-| 文件夹与收件箱同步 | `SyncScene` | 启动、每 5 分钟、手动刷新 | 本地出现新邮件与新文件夹 | 单飞；批次与 key 同事务；失败保旧数据 | folders、messages、sync_state | 状态栏错误，后台退避 | 每 5 分钟 | 冷 | 中（轮询→Ping） |
+| 文件夹与收件箱同步 | `SyncScene` | 启动、每 5 分钟、手动刷新 | 本地出现新邮件与新文件夹 | 单飞；批次与 key 同事务；失败保旧数据 | folders、messages、sync_state | 状态栏错误，后台退避 | 每 5 分钟 | 冷 | 中（固定轮询） |
 | 浏览与阅读 | `ReadScene` | 选文件夹、选邮件 | 列表与正文 | 读路径不触网；缓存优先；缺正文先占位后补拉 | messages、message_bodies | 占位 + 重试入口 | 高频 | 热 | 低 |
 | 附件 | `ReadScene` | 点附件 | 本地文件并打开 | 同一附件单飞下载；缓存有预算 | attachments、附件缓存 | 提示失败可重试 | 中 | 冷 | 低 |
 | 本地搜索 | `ReadScene` | 输入关键字 | 结果列表 | 本地优先；<3 字符走 LIKE | messages、fts | 空结果/错误提示 | 中 | 热 | 低（未来远端兜底） |
@@ -205,7 +205,7 @@ graph TD
 - 负责 X：手动/自动刷新的节奏与单飞、通知条件、失败态到场景结果的映射、授权请求。
 - 不负责 Y：SyncKey、分页、退避细算（`SyncEngine`）；通知 UI（`Notifier` 实现）。
 - 拥有的数据：内存中的刷新状态与自动刷新任务（生命周期归本组件）。
-- 变化轴：刷新触发方式（轮询 → Ping）与通知策略。
+- 变化轴：刷新触发方式（首版固定 5 分钟轮询；Ping 已实测不支持长轮询）与通知策略。
 - 公开契约：§4.8。
 - 入口：`Sources/Scenes/SyncScene.swift#SyncScene`。
 - 依赖：`SyncEngine`、`MailDomain`（`Notifier`、`MailClock`）。扇出 1 + 端口。
@@ -438,7 +438,7 @@ public protocol MailClock: Sendable {
 }
 ```
 
-- 不变量：端口实现不得反向依赖场景；`AttachmentFiles.store` 原子写并执行预算淘汰（2GB LRU，Q2 默认）。
+- 不变量：端口实现不得反向依赖场景；`AttachmentFiles.store` 原子写并执行预算淘汰（2 GB 最旧优先，已决：`history/decisions/2026-11-09-attachment-cache-cap.md`）。
 - 错误模式：`MailError.storage(reason:)`、`invalidInput(reason:)`；凭据错误不吞。
 - 测试：每个实现用临时目录/内存替身；`MailClock` 替身让轮询测试即时。
 
@@ -643,7 +643,7 @@ public struct ComposeScene: Sendable {
 - 触发：点附件；经过：`ReadScene.downloadAttachment` → 缓存命中/`fetchAttachment` → `AttachmentFiles.store` → `markAttachmentCached`。
 - 同步依赖：1。失败：抛 `MailError`，UI 提示可重试。
 - 幂等：同一 `imageRef` 单飞；缓存命中不发网络。
-- 资源：并发上限 3；缓存 2GB LRU（Q2）。
+- 资源：并发上限 3；缓存 2 GB 最旧优先淘汰（已决）。
 - 一致性：先写文件再标记路径；标记失败不回滚文件（可重下）。
 
 ## 6. 数据所有权矩阵

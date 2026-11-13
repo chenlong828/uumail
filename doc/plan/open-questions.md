@@ -2,7 +2,7 @@
 layer: plan
 module: global
 status: draft
-updated: 2026-11-09
+updated: 2026-11-13
 ---
 
 # 开放问题
@@ -13,6 +13,8 @@ updated: 2026-11-09
 ## 已决（2026-11-09）
 
 Provision 深度、多账号、DeviceId 来源、失败件上限、抓包入库、HTML 远程资源、联系人边界、OAuth/Graph — 八项已确认，见 `history/decisions/2026-11-09-scope-baseline.md`。需求状态同批落定：REQ-0001…0007 `accepted`，其余 `draft`。
+
+附件缓存上限与淘汰策略（原 Q2）：按 A 方案落地，总容量 2 GB（`2_000_000_000` 字节）、按修改时间最旧优先淘汰；见 `history/decisions/2026-11-09-attachment-cache-cap.md`。
 
 ## Q1 本地保留策略：正文与邮件怎么裁剪
 
@@ -25,13 +27,3 @@ Provision 深度、多账号、DeviceId 来源、失败件上限、抓包入库�
 
 **默认**：A，具体窗口在 M1 用真实邮箱规模校准后写进 `CMP-STORE/spec.md`。**落点**：`design/components/CMP-STORE/spec.md`。
 
-## Q2 附件缓存上限与淘汰策略
-
-**为什么现在要问**：附件缓存（`AttachmentCache`）没有上限会吃满磁盘；上限过低会导致用户反复下载同一附件。
-
-**选项**
-- A 总容量 2GB + LRU（推荐）。代价：大附件多时需要重下。
-- B 按文件夹/时间策略清理。代价：规则难解释，用户会遇到「昨天能打开、今天要重下」。
-- C 不设上限，只提示清理。代价：磁盘风险由用户承担。
-
-**默认**：A，数值在 M1 落地时按机器磁盘与真实附件分布确认。**落点**：`design/components/CMP-EAS/playbook.md` §5、`design/architecture.md` §6。

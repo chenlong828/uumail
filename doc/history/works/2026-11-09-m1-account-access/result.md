@@ -1,11 +1,13 @@
 ---
-layer: works
+layer: history
 module: eas
-status: active
-updated: 2026-11-09
+status: frozen
+updated: 2026-11-13
 ---
 
 # W-2026-11-09-m1-account-access 结果
+
+> 已归档（2026-11-13）。本文件是过程记忆；下方「未决 / 遗留」写于 2026-11-09，其中同步与正文已由后续工序落地，现状以 `design/` 与 `plan/roadmap.md` 为准。
 
 ## 验收结果
 

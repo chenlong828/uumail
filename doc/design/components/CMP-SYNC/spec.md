@@ -2,7 +2,7 @@
 layer: design
 module: sync
 status: active
-updated: 2026-11-09
+updated: 2026-11-13
 component: CMP-SYNC
 ---
 
@@ -18,7 +18,7 @@ component: CMP-SYNC
 - 不负责 Y：MIME 生成、数据库 schema、UI 状态、设备策略 UI。
 - 内部逻辑：状态机 `idle → folderSync → mailSync → ping → idle`；异常态 `offline / authFailed / deviceNotRegistered / policyBlocked / throttled`，每个态有显式退出条件与重试预算。
 - 拥有的数据：**无持久业务数据**；只持有内存状态机与内存队列，持久状态落 CMP-STORE 的 `sync_state`。
-- 变化轴：服务器行为差异与限流策略（沉到 CMP-EAS 之下）、同步触发方式（首版轮询/手动，Ping 验证后再加）。
+- 变化轴：服务器行为差异与限流策略（沉到 CMP-EAS 之下）、同步触发方式（首版 5 分钟轮询/手动；Ping 已实测不支持长轮询，不再作为选项，见 `CMP-EAS/playbook.md` §5.2）。
 - 公开契约：`CMP-SYNC#start`、`#stop`、`#forceSync`、`#stateStream`。
 - 入口：`Sources/SyncEngine/SyncEngine.swift#SyncEngine`（planned）
 - 依赖：MailGateway（CMP-EAS 实现）、MailStore、DeviceProfileStore、CredentialProvider（Basic）、Clock。扇出 5，符合热/冷上限。
@@ -27,7 +27,7 @@ component: CMP-SYNC
 - 单独运行：`swift test --filter SyncEngineTests`（planned）
 - 删除测试：删掉后 UI 组件会各自直连 CMP-EAS 并各自维护 SyncKey → 复杂度集中，是真边界。
 
-## 契约卡：SyncEngine v1（planned）
+## 契约卡：SyncEngine v1（`syncOnce` 已落地，`start/stop/stateStream` 待做）
 
 - 签名：
   - `start(account: AccountID) async`
@@ -39,10 +39,10 @@ component: CMP-SYNC
   - `authFailed`：停止自动重试，转登录态，等用户重新输入凭据；
   - `deviceNotRegistered`：停止并给出设备登记指引（见 CMP-EAS playbook §6），不无限重试；
   - `policyBlocked`：停止同步，保留本地数据；
-  - `throttled`：按 `Retry-After` 退避，指数上限 30 分钟；
+  - `throttled`：读 `Retry-After`（缺省 30s），夹在 1–300s 内**等待一次后重试一次**；再次被限流则本次同步失败，交给下一次轮询；
   - `transient`：退避重试，连续 5 次转 `offline`。
 - 幂等 / 顺序 / 并发：单账号串行；`forceSync` 与自动同步合并，不并行两份。
-- 超时 / 取消 / 背压：Sync 单命令 60s；Ping 独立超时；附件补拉队列上限 3，超出暂停。
+- 超时 / 取消 / 背压：Sync 单命令 60s；不实现 Ping 长连接（网关不支持），刷新由 App 的 5 分钟轮询驱动；附件补拉队列上限 3，超出暂停。
 - 一致性 / 可见性：批次提交后列表立即可见；正文缺失显示占位并排入补拉。
 - 观测：`last_sync_at`、`last_ping_at`、`sync_key_age`、`batch_size`、`throttle_count`、`sync_duration`。
 
@@ -55,13 +55,14 @@ component: CMP-SYNC
 | SCN-0004 正文 | 列表命中 → 缺正文 → `fetchBody` → `applySyncBatch`（更新正文） | 失败保留占位，退避重取 |
 | SCN-0005 附件 | `fetchAttachment` → 写 AttachmentCache → 更新元数据 | 断点续传、超限提示 |
 
-### 实现进度（2026-11-09）
+### 实现进度（2026-11-13）
 
 | 契约 | 代码 | 测试 |
 |---|---|---|
 | `syncOnce()`：Provision → FolderSync → 收件箱分页 → 落库 | ✅ `SyncEngine.swift` | 6 个用例（bootstrap、增量、重建、分页、设备拒绝、无收件箱） |
 | `start/stop/stateStream` | ⬜（当前状态只可读） | — |
-| 退避与限流 | ⬜ | — |
+| 退避与限流 | ✅ `SyncEngine.syncOnce`：`throttled` 等一次（1–300s）后重试一次 | 单测：注入 throttled 一次，断言等待 2s 且成功 |
+| 轮询驱动（5 分钟） | ✅ App 层 task 循环 `UumailApp.swift` | 失败保留旧数据；手测待整点长跑 |
 
 **实测口径**：分页停止条件用「本轮新增 < WindowSize」，`MoreAvailable` 不可靠（见 playbook §3）。
 

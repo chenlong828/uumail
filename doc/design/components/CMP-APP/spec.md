@@ -2,7 +2,7 @@
 layer: design
 module: app
 status: active
-updated: 2026-11-09
+updated: 2026-11-13
 component: CMP-APP
 ---
 
@@ -10,7 +10,7 @@ component: CMP-APP
 
 ## 模块卡
 
-- 状态：`active`（账号配置页 + 文件夹侧栏 + 邮件列表已落地；正文、阅读、撰写未实现）
+- 状态：`active`（账号配置、列表、阅读、撰写、搜索、通知已落地；附件真机未验）
 - 单元：组件
 - 层 / 类型：L2；UI 外壳
 - 业务价值：让用户能看见并操作邮箱；没有它，同步能力只存在于命令行。
@@ -35,13 +35,16 @@ component: CMP-APP
 | 文件夹侧栏 + 邮件列表 | `MailboxView.swift` | 真机 200 封渲染；发件人显示名解析、本地时间；`MailboxModel` 3 个单测 |
 | 刷新与失败状态 | `MailboxModel.refresh()` | 单测（失败保留缓存） |
 | 三栏 + 正文阅读（WKWebView，禁 JS，CSP 阻止远程资源，单封可放行） | `MessageBodyView.swift` | 真机：点选邮件拉取 HTML 并渲染；3 个模型单测 |
-| 附件条：点击下载到缓存并打开 | `MessageBodyView.swift` | 待真机附件验证 |
+| 附件条：点击下载到缓存并打开 | `MessageBodyView.swift`、`MailService` 下载路径 | 缓存淘汰 2 个单测；真机附件下载未验 |
 | 搜索框（本地 FTS，跨文件夹） | `MailboxView` searchable | 1 个模型单测 |
 | 新邮件系统通知 | `Notifications.swift` | 1 个通知单测；权限拒绝静默 |
-| 撰写：新建 / 回复 / 转发 / 存草稿 / 发送 | `ComposeView.swift`、`ComposeModel.swift` | 5 个模型单测；待真机发信验证 |
+| 撰写：新建 / 回复 / 转发 / 存草稿 / 发送 | `ComposeView.swift`、`ComposeModel.swift` | 5 个模型单测；真机发信经 CLI `send` 验证同一通道，UI 点击待验 |
+| 刷新节奏：5 分钟轮询（Ping 不支持） | `UumailApp.swift` task 循环 | 失败保留旧数据、下一轮重试；手测待整点长跑 |
+| 附件缓存上限：2 GB 最旧优先淘汰 | `AttachmentCache.prune`，每次写缓存后触发 | 2 个单测（超限淘汰、未超限不动） |
 
 ## 待办
 
 - 回复未带真实 `Message-ID`（本地只存 ServerId），会话归并依赖服务器；需在 M3 补 `InternetMessageId` 存储。
 - 撰写暂不支持加附件；发送成功后无本地 Sent 镜像（依赖服务器 `SaveInSentItems`）。
-- 无账号时表单空白；考虑 DEBUG 下支持从探针 `.env` 导入。
+- 附件下载的真机验证未做（仅有缓存淘汰单测）。
+- UI 撰写页的点击发送未单独验证（真机验证走的是 CLI `send`，同一 `SendMail` 通道）。

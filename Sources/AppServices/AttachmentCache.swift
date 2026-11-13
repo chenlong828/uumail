@@ -1,7 +1,8 @@
 import Foundation
 
 /// Keeps the attachment cache under a size budget by deleting the oldest files first.
-/// The design default is 2 GB (see plan/open-questions.md Q2).
+/// The design default is 2 GB, oldest-first eviction
+/// (see doc/design/components/CMP-APP/spec.md and history/decisions/2026-11-09-attachment-cache-cap.md).
 public enum AttachmentCache {
     public static let defaultMaxBytes: Int64 = 2_000_000_000
 

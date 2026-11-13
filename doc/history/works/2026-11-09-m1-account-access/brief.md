@@ -1,11 +1,13 @@
 ---
-layer: works
+layer: history
 module: eas
-status: active
-updated: 2026-11-09
+status: frozen
+updated: 2026-11-13
 ---
 
 # W-2026-11-09-m1-account-access 工序简报
+
+> 已归档（2026-11-13）。本文件是过程记忆，不是现行设计依据；验收见 `result.md`，现行契约在 `design/components/CMP-EAS/` 与 `CMP-STORE/`。
 
 ## 需求
 

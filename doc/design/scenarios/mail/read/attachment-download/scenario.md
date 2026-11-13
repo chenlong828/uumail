@@ -35,7 +35,7 @@ scenario: SCN-0005
 
 ## 不可变引用
 
-- 缓存目录布局与 LRU 上限（`plan/open-questions.md` Q2，M1 定具体值）。
+- 缓存目录布局与淘汰策略：总上限 2 GB、按修改时间最旧优先（`history/decisions/2026-11-09-attachment-cache-cap.md`，契约在 `design/components/CMP-APP/spec.md`）。
 - `FileReference` 优先、`AttachmentName` 回退的技能顺序（playbook §5）。
 
 ## 测试

@@ -2,7 +2,7 @@
 layer: design
 module: store
 status: active
-updated: 2026-11-09
+updated: 2026-11-13
 component: CMP-STORE
 ---
 
@@ -59,6 +59,8 @@ component: CMP-STORE
 | sync_state | CMP-STORE | `applySyncBatch` | CMP-SYNC | 强一致（与批次同事务） |
 | outbox | CMP-STORE | `enqueueOutbound` / `markOutboundResult` | CMP-OUT、UI | 强一致 |
 | fts | CMP-STORE | 随批次事务增量更新 | 搜索 | 最终一致（≤ 1 批次延迟） |
+
+本地库为明文 SQLite（WAL + FTS5），附件缓存同样明文；加密依赖 FileVault，不做 SQLCipher、无审计日志——2026-11-09 安全审计的已知接受项，见 `plan/risks.md` R12。
 
 ### 实现进度（2026-11-09）
 

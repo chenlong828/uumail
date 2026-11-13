@@ -2,7 +2,7 @@
 layer: design
 module: eas
 status: active
-updated: 2026-11-09
+updated: 2026-11-13
 component: CMP-EAS
 ---
 
@@ -40,7 +40,7 @@ component: CMP-EAS
 | `CMP-EAS#send` | `SendMail` | ✅ | MIME 为 opaque 原始字节，返回 `200` + 0B |
 | `CMP-EAS#moveItems` | `MoveItems` | ⚠️ 未验证 | M1 不依赖；删除/移动先做本地意图 |
 | `CMP-EAS#search` | `Search` / `Find` | ❌ | GAL `Store Status=2`；降级本地搜索 |
-| `CMP-EAS#ping` | `Ping` | ⚠️ 未验证 | 未通过前按轮询排期 |
+| `CMP-EAS#ping` | `Ping` | ❌ 不支持长轮询 | 三档心跳均 `Status=4`（playbook §5.2）；方法保留仅作复测 |
 
 实测环境与参数细节见 `design/components/CMP-EAS/playbook.md`（同目录）。
 
@@ -80,7 +80,7 @@ component: CMP-EAS
 | 其它 4xx/5xx | `permanent` / `transient` 按码分类 | 视码 | 交调用方分类 |
 
 - 幂等 / 顺序 / 并发：`send` 带 `ClientId`；同账号串行（由 CMP-SYNC 保证）；本层不做跨账号并发假设。
-- 超时 / 取消 / 背压：命令级 60s，Ping 独立长超时，附件下载流式写入。
+- 超时 / 取消 / 背压：命令级 60s；不依赖 Ping 长连接（网关不支持）；附件下载流式写入。
 - 一致性 / 可见性：只做单次请求语义，不保证跨命令一致性。
 - 兼容性：协议版本按 `16.1 → 14.1 → 14.0` 降级并持久化；降级是兼容性变更，需记录到 ADR。
 - 契约测试：golden WBXML round-trip、错误映射表逐行、401/449/503/空 200/坏 body。

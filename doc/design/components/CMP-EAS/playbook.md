@@ -2,7 +2,7 @@
 layer: design
 module: eas
 status: planned
-updated: 2026-11-09
+updated: 2026-11-13
 component: CMP-EAS
 ---
 
@@ -90,7 +90,7 @@ EAS 用 WBXML 1.3。以下四点按**实测字节**而非规范字面实现：
 | 建/删文件夹 | ✅ | `FolderCreate` / `FolderDelete` 均 `Status=1` |
 | 联系人文件夹 | ⚠️ | 文件夹存在，Sync `Status=1` 但无条目（疑似为空） |
 | GAL 目录搜索 | ❌ | `Search` → `Store Status=2`；`Find` → 2；`ResolveRecipients` → 5 |
-| Ping | ⚠️ 未验证 | 探针未覆盖；M3 前必须单独验证 |
+| Ping 长轮询 | ❌ 不支持 | 三档心跳均立即 `Status=4`，见 §5.2；客户端改 5 分钟轮询 |
 | MoveItems | ⚠️ 未验证 | M1 不依赖；移动先落本地意图 |
 
 首版取舍：**读 + 发 + 附件为主干；联系人只做本机通讯录 + 收件人历史；GAL 入口不暴露。**
@@ -104,6 +104,12 @@ EAS 用 WBXML 1.3。以下四点按**实测字节**而非规范字面实现：
 3. **`Body/Type` 可能是 1（纯文本）。** 同一封信问 `Type=2` 得到 2（HTML，约 1 万字符），问 `Type=1` 得到 1（纯文本约 1200 字符，`\r\n` 保留）。渲染前必须按返回的 `Type` 分支，纯文本要按 `pre-wrap` 排版，否则换行全丢。
 
 旁证：WBXML 里同名标签跨页（`CollectionId` 在页 0/6/8），编码器必须**确定性地挑最低页**；否则 `Fetch` 内部切页会挑到页 8，同样回 `Status=2`。
+
+## 5.2 Ping 实测：不支持长轮询（2026-11-09）
+
+`Ping` 按 EAS 16.1 发 `HeartbeatInterval` = 15 / 60 / 300 秒，三档都在 0 秒内返回 `Status=4`——既不是「心跳超时」也不是「有变更」。调大间隔不会让它变成「有新邮件就立即返回」。**判定：本网关不支持长轮询**，不是 Ping 参数问题。
+
+客户端行为：`EASClient.ping` 保留（复测用，CLI 未暴露子命令），App 不依赖它刷新，改为 **5 分钟轮询 `Sync`**（`UumailApp` 的 task 循环，间隔见 `CMP-APP/spec.md`；失败保留旧数据，下一轮再试）。UI 的刷新节奏按轮询如实标注，不承诺秒级推送。
 
 ## 6. 设备登记与失效处理
 

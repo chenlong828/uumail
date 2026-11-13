@@ -1,11 +1,13 @@
 ---
-layer: works
+layer: history
 module: global
-status: active
-updated: 2026-11-09
+status: frozen
+updated: 2026-11-13
 ---
 
 # W-2026-11-09-m4-hardening 工序简报
+
+> 已归档（2026-11-13）。本文件是过程记忆，不是现行设计依据；结论已落到 `design/components/CMP-EAS/playbook.md` §5.2、`CMP-SYNC`、`CMP-APP` 规格与 `history/decisions/2026-11-09-attachment-cache-cap.md`。
 
 ## 需求
 
