@@ -1,5 +1,6 @@
-import EASClient
 import CryptoKit
+import EASAdapter
+import EASClient
 import Foundation
 import MailStore
 import SyncEngine
@@ -10,7 +11,7 @@ public final class MailService: MailServiceProtocol, MailSendService, @unchecked
     public let store: MailStore
     public let accountID: AccountID
     private let configuration: EASConfiguration
-    private let client: EASClient
+    private let gateway: EASAdapter
     private let engine: SyncEngine
 
     public init(
@@ -21,16 +22,17 @@ public final class MailService: MailServiceProtocol, MailSendService, @unchecked
     ) throws {
         self.configuration = configuration
         store = try MailStore(path: databasePath)
-        client = EASClient(
+        let client = EASClient(
             configuration: configuration,
             transport: transport ?? URLSessionTransport(configuration: configuration),
             policyKey: policyKey
         )
+        gateway = EASAdapter(client: client)
         accountID = try Self.existingOrNewAccount(store: store, configuration: configuration)
         engine = SyncEngine(
-            gateway: EASGateway(client: client),
+            gateway: gateway,
             store: StoreAdapter(store: store),
-            account: AccountRef(accountID.raw)
+            account: accountID
         )
     }
 
@@ -49,14 +51,10 @@ public final class MailService: MailServiceProtocol, MailSendService, @unchecked
 
     /// Fetches one body, stores it as HTML and reports whether the gateway had to truncate it.
     public func fetchBody(folderID: String, serverID: String) async throws -> FetchedMessageBody {
-        do {
-            let fetched = try await client.fetchBody(collectionID: folderID, serverID: serverID)
-            let html = fetched.isHTML ? fetched.payload : HTMLText.fromPlainText(fetched.payload)
-            try store.applyBody(account: accountID, folder: folderID, serverID: serverID, html: html)
-            return FetchedMessageBody(html: html, isTruncated: fetched.isTruncated)
-        } catch {
-            throw EASGateway.map(error)
-        }
+        let fetched = try await gateway.fetchBody(collectionID: folderID, serverID: serverID)
+        let html = fetched.isHTML ? fetched.text : HTMLText.fromPlainText(fetched.text)
+        try store.applyBody(account: accountID, folder: folderID, serverID: serverID, html: html)
+        return FetchedMessageBody(html: html, isTruncated: fetched.isTruncated)
     }
 
     // MARK: - Sending
@@ -79,12 +77,12 @@ public final class MailService: MailServiceProtocol, MailSendService, @unchecked
                 draft: draft,
                 messageID: "\(UUID().uuidString)@\(configuration.host)"
             )
-            try await client.send(mime: mime, clientID: outboxID)
+            try await gateway.send(mime: mime, clientID: outboxID)
             try store.markOutboxSent(account: accountID, outboxID: outboxID)
             return outboxID
         } catch {
             try store.markOutboxFailed(account: accountID, outboxID: outboxID, error: String(describing: error))
-            throw EASGateway.map(error)
+            throw error
         }
     }
 
@@ -108,12 +106,7 @@ public final class MailService: MailServiceProtocol, MailSendService, @unchecked
         if let cached = attachment.cachePath, FileManager.default.fileExists(atPath: cached) {
             return URL(fileURLWithPath: cached)
         }
-        let data: Data
-        do {
-            data = try await client.fetchAttachment(fileReference: attachment.fileReference)
-        } catch {
-            throw EASGateway.map(error)
-        }
+        let data = try await gateway.fetchAttachment(fileReference: attachment.fileReference)
         try FileManager.default.createDirectory(
             at: destination.deletingLastPathComponent(),
             withIntermediateDirectories: true

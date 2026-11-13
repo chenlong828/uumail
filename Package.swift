@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .library(name: "EASClient", targets: ["EASClient"]),
         .library(name: "MailDomain", targets: ["MailDomain"]),
+        .library(name: "EASAdapter", targets: ["EASAdapter"]),
         .library(name: "MailStore", targets: ["MailStore"]),
         .library(name: "SyncEngine", targets: ["SyncEngine"]),
         .library(name: "AppServices", targets: ["AppServices"]),
@@ -23,13 +24,17 @@ let package = Package(
         ),
         .target(name: "MailDomain"),
         .target(
+            name: "EASAdapter",
+            dependencies: ["EASClient", "MailDomain"]
+        ),
+        .target(
             name: "MailStore",
             dependencies: ["MailDomain", .product(name: "GRDB", package: "GRDB.swift")]
         ),
         .target(name: "SyncEngine", dependencies: ["MailDomain"]),
         .target(
             name: "AppServices",
-            dependencies: ["EASClient", "MailDomain", "MailStore", "SyncEngine"]
+            dependencies: ["EASAdapter", "EASClient", "MailDomain", "MailStore", "SyncEngine"]
         ),
         .executableTarget(
             name: "uumail",
@@ -42,6 +47,7 @@ let package = Package(
         ),
         .testTarget(name: "EASClientTests", dependencies: ["EASClient"]),
         .testTarget(name: "MailDomainTests", dependencies: ["MailDomain"]),
+        .testTarget(name: "EASAdapterTests", dependencies: ["EASAdapter", "EASClient", "MailDomain"]),
         .testTarget(name: "MailStoreTests", dependencies: ["MailStore"]),
         .testTarget(name: "SyncEngineTests", dependencies: ["SyncEngine"]),
         .testTarget(name: "AppServicesTests", dependencies: ["AppServices"]),

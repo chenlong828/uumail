@@ -224,6 +224,20 @@ public struct OutboxItem: Equatable, Sendable {
     }
 }
 
+/// A body fetched from the gateway. `isHTML` says whether the payload is HTML or
+/// plain text (the scene layer converts), `isTruncated` says the server cut it.
+public struct FetchedBody: Equatable, Sendable {
+    public var text: String
+    public var isHTML: Bool
+    public var isTruncated: Bool
+
+    public init(text: String, isHTML: Bool, isTruncated: Bool) {
+        self.text = text
+        self.isHTML = isHTML
+        self.isTruncated = isTruncated
+    }
+}
+
 /// Reference to a cached attachment file, used by the `AttachmentFiles` port.
 public struct AttachmentRef: Hashable, Sendable {
     public let fileReference: String

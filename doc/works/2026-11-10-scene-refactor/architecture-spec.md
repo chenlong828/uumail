@@ -378,7 +378,7 @@ graph TD
       func provisionIfNeeded() async throws
       func fetchFolders(syncKey: String) async throws -> FolderListing
       func fetchMessages(collectionID: String, syncKey: String, window: Int, filterType: Int) async throws -> MessageDelta
-      func fetchBody(collectionID: String, serverID: String) async throws -> String
+      func fetchBody(collectionID: String, serverID: String) async throws -> FetchedBody
       func fetchAttachment(fileReference: String) async throws -> Data
       func send(mime: Data, clientID: String) async throws
   }
@@ -533,7 +533,7 @@ public actor SyncScene {
 
 ```swift
 public struct MessageRef: Hashable, Sendable { folderID, serverID }
-public enum BodyEvent: Sendable { case cached(String), loaded(String), failed(MailError) }
+public enum BodyEvent: Sendable { case cached(String), loaded(FetchedBody), failed(MailError) }
 public struct ReadScene: Sendable {
     public func folders() throws -> [Folder]
     public func messages(folderID: String, limit: Int = 200) throws -> [Message]
@@ -575,7 +575,7 @@ public struct ComposeScene: Sendable {
 @MainActor @Observable public final class MailboxViewModel {
     public private(set) var folders: [Folder]
     public private(set) var messages: [Message]
-    public private(set) var body: BodyPresentation   // none/loading/loaded(html)/failed(text)
+    public private(set) var body: BodyPresentation   // none/loading/loaded(html,truncated)/failed(text)
     public private(set) var attachments: [Attachment]
     public private(set) var sync: SyncPresentation   // idle/syncing/failed(text)/lastSyncedAt
     public var selection: Selection                   // folderID/messageID/searchQuery
@@ -851,6 +851,7 @@ App 轮询 + CLI `sync --db <app 库>`：两个进程可能同时推进同一账
 | D7 | outbox 状态显式取值 + 租约列（schema v2） | 复用 `failed` + 计数：跨进程与重试分类无法准确表达 |
 | D8 | CLI 诊断命令允许直连 `EASClient` | 把 `ping/options` 塞进 `MailGateway`：为诊断扩大业务契约 |
 | D9 | 组合根只装配、注入、路由；业务判断一律不进组合根 | 在组合根里读业务状态/做失败分支：会逐步长成第二个 `MailService`；用聚合门面“顺便”处理：同样腐化 |
+| D10 | `fetchBody` 返回 `FetchedBody{text,isHTML,isTruncated}`，不压成 `String`（2026-11-13） | 保留 SCN-0004 的截断提示与纯文本渲染规则；决策记录 `history/decisions/2026-11-13-fetched-body-contract.md` | 压成 `String`：丢 `Type`/`Truncated`，要改场景与组件不变量 |
 
 ### 迁移与回滚
 

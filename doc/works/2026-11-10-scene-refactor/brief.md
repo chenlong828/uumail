@@ -67,7 +67,7 @@ updated: 2026-11-13
 | ID | 类型 | 组件 | 状态 | 内容 | 装载 |
 |---|---|---|---|---|---|
 | T-1110-01 | change | CMP-DOMAIN | done | 新建 `MailDomain`：值类型、端口、`MailError`、`ServerConfiguration`；`typealias` 过渡 | `Sources/MailDomain/**`、`Package.swift` |
-| T-1110-02 | change | CMP-EASADAPTER | pending | `EASAdapter` 实现 `MailGateway` v2；`MailService` 内部改走端口 | `Sources/EASAdapter/**`、`MailService.swift` |
+| T-1110-02 | change | CMP-EASADAPTER | done | `EASAdapter` 实现 `MailGateway` v2；`MailService` 内部改走端口 | `Sources/EASAdapter/**`、`MailService.swift` |
 | T-1110-03 | change | CMP-UC-* | pending | 新建 `Scenes`：AccountSetup / Sync / Read / Compose | `Sources/Scenes/**` |
 | T-1110-04 | change | CMP-PRES | pending | 薄视图模型；视图去 `service`、去编排 | `Sources/Presentation/**`、`Sources/uumail/**` |
 | T-1110-05 | change | CMP-CLI | pending | `uumailctl` 改调场景；删重复账号逻辑 | `Sources/uumailctl/**` |
@@ -103,4 +103,5 @@ updated: 2026-11-13
 
 | 任务 | 日期 | 结论 |
 |---|---|---|
-| T-1110-01 | 2026-11-13 | `MailDomain` 目标落地（`Values/Errors/Configuration/Ports`，仅依赖 Foundation）；`MailStore`、`SyncEngine` 的值类型改为 `typealias`，`SyncStore` 改为同步、`EASGateway` 实现 7 个操作；新增 `MailDomainTests` 3 例；83 个测试全绿 |
+| T-1110-01 | 2026-11-13 | `MailDomain` 目标落地（`Values/Errors/Configuration/Ports`，仅依赖 Foundation）；`MailStore`、`SyncEngine` 的值类型改为 `typealias`，`SyncStore` 改为同步、网关端口实现 7 个操作；新增 `MailDomainTests` 3 例；83 个测试全绿 |
+| T-1110-02 | 2026-11-13 | 新建 `EASAdapter` 目标（`EASAdapter` 类型 + 唯一错误映射）；`MailService` 的正文/发信/附件改走端口，`isHTML`/`isTruncated` 由 `FetchedBody` 保留（D10）；新增 `EASAdapterTests` 4 例；87 个测试全绿 |

@@ -7,7 +7,7 @@ public protocol MailGateway: Sendable {
     func provisionIfNeeded() async throws
     func fetchFolders(syncKey: String) async throws -> FolderListing
     func fetchMessages(collectionID: String, syncKey: String, window: Int, filterType: Int) async throws -> MessageDelta
-    func fetchBody(collectionID: String, serverID: String) async throws -> String
+    func fetchBody(collectionID: String, serverID: String) async throws -> FetchedBody
     func fetchAttachment(fileReference: String) async throws -> Data
     func send(mime: Data, clientID: String) async throws
 }
