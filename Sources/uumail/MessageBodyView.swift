@@ -1,17 +1,18 @@
-import AppServices
-import MailStore
+import MailDomain
+import Presentation
 import SwiftUI
 import WebKit
 
 struct MessageBodyView: View {
-    let state: MailboxModel.DetailState
-    let attachments: [StoredAttachment]
+    let bodyPresentation: BodyPresentation
+    let notice: BodyNotice?
+    let attachments: [Attachment]
     let onRetry: () -> Void
-    let onOpenAttachment: (StoredAttachment) async -> Void
+    let onOpenAttachment: (Attachment) async -> Void
     @State private var allowRemoteContent = false
 
     var body: some View {
-        switch state {
+        switch bodyPresentation {
         case .none:
             ContentUnavailableView("选择一封邮件", systemImage: "envelope.open")
         case .loading:
@@ -25,7 +26,7 @@ struct MessageBodyView: View {
             } actions: {
                 Button("重试", action: onRetry)
             }
-        case .loaded(let content):
+        case .loaded(let html, let isTruncated):
             VStack(spacing: 0) {
                 if !attachments.isEmpty {
                     HStack(spacing: 8) {
@@ -52,7 +53,7 @@ struct MessageBodyView: View {
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
-                if let banner = banner(for: content) {
+                if let banner = banner(for: isTruncated) {
                     HStack(spacing: 6) {
                         Image(systemName: banner.symbol)
                         Text(banner.text)
@@ -68,7 +69,7 @@ struct MessageBodyView: View {
                     .padding(.bottom, 6)
                 }
                 Divider()
-                MessageWebView(html: content.html, allowRemoteContent: allowRemoteContent)
+                MessageWebView(html: html, allowRemoteContent: allowRemoteContent)
             }
         }
     }
@@ -82,19 +83,21 @@ struct MessageBodyView: View {
 
     /// Tells the reader what it is looking at: a preview that is still filling in, a body the
     /// gateway had to cut short, or a failed fetch that fell back to the preview.
-    private func banner(for content: MailboxModel.BodyContent) -> Banner? {
-        if content.isPreview {
-            if content.error != nil {
-                return Banner(
-                    text: "正文获取失败，当前显示的是摘要", symbol: "exclamationmark.triangle",
-                    isProblem: true, allowsRetry: true
-                )
-            }
+    private func banner(for isTruncated: Bool) -> Banner? {
+        switch notice {
+        case .fetchingFullBody:
             return Banner(
                 text: "正在获取完整正文…", symbol: "arrow.down.circle", isProblem: false, allowsRetry: false
             )
+        case .previewFallback:
+            return Banner(
+                text: "正文获取失败，当前显示的是摘要", symbol: "exclamationmark.triangle",
+                isProblem: true, allowsRetry: true
+            )
+        case nil:
+            break
         }
-        if content.isTruncated {
+        if isTruncated {
             return Banner(
                 text: "正文过长，网关只返回了前面一部分", symbol: "scissors",
                 isProblem: true, allowsRetry: false

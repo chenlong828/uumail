@@ -12,6 +12,7 @@ let package = Package(
         .library(name: "SyncEngine", targets: ["SyncEngine"]),
         .library(name: "Outbox", targets: ["Outbox"]),
         .library(name: "Scenes", targets: ["Scenes"]),
+        .library(name: "Presentation", targets: ["Presentation"]),
         .library(name: "Composition", targets: ["Composition"]),
         .library(name: "AppServices", targets: ["AppServices"]),
         .executable(name: "uumail", targets: ["uumail"]),
@@ -40,14 +41,25 @@ let package = Package(
             name: "Scenes",
             dependencies: ["MailDomain", "MailStore", "SyncEngine", "Outbox"]
         ),
-        .target(name: "Composition", dependencies: ["MailDomain"]),
+        .target(
+            name: "Presentation",
+            dependencies: ["MailDomain", "Scenes"]
+        ),
+        .target(
+            name: "Composition",
+            dependencies: [
+                "EASAdapter", "EASClient", "MailDomain", "MailStore", "Outbox",
+                "Presentation", "Scenes", "SyncEngine",
+            ],
+            swiftSettings: [.define("DEBUG", .when(configuration: .debug))]
+        ),
         .target(
             name: "AppServices",
             dependencies: ["EASAdapter", "EASClient", "MailDomain", "MailStore", "Outbox", "Scenes", "SyncEngine"]
         ),
         .executableTarget(
             name: "uumail",
-            dependencies: ["AppServices", "MailStore"],
+            dependencies: ["Composition", "Presentation"],
             swiftSettings: [.define("DEBUG", .when(configuration: .debug))]
         ),
         .executableTarget(
@@ -62,6 +74,10 @@ let package = Package(
         .testTarget(name: "OutboxTests", dependencies: ["Outbox", "MailStore", "MailDomain"]),
         .testTarget(name: "SyncEngineTests", dependencies: ["SyncEngine"]),
         .testTarget(name: "ScenesTests", dependencies: ["Scenes", "MailDomain", "MailStore", "SyncEngine", "Outbox"]),
+        .testTarget(
+            name: "PresentationTests",
+            dependencies: ["Presentation", "Scenes", "MailDomain", "MailStore", "SyncEngine", "Outbox"]
+        ),
         .testTarget(name: "AppServicesTests", dependencies: ["AppServices"]),
     ]
 )
