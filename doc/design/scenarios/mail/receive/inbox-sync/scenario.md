@@ -1,8 +1,8 @@
 ---
 layer: design
 module: mail
-status: draft
-updated: 2026-11-09
+status: designed
+updated: 2026-11-13
 flow: mail/receive
 scenario: SCN-0003
 ---
@@ -14,7 +14,7 @@ scenario: SCN-0003
 ## 入口
 
 - `CMP-EAS#sync`、`CMP-EAS#fetchBody`
-- `CMP-SYNC#start` / `#forceSync`
+- `SyncEngine.syncOnce()`（`start` / `forceSync` 未实现，刷新由 App 的 5 分钟轮询驱动）
 - `CMP-STORE#applySyncBatch`
 
 ## 运行序
@@ -51,4 +51,15 @@ scenario: SCN-0003
 
 ## 状态
 
-`draft`：运行序与测试方案齐；`Fake EAS` 回放器与组件代码未落地。
+`designed`（2026-11-13 核对）。运行序、引用、测试方案与入口齐；实现与验证如下。
+
+实现：`syncOnce`（Provision → FolderSync → 收件箱分页 → 落库）已落地，真机 5 轮 × 25 封；`start/stop/stateStream` 未实现。分页停止条件以实测为准：本轮新增少于 `WindowSize` 即停（playbook §3）。
+
+| 测试项 | 现状 |
+|---|---|
+| `T-SCN-0003-01` | 部分（组件级）：`SyncEngineTests`「first sync is two requests and only the window is written」断言窗口与 key，真机 125 封入列表；「列表 30 条」未在测试中断言 |
+| `T-SCN-0003-02` | 通过（组件级）：`SyncEngineTests`「incremental sync resumes from the stored key」 |
+| `T-SCN-0003-03` | 通过（组件级）：`MailStoreTests`「re-applying the same batch keeps one row per server id」 |
+| `T-SCN-0003-04` | 通过（组件级）：`MailStoreTests`「a failed batch does not advance the key」 |
+
+未转 `verified` 的原因：四项都有组件级断言，但场景要求的「列表条数 / UI 可见」没有场景级测试；`stateStream` 未实现，进度态只有 `currentState()`。

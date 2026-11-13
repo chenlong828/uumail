@@ -1,8 +1,8 @@
 ---
 layer: design
 module: mail
-status: draft
-updated: 2026-11-09
+status: designed
+updated: 2026-11-13
 flow: mail/receive
 scenario: SCN-0002
 ---
@@ -13,7 +13,7 @@ scenario: SCN-0002
 
 ## 入口
 
-- `CMP-SYNC#forceSync`（`design/components/CMP-SYNC/spec.md`）
+- `SyncEngine.syncOnce()`（`design/components/CMP-SYNC/spec.md`；`forceSync` 未实现，刷新由 App 的 5 分钟轮询驱动）
 - `CMP-EAS#folderSync`（`design/components/CMP-EAS/spec.md`）
 - `CMP-STORE#applyFolderSnapshot`
 
@@ -48,4 +48,15 @@ scenario: SCN-0002
 
 ## 状态
 
-`draft`：运行序与测试方案齐；harness 与组件代码未落地。
+`designed`（2026-11-13 核对）。运行序、引用、测试方案与入口齐；实现与验证如下。
+
+实现：`SyncEngine.refreshFolders` 每次按 `SyncKey=0` 取全量树，`MailStore.applyFolderSnapshot` 单事务落库；真机落 21 个文件夹（`history/works/2026-11-09-m1-account-access/result.md`）。**无 `stale` 标记**，失败时保留旧树但没有「上次同步时间」状态。
+
+| 测试项 | 现状 |
+|---|---|
+| `T-SCN-0002-01` | 通过（组件级）：`MailStoreTests`「applyFolderSnapshot stores folders in mailbox order and advances the key」；真机 21 个文件夹 |
+| `T-SCN-0002-02` | 未覆盖：每次全量重取树，没有「服务器新增子文件夹」的增量断言 |
+| `T-SCN-0002-03` | 部分：`MailStoreTests`「removed folders disappear from reads but survive as soft deletes」；「其下邮件不丢」未单独断言 |
+| `T-SCN-0002-04` | 部分：`MailStoreTests`「an invalid folder rolls the whole batch back」覆盖回滚；`stale` 标记未实现 |
+
+未转 `verified` 的原因：02–04 的断言不全，且没有场景级 harness。

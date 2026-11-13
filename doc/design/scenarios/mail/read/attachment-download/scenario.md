@@ -1,8 +1,8 @@
 ---
 layer: design
 module: mail
-status: draft
-updated: 2026-11-09
+status: designed
+updated: 2026-11-13
 flow: mail/read
 scenario: SCN-0005
 ---
@@ -15,7 +15,7 @@ scenario: SCN-0005
 
 - `CMP-EAS#fetchAttachment`
 - `AttachmentCache`（architecture §2，L0）
-- `CMP-STORE` 附件元数据写入口
+- `MailStore.markAttachmentCached`（附件元数据写入口）
 
 ## 运行序
 
@@ -49,4 +49,15 @@ scenario: SCN-0005
 
 ## 状态
 
-`draft`：运行序与测试方案齐；断点续传与缓存未落地。
+`designed`（2026-11-13 核对）。运行序、引用、测试方案与入口齐；实现与验证如下。
+
+实现：`EASClient.fetchAttachment`（`FileReference` 直取、base64 解码）、`MailService` 写缓存并调 `AttachmentCache.prune`（2 GB 最旧优先，2 个单测）、`MessageBodyView` 附件条点击下载。**未做**：25MB 上限判断、断点续传、`AttachmentName` 回退、真机下载与打开。
+
+| 测试项 | 现状 |
+|---|---|
+| `T-SCN-0005-01` | 未验：仅 `EASClientTests`「fetchAttachment decodes the base64 payload」；真机「下载完成、可打开」未做 |
+| `T-SCN-0005-02` | 未实现：下载前没有 25MB 判断 |
+| `T-SCN-0005-03` | 未实现：无断点续传，整包下载后原子写 |
+| `T-SCN-0005-04` | 未实现：只按 `FileReference` 取，无 `AttachmentName` 回退 |
+
+未转 `verified` 的原因：3 正 + 1 反均未落地或未验证。

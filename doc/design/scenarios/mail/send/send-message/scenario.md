@@ -1,8 +1,8 @@
 ---
 layer: design
 module: mail
-status: draft
-updated: 2026-11-09
+status: designed
+updated: 2026-11-13
 flow: mail/send
 scenario: SCN-0006
 ---
@@ -13,9 +13,9 @@ scenario: SCN-0006
 
 ## 入口
 
-- `CMP-OUT#enqueue` / `#observe`
+- `MailService.send`（内部 `MailStore.enqueueOutbox`；`observe` 未实现）
 - `CMP-EAS#send`
-- `CMP-STORE#markOutboundResult`
+- `MailStore.markOutboxSent` / `markOutboxFailed`（`markOutboundResult` 未实现）
 - 回复/转发复用同一通道，仅多 `In-Reply-To` / `References` 头。
 
 ## 运行序
@@ -51,4 +51,15 @@ scenario: SCN-0006
 
 ## 状态
 
-`draft`：运行序与测试方案齐；`Fake EAS` 与 Outbox 未落地。
+`designed`（2026-11-13 核对）。运行序、引用、测试方案与入口齐；实现与验证如下。
+
+实现：`enqueueOutbox` → `MailService.send`（入队后立即尝试，成功 `markOutboxSent`，失败 `markOutboxFailed`）；`ComposeView` / `ComposeModel` 覆盖新建、回复、转发、存草稿；`SendMail` 走 opaque MIME + `SaveInSentItems`，真机自测信投递成功、outbox 清空（`history/works/2026-11-09-m4-hardening/result.md`）。**未做**：离线自动重投（无后台队列消费）、本地 Sent 镜像、撰写加附件、`ClientId` 幂等实测。
+
+| 测试项 | 现状 |
+|---|---|
+| `T-SCN-0006-01` | 部分：CLI `send` 真机投递通过、outbox 清空；UI 点击后回列表与「Sent 出现」未验（依赖服务器 `SaveInSentItems`） |
+| `T-SCN-0006-02` | 未满足：失败件只标 `failed`，没有联网后自动投递 |
+| `T-SCN-0006-03` | 未实现：撰写不支持加附件 |
+| `T-SCN-0006-04` | 未验：无超时重试与幂等用例 |
+
+未转 `verified` 的原因：只有 01 有一部分真机证据，其余三项未落地或未验。

@@ -1,8 +1,8 @@
 ---
 layer: design
 module: mail
-status: draft
-updated: 2026-11-09
+status: designed
+updated: 2026-11-13
 flow: mail/access
 scenario: SCN-0001
 ---
@@ -15,7 +15,7 @@ scenario: SCN-0001
 
 - `CMP-EAS#options`、`CMP-EAS#provision`（`design/components/CMP-EAS/spec.md`）
 - `CMP-STORE#applyFolderSnapshot`（`design/components/CMP-STORE/spec.md`）
-- 入口符号待代码落地后校验（组件均为 `planned`）。
+- 入口符号：`Sources/EASClient/EASClient.swift`（`options` / `provision` / `folderSync`）、`Sources/MailStore/MailStore.swift`（`applyFolderSnapshot`）、`Sources/uumail/AccountSetupView.swift`。
 
 ## 运行序
 
@@ -52,4 +52,15 @@ scenario: SCN-0001
 
 ## 状态
 
-`draft`：运行序与测试方案齐；测试 ID 尚无 harness 承载，代码落地后随工序转 `designed` / `verified`。
+`designed`（2026-11-13 核对）。运行序、引用、测试方案与入口齐；实现与验证如下。
+
+实现：配置页、Keychain 存储、`uumailctl seed`、同步前 `provisionIfNeeded` 已落地；账号行由 `MailStore.createAccount` 写为 `draft`，**没有 `ready` 状态机**，这是本场景未完成的最后一跳。
+
+| 测试项 | 现状 |
+|---|---|
+| `T-SCN-0001-01` | 部分：真机配置页 + Keychain 免配置启动 + 自动同步（`CMP-APP/spec.md`）；账号状态仍为 `draft`，未断言 `ready` |
+| `T-SCN-0001-02` | 未覆盖：`EASClientTests`「Provision runs both steps and keeps the final policy key」只测握手；无「已有 PolicyKey 跳过第一步」用例 |
+| `T-SCN-0001-03` | 未满足：`449` 只在错误映射里断言为 `policyRequired` → `policyBlocked`（`Sources/AppServices/Adapters.swift`）；同步前总做 Provision，但没有「中途 449 自愈」用例 |
+| `T-SCN-0001-04` | 部分：`EASClientTests` 覆盖 200 空 body，`SyncEngineTests`「a device rejection stops the run and keeps the failure in the state」覆盖停跑；UI 登记指引与「5 分钟内不重试」未断言 |
+
+未转 `verified` 的原因：3 正 + 1 反没有可执行的场景测试；账号状态机缺失、`449` 自愈未验。

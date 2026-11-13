@@ -30,10 +30,23 @@ updated: 2026-11-13
 | W-M1-02 文件夹树同步 | M1 | W-M1-01 | CMP-SYNC、CMP-STORE | 已实现；SCN-0002 待 `verified` |
 | W-M1-03 收件箱增量同步 | M1 | W-M1-02 | CMP-SYNC、CMP-STORE、CMP-EAS | 已实现（随 W-M1-01 追加任务）：分页与原子提交已通；SCN-0003 待 `verified` |
 | W-M1-04 正文渲染与附件下载 | M1 | W-M1-03 | CMP-STORE、CMP-EAS、AttachmentCache | 已实现；SCN-0004、SCN-0005 待 `verified`（附件真机未验） |
-| W-M2-01 Outbox 与发信 | M2 | W-M1-04 | CMP-OUT、CMP-EAS | 已完成：协议、队列、撰写界面；真机自测信投递成功 |
-| W-M2-02 回复/转发与草稿 | M2 | W-M2-01 | CMP-OUT、CMP-STORE | 回复/转发、草稿两个场景 `verified` |
-| W-M3-01 Ping 与通知 | M3 | W-M2-01 | CMP-SYNC、通知策略 | Ping 实测不支持 → 轮询；通知已落地 |
-| W-M3-02 本地搜索 | M3 | W-M1-03 | CMP-STORE | 搜索场景 `verified`；FTS 不扫正文列 |
+| W-M2-01 Outbox 与发信 | M2 | W-M1-04 | CMP-OUT、CMP-EAS | 已完成（无过程记录，见下）：协议、队列、撰写界面；真机自测信投递成功 |
+| W-M2-02 回复/转发与草稿 | M2 | W-M2-01 | CMP-OUT、CMP-STORE | 已实现（无过程记录，见下）；回复/转发复用 `SCN-0006`，草稿无场景卡 |
+| W-M3-01 Ping 与通知 | M3 | W-M2-01 | CMP-SYNC、通知策略 | Ping 实测不支持 → 轮询；通知已落地（无过程记录，无独立场景卡） |
+| W-M3-02 本地搜索 | M3 | W-M1-03 | CMP-STORE | 已实现（无过程记录，无独立场景卡）；FTS 不扫正文列 |
+
+## 过程记录缺口（2026-11-13 登记）
+
+以下工序已在代码与设计真相里落地，但**没有 `works/` 目录、`brief.md`、`result.md` 与评审记录**；只能按提交追溯，不补造事后记录：
+
+| 工序 | 可追溯的提交（2026-11-09） | 结论落点 |
+|---|---|---|
+| W-M2-01 Outbox 与发信 | `89b7c7c` 22:56 SendMail / outbox / MIME；`5be7b46` 23:12 CLI `send`；`9be8aca` 23:19 真机投递记录 | `CMP-OUT/spec.md`、`CMP-EAS/spec.md`、`history/works/2026-11-09-m4-hardening/result.md` 发信段 |
+| W-M2-02 回复/转发与草稿 | `3cb055a` 23:00 `ComposeModel` / `ComposeView`，5 个模型单测 | `CMP-APP/spec.md`、`CMP-OUT/spec.md` |
+| W-M3-01 Ping 与通知 | `b3a6f62` 23:05 通知；`0913217` 23:11 Ping 探测与轮询 | playbook §5.2、`CMP-SYNC` / `CMP-APP` 规格 |
+| W-M3-02 本地搜索 | `b3a6f62` 23:05 FTS5 trigram、CJK 子串、跨文件夹 | `CMP-STORE/spec.md`（`searchLocal` 行） |
+
+这四条当时的任务号只留在 commit message（`T-1109-17`、`T-1109-18`、`T-M4-01..05`、`T-M2-verify`）里，没有 brief 任务表与验收记录，补记也无从核对验收标准；故只登记缺口，不补造 result。下一次同类改动按批次纪律从 `brief.md` 起建目录。
 
 ## 批次纪律
 

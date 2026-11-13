@@ -1,8 +1,8 @@
 ---
 layer: design
 module: mail
-status: draft
-updated: 2026-11-09
+status: designed
+updated: 2026-11-13
 flow: mail/read
 scenario: SCN-0004
 ---
@@ -13,7 +13,7 @@ scenario: SCN-0004
 
 ## 入口
 
-- UI 读路径：`CMP-STORE#page`、`#messageDetail`
+- UI 读路径：`MailStore.messages(limit:)`、`MailStore.body(...)`（`page` / `messageDetail` 契约未实现）
 - 补拉：`CMP-EAS#fetchBody` → `CMP-STORE#applySyncBatch`
 - 渲染：HTMLSanitizer + WKWebView（architecture §2）
 
@@ -50,4 +50,15 @@ scenario: SCN-0004
 
 ## 状态
 
-`active`：摘要/正文分家、补拉替换、截断续取已落地（2026-11-10）；sanitizer 仍为 CSP + 关脚本的轻量实现。
+`designed`（2026-11-13 核对）。运行序、引用、测试方案与入口齐；实现与验证如下。
+
+实现：`fetchBody`（截断时去上限重取）、`MailStore.applyBody`、`MailboxModel` 先渲染摘要再补拉、`MessageBodyView`（WKWebView、禁 JS、CSP 阻止远程资源）已落地；2026-11-10 修掉「同步摘要冒充正文」（`b1ec332`）。**已读回写服务器未实现**，sanitizer 仍是 CSP + 关脚本的轻量实现。
+
+| 测试项 | 现状 |
+|---|---|
+| `T-SCN-0004-01` | 未测：真机可打开并渲染，但「1 万封、< 1s」P95 未测（只有 5k 基线） |
+| `T-SCN-0004-02` | 通过（组件级）：`MailboxModelTests`「a missing body is fetched and becomes the detail state」「a sync preview does not stand in for the body, so the real fetch still runs」 |
+| `T-SCN-0004-03` | 部分：CSP 禁脚本与远程资源阻止靠代码审查（`MessageBodyView`）；无「脚本不执行、图片不发请求」的自动化断言 |
+| `T-SCN-0004-04` | 通过（组件级）：`MailboxModelTests`「a failed fetch keeps the preview readable instead of blanking the pane」 |
+
+未转 `verified` 的原因：01 无性能证据、03 无自动化断言、已读回写未落地。
