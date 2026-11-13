@@ -3,8 +3,6 @@ import Darwin
 import EASClient
 import Foundation
 import MailDomain
-import MailStore
-import Outbox
 import Scenes
 
 @main
@@ -46,19 +44,26 @@ struct UumailCtl {
             print("policy key acquired (\(key.count) chars)")
 
         case "folders":
-            let result = try await client.folderSync()
+            // Local read through the read scene: a missing store is bootstrapped once with
+            // the account's folder snapshot, then the folders come from the store.
+            let composition = try await CommandLineComposition.make(
+                databasePath: value(of: "--db", in: arguments) ?? defaultDatabasePath,
+                configuration: configuration
+            )
+            let folders = try composition.read.folders()
             if flags.contains("--json") {
-                let rows = result.folders.map { folder in
+                let rows = folders.map { folder in
                     ["id": folder.serverID, "parent": folder.parentID ?? "", "name": folder.displayName, "type": String(folder.type)]
                 }
                 let data = try JSONSerialization.data(withJSONObject: rows, options: [.prettyPrinted, .sortedKeys])
                 print(String(decoding: data, as: UTF8.self))
             } else {
-                for folder in result.folders.sorted(by: { $0.type < $1.type }) {
+                for folder in folders.sorted(by: { ($0.type, $0.displayName) < ($1.type, $1.displayName) }) {
                     print("[\(folder.type)] \(folder.serverID)\t\(folder.displayName)")
                 }
             }
-            print("sync key: \(result.syncKey), \(result.folders.count) folders")
+            let syncKey = try composition.store.syncKey(account: composition.account, collection: "folders")
+            print("sync key: \(syncKey ?? "(unknown)"), \(folders.count) folders")
 
         case "diagnose":
             let capabilities = try await client.options()
@@ -187,29 +192,18 @@ struct UumailCtl {
             }
 
         case "store":
-            // Persists a folder snapshot into a local SQLite file, proving the store contract.
+            // Persists a folder snapshot into a local SQLite file, proving the store contract:
+            // the composition bootstraps the account row and snapshot, the read scene prints it.
             guard let path = value(of: "--db", in: arguments) else {
                 FileHandle.standardError.write(Data("store: --db <path> is required\n".utf8))
                 exit(2)
             }
-            let result = try await client.folderSync()
-            let store = try MailStore(path: path)
-            let accountID = try store.createAccount(
-                NewAccount(
-                    displayName: configuration.account,
-                    address: "\(configuration.account)@\(configuration.host)",
-                    host: configuration.host
-                )
+            let composition = try await CommandLineComposition.make(
+                databasePath: path,
+                configuration: configuration
             )
-            try store.applyFolderSnapshot(
-                account: accountID,
-                folders: result.folders.map {
-                    MailFolder(serverID: $0.serverID, parentID: $0.parentID, displayName: $0.displayName, type: $0.type)
-                },
-                syncKey: result.syncKey
-            )
-            let stored = try store.folders(account: accountID)
-            print("stored \(stored.count) folders for \(accountID) in \(path)")
+            let stored = try composition.read.folders()
+            print("stored \(stored.count) folders for \(composition.account) in \(path)")
             for folder in stored {
                 print("  [\(folder.type)] \(folder.displayName)")
             }
@@ -220,18 +214,7 @@ struct UumailCtl {
         }
     }
 
-    private static func existingOrNewAccount(store: MailStore, configuration: EASConfiguration) throws -> AccountID {
-        if let first = try store.accounts().first {
-            return first
-        }
-        return try store.createAccount(
-            NewAccount(
-                displayName: configuration.account,
-                address: "\(configuration.account)@\(configuration.host)",
-                host: configuration.host
-            )
-        )
-    }
+    private static let defaultDatabasePath = ".build/uumailctl.sqlite"
 
     private static func value(of flag: String, in arguments: [String]) -> String? {
         guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
@@ -255,14 +238,17 @@ struct UumailCtl {
         Commands:
           options              ask the gateway which protocol versions and commands it allows
           provision            run the two-step policy handshake
-          folders [--json]     list the folder hierarchy
+          folders [--json] [--db path]   list the folders in the local store
           diagnose             OPTIONS -> Provision -> FolderSync
           send --to <addr> [--subject s] [--body b] [--db path]   send one message
           body --folder <id> --server <id> [--db path]   fetch one body; with --db also store it
           ping [--heartbeat N] long-poll the inbox and report status/elapsed
           seed                 store the env account in the login Keychain
-          store --db <path>    sync folders into a local SQLite store
+          store --db <path>    bootstrap a local SQLite store with the folder snapshot
           sync --db <path>     sync the inbox into the store (read-only on the server)
+
+        Data commands take --db <path>; folders defaults to .build/uumailctl.sqlite and
+        send to .build/outbox.sqlite. Do not point two processes at the running app database.
 
         Flags:
           --insecure           skip TLS verification (only for internal CAs)

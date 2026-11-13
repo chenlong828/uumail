@@ -59,7 +59,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "uumailctl",
-            dependencies: ["Composition", "EASClient", "MailDomain", "MailStore", "Outbox", "Scenes"]
+            dependencies: ["Composition", "EASClient", "MailDomain", "Scenes"]
         ),
         .testTarget(name: "EASClientTests", dependencies: ["EASClient"]),
         .testTarget(name: "MailDomainTests", dependencies: ["MailDomain"]),
