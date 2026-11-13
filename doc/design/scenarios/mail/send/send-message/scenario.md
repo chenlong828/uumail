@@ -2,7 +2,7 @@
 layer: design
 module: mail
 status: designed
-updated: 2026-11-13
+updated: 2026-11-14
 flow: mail/send
 scenario: SCN-0006
 ---
@@ -13,32 +13,35 @@ scenario: SCN-0006
 
 ## 入口
 
-- `MailService.send`（内部 `MailStore.enqueueOutbox`；`observe` 未实现）
-- `CMP-EAS#send`
-- `MailStore.markOutboxSent` / `markOutboxFailed`（`markOutboundResult` 未实现）
-- 回复/转发复用同一通道，仅多 `In-Reply-To` / `References` 头。
+- `CMP-SCN-COMPOSE#send`、`#saveDraft`、`#retry`、`#cancel`（`design/components/CMP-SCN-COMPOSE/spec.md`）
+- `CMP-OUT#enqueue`、`#flushOnce`、`#flushAll`（`design/components/CMP-OUT/spec.md`）
+- `CMP-ROOT#OutboxPump`（启动补投、30s、入队信号）
+- `CMP-DOMAIN#MailGateway.send`（经 `CMP-EASADAPTER`；MIME 为 opaque 字节）
+- `CMP-STORE#claimOutbox`、`#markOutboxSent`、`#markOutboxFailed`
+- `CMP-PRES#ComposeViewModel.send`（状态「已加入发件箱」）
 
 ## 运行序
 
 流程 `F-SEND-01`：
 
-1. 撰写页点发送 → MIME 组装（multipart/alternative，附件走 multipart/mixed）。
-2. `CMP-OUT#enqueue`：同一事务写 outbox 行与本地「已发送」占位，立即返回 ID，UI 不等网络。
-3. 投递队列（冷路径）取队首：`CMP-EAS#send(mime, clientId)`，`Mime` 以 opaque 原始字节送出，`SaveInSentItems=1`。
-4. 返回 `200` + 0 字节 body → 成功：同一事务更新本地消息状态、清 outbox、写 Sent 镜像。
-5. 失败按错误分类落 `failed_retryable` 或 `failed_permanent`；可重试项退避重投。
+1. 撰写页点发送 → `ComposeScene` 校验收件人 → `Outbox.enqueue` 只写 outbox 行，立即返回 `OutboxID`，UI 不等网络（`ClientId = outboxID`）。
+2. 组合根的 `OutboxPump` 在启动、每 30s 或入队信号时调 `Outbox.flushAll`；CLI `send` 直接 `flushAll`。
+3. `flushOnce` → `claimOutbox`（120s 租约）→ 读账号行 → `MimeBuilder` → `MailGateway.send`。
+4. 返回 `200` + 0 字节 body → `markOutboxSent` **删除行**（不做本地 Sent 镜像）。
+5. 失败 → `markOutboxFailed`：可重试退避（30s→2m→10m→30m→翻倍封顶 24h），永久失败保留内容与原因。
 
 失败路径：
 
-- 离线 → 保持 `queued`，联网后自动投递；
-- 认证失败 → `failed_permanent`，提示重新登录后手动重试；
-- 收件人被拒 / 附件超限 / 策略拒绝 → `failed_permanent`，标红并保留草稿内容；
-- 投递超时 → 保持 `sending` 锁，恢复后先查状态再决定重投，避免双发。
+- 离线 → 行保持 `queued`；联网后泵/CLI 重投，最多成功一次；
+- 认证失败 → `failed_permanent`，提示重新登录后手动 `retry`；
+- 收件人被拒 / 附件超限 / 策略拒绝 → `failed_permanent`，保留内容；
+- 投递超时 → 90s 超时视为可重试 `offline`；租约到期后行可被重新领取，`ClientId` 防双发。
 
 ## 不可变引用
 
-- `CMP-EAS#send` 的 opaque MIME 与 `ClientId` 幂等键（playbook §3、§4）。
+- `MailGateway.send` 的 opaque MIME 与 `ClientId` 幂等键（playbook §3、§4）。
 - 成功判据：`200` 且 body 长度为 0；有 body 视为异常。
+- `Outbox` 的状态机、租约与退避（`design/components/CMP-OUT/spec.md`）。
 
 ## 测试
 
@@ -51,15 +54,15 @@ scenario: SCN-0006
 
 ## 状态
 
-`designed`（2026-11-13 核对）。运行序、引用、测试方案与入口齐；实现与验证如下。
+`designed`（2026-11-14 核对）。入口已从 `MailService` 改为 `ComposeScene` + `Outbox` + `OutboxPump`；实现与验证如下。
 
-实现：`enqueueOutbox` → `MailService.send`（入队后立即尝试，成功 `markOutboxSent`，失败 `markOutboxFailed`）；`ComposeView` / `ComposeModel` 覆盖新建、回复、转发、存草稿；`SendMail` 走 opaque MIME + `SaveInSentItems`，真机自测信投递成功、outbox 清空（`history/works/2026-11-09-m4-hardening/result.md`）。**未做**：离线自动重投（无后台队列消费）、本地 Sent 镜像、撰写加附件、`ClientId` 幂等实测。
+实现：入队即返回、120s 租约、退避、手动重试、取消、启动补投与 30s 泵已落地（`1f0c0b3`、`fc26985`）；CLI `send` 经同一路径。**未做**：本地 Sent 镜像、撰写加附件、outbox UI 角标；`ClientId` 幂等只在契约测试级验证。
 
 | 测试项 | 现状 |
 |---|---|
-| `T-SCN-0006-01` | 部分：CLI `send` 真机投递通过、outbox 清空；UI 点击后回列表与「Sent 出现」未验（依赖服务器 `SaveInSentItems`） |
-| `T-SCN-0006-02` | 未满足：失败件只标 `failed`，没有联网后自动投递 |
+| `T-SCN-0006-01` | 部分：CLI `send` 真机投递通过、outbox 清空（重构前，`history/works/2026-11-09-m4-hardening/result.md`）；UI 点击后回列表与「Sent 出现」未验 |
+| `T-SCN-0006-02` | 通过（组件级）：`ScenesTests`「send enqueues locally and returns immediately without touching the network」；`OutboxTests`「offline enqueue recovers later and delivers exactly once」；`OutboxPumpTests`「start delivers a row queued before the app launched」；`CompositionTests` bootstrap 用例断言泵每行只投一次 |
 | `T-SCN-0006-03` | 未实现：撰写不支持加附件 |
-| `T-SCN-0006-04` | 未验：无超时重试与幂等用例 |
+| `T-SCN-0006-04` | 未验：`OutboxTests` 断言 `ClientId = outboxID` 与超时归类，但没有「服务器只收到一封」的真实幂等验证 |
 
-未转 `verified` 的原因：只有 01 有一部分真机证据，其余三项未落地或未验。
+未转 `verified` 的原因：01 缺 UI/真机证据，03 未落地，04 缺端到端幂等验证。

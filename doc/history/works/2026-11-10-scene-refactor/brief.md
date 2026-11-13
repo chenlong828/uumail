@@ -1,11 +1,13 @@
 ---
-layer: works
+layer: history
 module: global
-status: active
+status: frozen
 updated: 2026-11-14
 ---
 
 # W-SCN-REFACTOR 场景收口与分层重构
+
+> 已归档（2026-11-14）。本文件是过程记忆，不是现行设计依据；现行真相见 `design/architecture.md` 与 `design/components/*/spec.md`，收口验收见同目录 `result.md`。
 
 ## 需求
 
@@ -75,7 +77,7 @@ updated: 2026-11-14
 | T-1110-07 | change | CMP-ATT | done | `AttachmentFiles` 端口与实现；附件流程移入 `ReadScene` | `Sources/Composition/**` |
 | T-1110-08 | change | CMP-ROOT | done | `Composition` 组合根；App 启动与轮询迁移；DEBUG 环境入口 | `Sources/Composition/**`、`UumailApp.swift` |
 | T-1110-09 | test | 全仓 | done | `ScenesTests`/`PresentationTests`/架构 import 脚本 | `Tests/**`、`Scripts/**` |
-| T-1110-10 | docs | 全仓 | pending | 冻结进 `design/architecture.md` 与各 `spec.md`；场景卡状态更新 | `doc/design/**` |
+| T-1110-10 | docs | 全仓 | done | 冻结进 `design/architecture.md` 与各 `spec.md`；场景卡状态更新 | `doc/design/**` |
 
 ## 风险
 
@@ -98,6 +100,7 @@ updated: 2026-11-14
 
 - 第一轮（2026-11-10）：边界与四个决策已确认。
 - 第二轮（2026-11-13）：`architecture-spec.md` 完整规格与走查**通过**；D1–D9 逐条确认，无附加条件。规格冻结，进入 T-1110-01。
+- 收口（2026-11-14）：T-1110-01…10 全部完成；验收与裁决见同目录 `result.md`，现行真相已并入 `design/architecture.md` 与 `design/components/*/spec.md`。
 
 ## 执行记录
 
@@ -112,3 +115,4 @@ updated: 2026-11-14
 | T-1110-08 | 2026-11-14 | `Composition` 收口：`AppComposition` 161 行 + `OutboxPump`（启动补投、每 30s、入队信号、可停可重启）；启动 bootstrap 改为“有账号行走邮箱 / 无账号行但有凭据跑一次 `AccountSetupScene.connect` / 失败留在配置页显示文案”；新增 `CommandLineComposition`（env 配置、`--db` 装配、无账号行经 setup 场景引导、内存凭据、静默通知）与 `ConfigurationSource`（配置来源与类型转换从组合根抽出）；`ComposeViewModel`/`MailboxViewModel` 增加 `onEnqueued` 钩子，`UumailApp` 终止时停止任务；删除 `AppServices` target/8 个文件、`MailServiceProtocol`/`MailSendService` 与 `Tests/AppServicesTests`（20 例，行为由 PresentationTests/OutboxTests/ScenesTests 覆盖，未发现需移植的缺口）；新增 `OutboxPumpTests` 3 例、`ConfigurationSourceTests` 2 例；150 个测试全绿。偏差/风险：DEBUG 环境源改用进程内凭据存储（`EphemeralCredentialStore`），引导不会把环境凭据写进 login Keychain；为在删除 `AppServices` 后保持可编译，T-1110-05 的 CLI 场景化提前落到 `send/sync/body --db`（`folders/store` 与删死代码仍留 T-1110-05）；CLI 在空库上先经 setup 场景引导（多一次 probe/provision/folderSync，且凭据只进进程内，不写 Keychain），离线空库 `send` 会停在引导失败而非入队重试 |
 | T-1110-05 | 2026-11-14 | `uumailctl` 数据命令全部收口到 `CommandLineComposition` + 场景：`sync`→`SyncScene.refresh`（`--db` 必填）、`send`→`ComposeScene.send` 后 `Outbox.flushAll`（`--to/--subject/--body` 不变，`--db` 默认 `.build/outbox.sqlite`，投递失败仍打印“(item kept for retry)”）、`folders`→`ReadScene.folders`（`--json` 保留，`--db` 默认 `.build/uumailctl.sqlite`，sync key 读本地 `sync_state`）、`store`→组合根引导快照后经 `ReadScene.folders` 打印、`body --db`→`ReadScene.open`、`seed`→`KeychainCredentialStore`；`options/provision/ping/diagnose` 与无 `--db` 的 `body` 保持直连 `EASClient`（§3 例外）；删除 CLI 的 `existingOrNewAccount` 等死代码，`uumailctl` 依赖收敛为 Composition/EASClient/MailDomain/Scenes；150 个测试全绿。行为差异：`folders` 空库上先经 setup 场景引导（多一次 probe/provision/folderSync，输出格式不变）；`store` 在已有账号的库上不重复拉快照（引导即快照，刷新由 `sync` 负责）；`body --db` 命中缓存时不再重复拉取 |
 | T-1110-09 | 2026-11-14 | `CompositionTests` 增加装配冒烟 8 例（AppComposition 5、CommandLineComposition 1、ConfigurationSource 2）：有账号行 → 邮箱；无行 + 配置 → 配置页；空库 + 已存配置经 `start()` bootstrap 成功 → 建账号/存凭据/进邮箱，失败 → 停在配置页并显示 `ErrorText`、无账号行且不写凭据；泵 start/stop 幂等且一条入队只投一次；DEBUG 环境凭据留在进程内不写登录 Keychain。为可测性加最小依赖注入：新建 `Sources/Composition/GatewayFactory.swift`（`GatewayFactory` + 唯一 EAS 构造点 `PlatformGateway`），`AppComposition` 增加 gateway/notifier 注入 init（旧便利 init 保留），`CommandLineComposition.make` 增加可选 gatewayFactory，DEBUG 凭据选择抽为 `ConfigurationSource.setupCredentials`；无业务逻辑。新建 `Scripts/check-architecture.sh`（可执行，bash+grep，4 道门：per-target import 白名单含 Views/Scenes/Presentation/MailStore、场景互调、`AppComposition` ≤200 行、Composition 业务 switch），已用注入违例逐门验证会失败并退出非零。`MailStoreTests/MigrationTests` 用 GRDB 造 pre-v8 fixture（v5 outbox + `failed` 行 + accounts，登记 v1–v7 已应用，只重建迁移与断言所需两表）：打开后 `failed` → `failed_retryable`、旧字段可读且可重新 claim。`AppComposition` 180 行；159 个测试全绿；架构脚本 4 门全过。局限：场景互调门按“一文件一场景类”文件名判定；switch 门用业务 case 标签 + `switch error/state/...` 主语匹配，`case .idle/.failed` 这类通用标签依赖主语命名；迁移 fixture 只重建 accounts/outbox 两表（其余表登记为已应用）。 |
+| T-1110-10 | 2026-11-14 | 收口落文档：`design/architecture.md` 重写为现行真相（分层/target/契约/D1–D10/阶段/残留）；新建 9 个组件规格（`CMP-DOMAIN`、`CMP-EASADAPTER`、`CMP-SCN-{ACCOUNT,SYNC,READ,COMPOSE}`、`CMP-PRES`、`CMP-ROOT`、`CMP-CLI`），更新 5 个既有规格（`CMP-STORE/SYNC/OUT/EAS/APP`）；6 张场景卡刷新入口与测试证据，全部保持 `designed`（逐项原因见 `result.md`）；`plan/roadmap.md` 增结构收口记录，`risks.md` 增 R13（outbox 无 UI 角标），`open-questions.md` 增 Q2–Q4；`doc/README.md` 阅读顺序与入口更新；本目录归档到 `history/works/`。验证：159 tests / 37 suites、4 项架构门、`AppComposition` 180 行 |

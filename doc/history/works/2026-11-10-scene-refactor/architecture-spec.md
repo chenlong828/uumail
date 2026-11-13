@@ -1,13 +1,15 @@
 ---
-layer: works
+layer: history
 module: global
-status: active
-updated: 2026-11-13
+status: frozen
+updated: 2026-11-14
 ---
 
 # W-SCN-REFACTOR 架构规格（P1，第二轮评审稿）
 
-> 对应工序 `doc/works/2026-11-10-scene-refactor/`。本稿是第一轮边界确认后的完整规格：模块卡、依赖矩阵、契约卡、冷热路径卡、数据所有权、验证计划与走查结果。**已冻结（2026-11-13）**：整体结论通过，D1–D9 确认；实现期间契约不改，改动走新的决策记录。模块卡与契约卡在 T-1110-10 并入 `design/architecture.md` 与 `design/components/*/spec.md`，本目录最后归档进 `history/works/`。
+> 已归档（2026-11-14）。本稿是 P1 过程记忆；现行真相已并入 `design/architecture.md` 与 `design/components/*/spec.md`。
+
+> 对应工序 `history/works/2026-11-10-scene-refactor/`。本稿是第一轮边界确认后的完整规格：模块卡、依赖矩阵、契约卡、冷热路径卡、数据所有权、验证计划与走查结果。**已冻结（2026-11-13）**：整体结论通过，D1–D9 确认；D10 于 2026-11-13 追加。模块卡与契约卡已在 T-1110-10 并入 `design/architecture.md` 与 `design/components/*/spec.md`。**本文件已归档（2026-11-14）**，只作过程记忆，不作设计依据。
 
 ## 0. 结论
 

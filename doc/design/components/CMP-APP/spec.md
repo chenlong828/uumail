@@ -2,7 +2,7 @@
 layer: design
 module: app
 status: active
-updated: 2026-11-13
+updated: 2026-11-14
 component: CMP-APP
 ---
 
@@ -10,41 +10,45 @@ component: CMP-APP
 
 ## 模块卡
 
-- 状态：`active`（账号配置、列表、阅读、撰写、搜索、通知已落地；附件真机未验）
+- 状态：`active`（视图只绑定视图模型；`UumailApp` 只做装配与窗口宿主）
 - 单元：组件
-- 层 / 类型：L2；UI 外壳
+- 层 / 类型：L3；UI 外壳
 - 业务价值：让用户能看见并操作邮箱；没有它，同步能力只存在于命令行。
-- 负责 X：窗口与导航、账号配置表单、文件夹选择、邮件列表渲染、同步触发与状态展示。
-- 不负责 Y：协议、持久化、同步编排（分别属 CMP-EAS / CMP-STORE / CMP-SYNC）。
-- 内部逻辑：启动时从 Keychain 读账号；无账号则显示配置页；有账号则构造 `MailService` 并在启动后刷新。刷新期间列表保留旧数据，失败只在状态栏提示。
-- 拥有的数据：无持久数据；账号凭据由 `KeychainAccountStore` 持有，邮件数据归 CMP-STORE。
-- 变化轴：窗口形态（单窗口 → 多窗口/菜单栏）、列表与阅读的布局。
-- 公开契约：无对外契约；依赖 `MailServiceProtocol`（`MailboxModel` 的注入点）。
-- 入口：`Sources/uumail/UumailApp.swift#UumailApp`、`Sources/AppServices/MailboxModel.swift#MailboxModel`
-- 依赖：AppServices（MailService、KeychainAccountStore、MailboxModel）、SwiftUI。
-- 冷热：热（读本地库）；同步在后台，不阻塞列表。
-- 尺寸预算：≤ 120k token；当前远低。
-- 单独运行：`./Scripts/make-app.sh && open dist/uumail.app`（脚本把 release 构建发布到 `dist/`）
+- 负责 X：窗口与导航、文件夹选择、邮件列表渲染、正文 WebView、撰写/配置表单、空态与失败态展示。
+- 不负责 Y：业务编排、状态机、格式化规则、服务装配、网络与持久化。
+- 内部逻辑：
+  - `UumailApp` 构造 `AppComposition`，按 `route` 显示 `MailboxView` 或 `AccountSetupView`；生命周期交给组合根。
+  - 每个视图只接收一个视图模型（`@Bindable`），动作一律 `viewModel.xxx()`；响应式刷新只看 VM 状态。
+  - 正文渲染：`MessageWebView`（WKWebView、禁 JS、CSP 阻止远程资源）；附件条点击调 VM。
+- 拥有的数据：无；账号凭据归 `CredentialStore`，邮件数据归 `MailStore`。
+- 变化轴：窗口形态（单窗口 → 多窗口/菜单栏）、列表与阅读布局。
+- 公开契约：无对外契约；只依赖 `Presentation`（`UumailApp` 另依赖 `Composition`）。
+- 入口：`Sources/uumail/UumailApp.swift#UumailApp`、`MailboxView.swift#MailboxView`、`MessageBodyView.swift#MessageBodyView`、`ComposeView.swift#ComposeView`、`AccountSetupView.swift#AccountSetupView`
+- 依赖：`Presentation`、`Composition`（仅 `UumailApp.swift`）、SwiftUI/AppKit/WebKit。扇出 2。
+- 冷热：热（读本地库）。
+- 尺寸预算：单文件 ≤300 行；当前 `uumail` 共 487 行。
+- 单独运行：`./Scripts/make-app.sh && open dist/uumail.app`（release 构建，产物不入库）
 - 删除测试：删掉则只能命令行看信，对终端用户等于没有产品。
 
-## 实现进度（2026-11-09）
+## 实现进度（2026-11-14）
 
 | 能力 | 代码 | 验证 |
 |---|---|---|
-| 账号配置（含设备 ID 高级项） | `AccountSetupView.swift` | 真机：Keychain 免配置启动 |
-| 文件夹侧栏 + 邮件列表 | `MailboxView.swift` | 真机 200 封渲染；发件人显示名解析、本地时间；`MailboxModel` 3 个单测 |
-| 刷新与失败状态 | `MailboxModel.refresh()` | 单测（失败保留缓存） |
-| 三栏 + 正文阅读（WKWebView，禁 JS，CSP 阻止远程资源，单封可放行） | `MessageBodyView.swift` | 真机：点选邮件拉取 HTML 并渲染；3 个模型单测 |
-| 附件条：点击下载到缓存并打开 | `MessageBodyView.swift`、`MailService` 下载路径 | 缓存淘汰 2 个单测；真机附件下载未验 |
-| 搜索框（本地 FTS，跨文件夹） | `MailboxView` searchable | 1 个模型单测 |
-| 新邮件系统通知 | `Notifications.swift` | 1 个通知单测；权限拒绝静默 |
-| 撰写：新建 / 回复 / 转发 / 存草稿 / 发送 | `ComposeView.swift`、`ComposeModel.swift` | 5 个模型单测；真机发信经 CLI `send` 验证同一通道，UI 点击待验 |
-| 刷新节奏：5 分钟轮询（Ping 不支持） | `UumailApp.swift` task 循环 | 失败保留旧数据、下一轮重试；手测待整点长跑 |
-| 附件缓存上限：2 GB 最旧优先淘汰 | `AttachmentCache.prune`，每次写缓存后触发 | 2 个单测（超限淘汰、未超限不动） |
+| 启动装配与路由 | `UumailApp.swift` | `CompositionTests`（fake gateway 冒烟）；真机 bootstrap 未跑 |
+| 账号配置页 | `AccountSetupView.swift` + `AccountSetupViewModel` | `AccountSetupViewModelTests` 4 例 |
+| 文件夹侧栏 + 列表 | `MailboxView.swift` + `MailboxViewModel` | VM 选择/搜索/刷新用例；真机 200 封渲染（重构前） |
+| 正文阅读（WKWebView、禁 JS、CSP） | `MessageBodyView.swift` + `MessageBodyView` 状态 | VM 正文状态 5 例；sanitizer 无自动化断言 |
+| 附件条下载并打开 | `MessageBodyView.swift` → `VM.download` → `ReadScene` | `ReadSceneTests` 2 例；真机未验 |
+| 搜索框（本地 FTS） | `MailboxView` → `MailboxViewModel.search` | VM 搜索用例 |
+| 撰写：新建/回复/转发/存草稿/发送 | `ComposeView.swift` + `ComposeViewModel` | 5 例；UI 点击发送未单独验证 |
+| 刷新节奏（5 分钟轮询） | `MailboxViewModel.startAutoRefresh` → `SyncScene` | `SyncSceneTests`；真机长跑未验 |
+| 附件缓存（2 GB 最旧优先） | `FileAttachmentFiles`（Composition） | `FileAttachmentFilesTests` 3 例 |
 
-## 待办
+## 待办 / 残留
 
-- 回复未带真实 `Message-ID`（本地只存 ServerId），会话归并依赖服务器；需在 M3 补 `InternetMessageId` 存储。
+- 无 pending/failed outbox 角标：列表/状态栏看不到待发与失败数（`plan/risks.md` R13）。
+- 回复未带真实 `Message-ID`（本地只存 ServerId），会话归并依赖服务器。
 - 撰写暂不支持加附件；发送成功后无本地 Sent 镜像（依赖服务器 `SaveInSentItems`）。
-- 附件下载的真机验证未做（仅有缓存淘汰单测）。
-- UI 撰写页的点击发送未单独验证（真机验证走的是 CLI `send`，同一 `SendMail` 通道）。
+- 附件 25MB 上限、断点续传、`AttachmentName` 回退未实现；真机下载/打开未验。
+- 已读回写服务器未实现；正文 sanitizer 仍是 CSP + 关脚本的轻量实现。
+- 视图层已无 `service` 参数与模型构造（门 1 与 grep 验证），但这是构造性约束，不是行为测试。

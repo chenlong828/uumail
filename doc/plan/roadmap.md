@@ -1,8 +1,8 @@
 ---
 layer: plan
 module: global
-status: draft
-updated: 2026-11-13
+status: current
+updated: 2026-11-14
 ---
 
 # 路线图
@@ -16,9 +16,9 @@ updated: 2026-11-13
 | 里程碑 | 目标 | 出口判据 | 状态 |
 |---|---|---|---|
 | M0 协议探针 | 证明外网 EAS 通道可用，锁定线格式、设备身份与命令覆盖 | 命令行跑通 `OPTIONS → Provision → FolderSync → Sync → ItemOperations → SendMail`，实测状态码与能力矩阵成文 | 已完成（`history/works/2026-11-09-eas-probe/`） |
-| M1 只读客户端 | 账号接入、文件夹树、列表、正文、附件、离线缓存 | 五个只读场景（SCN-0001…0005）全部 `verified` | 进行中：账号、文件夹树、列表、正文已通；场景卡待转 `verified` |
-| M2 发送与草稿 | Outbox、SendMail、回复/转发、草稿、Sent 镜像 | send-message 场景 `verified`；离线发送可在联网后只发一次 | 进行中：发信链路真机验证通过，场景卡待 `verified` |
-| M3 体验 | Ping、通知、本地搜索、错误恢复与空态 | 新邮件端到端 ≤ 60s 可见（Ping 或轮询）；搜索、通知场景 `verified` | 进行中：Ping 不支持 → 5 分钟轮询、搜索与通知已落地，场景卡待 `verified` |
+| M1 只读客户端 | 账号接入、文件夹树、列表、正文、附件、离线缓存 | 五个只读场景（SCN-0001…0005）全部 `verified` | 进行中：账号、文件夹树、列表、正文已通；附件 02–04 未实现；场景卡待转 `verified` |
+| M2 发送与草稿 | Outbox、SendMail、回复/转发、草稿、Sent 镜像 | send-message 场景 `verified`；离线发送可在联网后只发一次 | 进行中：Outbox 入队/冷投递/重试已实现；Sent 镜像与撰写附件未做；场景卡待 `verified` |
+| M3 体验 | Ping、通知、本地搜索、错误恢复与空态 | 新邮件端到端 ≤ 60s 可见（Ping 或轮询）；搜索、通知场景 `verified` | 进行中：Ping 不支持 → 5 分钟轮询；搜索与通知已落地，场景卡待 `verified` |
 | M4 加固 | 策略、限流、安全、性能 | 限流退避、缓存上限、安全审计、5k 性能基线已落 | 已完成（`history/works/2026-11-09-m4-hardening/`） |
 
 ## 工序
@@ -34,6 +34,18 @@ updated: 2026-11-13
 | W-M2-02 回复/转发与草稿 | M2 | W-M2-01 | CMP-OUT、CMP-STORE | 已实现（无过程记录，见下）；回复/转发复用 `SCN-0006`，草稿无场景卡 |
 | W-M3-01 Ping 与通知 | M3 | W-M2-01 | CMP-SYNC、通知策略 | Ping 实测不支持 → 轮询；通知已落地（无过程记录，无独立场景卡） |
 | W-M3-02 本地搜索 | M3 | W-M1-03 | CMP-STORE | 已实现（无过程记录，无独立场景卡）；FTS 不扫正文列 |
+| W-SCN-REFACTOR 场景收口与分层重构 | M1/M2/M3 结构前置 | W-DOC-01、M4 结论 | 全仓 | 已完成（`history/works/2026-11-10-scene-refactor/`）：4 场景、9 库 + 2 可执行、159 测试、4 架构门 |
+
+### W-SCN-REFACTOR 场景收口与分层重构（2026-11-14 完成）
+
+结构收口已完成并归档（`history/works/2026-11-10-scene-refactor/`）。当前组件/target 状态：
+
+- 9 个库 target（`MailDomain`、`MailStore`、`SyncEngine`、`Outbox`、`EASClient`、`EASAdapter`、`Scenes`、`Presentation`、`Composition`）+ 2 个可执行 target（`uumail`、`uumailctl`）；`AppServices` 退役。
+- 4 个场景类收口每条业务流：`AccountSetupScene`、`SyncScene`、`ReadScene`、`ComposeScene`；视图只绑定薄视图模型。
+- 发信改为「入队即返回 + `Outbox` 冷投递」；outbox schema v8（租约 + 退避 + 显式状态）。
+- 最终验证：159 tests / 37 suites 全绿；`Scripts/check-architecture.sh` 4 门全过；`AppComposition` 180 行。
+
+结构收口**不等于功能里程碑完成**：M1/M2/M3 的出口仍看场景卡 `verified`。当前仍缺：真机冒烟（`uumailctl diagnose/sync/send`、App live bootstrap）、附件 25MB/续传/名称回退、已读回写、Sent 镜像、outbox UI 角标、`PendingOps`。
 
 ## 过程记录缺口（2026-11-13 登记）
 

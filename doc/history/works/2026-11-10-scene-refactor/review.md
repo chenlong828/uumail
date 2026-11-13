@@ -1,11 +1,13 @@
 ---
-layer: works
+layer: history
 module: global
-status: active
-updated: 2026-11-13
+status: frozen
+updated: 2026-11-14
 ---
 
 # W-SCN-REFACTOR 评审记录（第二轮）
+
+> 已归档（2026-11-14）。本文件是评审过程记忆；裁决与落点见同目录 `result.md` 的「裁决摘要」与 `design/architecture.md` §8.1。
 
 对象：`architecture-spec.md`（P1 评审稿）。方法：场景走查（arch-design-spec 第 8 步），结论四档正交于定级。
 

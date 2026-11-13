@@ -1,0 +1,105 @@
+---
+layer: design
+module: domain
+status: active
+updated: 2026-11-14
+component: CMP-DOMAIN
+---
+
+# CMP-DOMAIN MailDomain 组件规格
+
+## 模块卡
+
+- 状态：`active`
+- 单元：模块（值类型 + 端口 + 错误目录的组合组件）
+- 层 / 类型：L1 契约；领域
+- 业务价值：让场景、数据与协议都只认识一套稳定概念。没有它，每个 target 自带一份值类型，改一个字段要动四处。
+- 负责 X：值类型（`AccountID`、`OutboxID`、`Folder`、`Message`、`Attachment`、`Draft`、`OutboxItem`、`FolderListing`、`MessageDelta`、`SyncReport`、`FetchedBody`、`AttachmentRef`、`ServerCapabilities`）、端口（`MailGateway`、`SyncStore`、`CredentialStore`、`Notifier`、`AttachmentFiles`、`MailClock`）、`MailError`、`ServerConfiguration`。
+- 不负责 Y：任何 I/O、持久化、协议编解码、UI 文案。
+- 内部逻辑：无行为；只做值传递与契约声明。`FetchedBody` 保留 `text/isHTML/isTruncated`（D10）。
+- 拥有的数据：无持久数据。
+- 变化轴：领域概念本身的字段与语义（邮件、文件夹、发送意图）。
+- 公开契约：`CMP-DOMAIN#MailGateway`、`#SyncStore`、`#CredentialStore`、`#Notifier`、`#AttachmentFiles`、`#MailClock`；能力 ID 由各操作名引用（如 `CMP-DOMAIN#fetchBody`）。
+- 入口：`Sources/MailDomain/Values.swift#AccountID`、`Ports.swift#MailGateway`、`Errors.swift#MailError`、`Configuration.swift#ServerConfiguration`
+- 依赖：仅 Foundation。扇出 0。
+- 冷热：两侧共用；只做值传递。
+- 尺寸预算：目标 ≤800 行；当前 391 行；上限 120k token。
+- 单独运行：`./Scripts/swiftw test --filter MailDomainTests`
+- 删除测试：删掉后 `Scenes`、`MailStore`、`SyncEngine`、`Outbox` 各自定义同名类型并互相转换 → 复杂度集中，是真边界。
+
+## 契约卡：MailGateway v2
+
+- 所属 / 目的：把服务器能力以本方概念提供给场景与同步。
+- 签名：
+
+  ```swift
+  public protocol MailGateway: Sendable {
+      func probe() async throws -> ServerCapabilities
+      func provisionIfNeeded() async throws
+      func fetchFolders(syncKey: String) async throws -> FolderListing
+      func fetchMessages(collectionID: String, syncKey: String, window: Int, filterType: Int) async throws -> MessageDelta
+      func fetchBody(collectionID: String, serverID: String) async throws -> FetchedBody
+      func fetchAttachment(fileReference: String) async throws -> Data
+      func send(mime: Data, clientID: String) async throws
+  }
+  ```
+
+- 不变量：不泄漏 EAS 类型或状态码字符串；`send` 成功当且仅当服务器返回 `200` 且 0 字节 body；`fetchFolders(syncKey:"0")` 返回全量树。
+- 错误模式：唯一目录 `MailError`，映射只发生一次（`EASAdapter.map`）：
+
+  | 来源 | `MailError` | 可重试 |
+  |---|---|---|
+  | `401` 读 | `authFailed` | 否 |
+  | `200` 空 body / 写 `401` | `deviceNotRegistered` | 否 |
+  | `449` / 策略拒绝 | `policyBlocked` | 否 |
+  | Sync `3/4` | `syncKeyInvalid` | 是（重建） |
+  | `503` + `Retry-After` | `throttled(seconds:)` | 是 |
+  | 连接失败/超时 | `offline` | 是 |
+  | `444`/`502`/坏 WBXML | `unsupported` | 否 |
+  | 本地失败 / 非法输入 | `storage(reason:)` / `invalidInput(reason:)` | 视调用方 |
+
+- 幂等 / 顺序 / 并发：`send` 以 `clientID` 为幂等键；读操作无副作用；单请求语义，不保证跨命令一致。
+- 超时 / 取消 / 背压：由实现层设置（单命令 60s、`send` 90s）；取消传播到 URLSession。
+- 兼容性 / 废弃：v2 相对 v1 新增 `probe/fetchBody/fetchAttachment/send`；`FetchedBody` 为 D10 决策（`history/decisions/2026-11-13-fetched-body-contract.md`）。
+- 契约测试：`MailDomainTests` 值类型；`EASAdapterTests` 错误与正文映射；`EASClientTests` 协议层回放。
+
+## 契约卡：SyncStore
+
+- 所属 / 目的：同步引擎读写本地事实的最小端口，去掉旧的 `StoreAdapter` 与 `async`（D6）。
+- 签名：`folders`、`applyFolderSnapshot`、`syncKey`、`applySyncBatch`、`resetCollection`（均为同步 `throws`）。
+- 不变量：批次与 key 同事务；失败不推进 key；`(account, folder, serverID)` 幂等。
+- 错误模式：存储错误以 `MailStoreError` 抛出；`SyncEngine` 原样上抛。
+- 并发：`MailStore` 用 `DatabaseQueue` 单写；端口本身不承诺跨实例并发。
+- 契约测试：`SyncEngineTests`（fake store）+ `MailStoreTests`（真实 SQLite）。
+
+## 契约卡：平台端口
+
+`CredentialStore`（`load/save/delete`）、`Notifier`（`requestAuthorization/postNewMail`）、`AttachmentFiles`（`cachedURL/store`）、`MailClock`（`now/sleep`）。
+
+- 不变量：端口实现不得反向依赖场景；`AttachmentFiles.store` 原子写并执行 2 GB 最旧优先预算（`history/decisions/2026-11-09-attachment-cache-cap.md`）。
+- 错误模式：`storage`、`invalidInput`；凭据错误不吞。
+- 契约测试：`FileAttachmentFilesTests`、`CompositionTests` 的装配冒烟；时钟替身让轮询测试即时。
+
+## 实现进度（2026-11-14）
+
+| 契约 | 代码 | 测试 |
+|---|---|---|
+| 值类型与 `ServerConfiguration`（旧 Keychain 载荷带默认值解码） | ✅ `Values.swift`、`Configuration.swift` | `MailDomainTests` 3 例 |
+| `MailError` 9 个 case | ✅ `Errors.swift` | `EASAdapterTests` / `CompositionTests` 断言映射 |
+| `MailGateway` v2 + `FetchedBody` | ✅ `Ports.swift`、`Values.swift` | `EASAdapterTests` 4 例 |
+| `SyncStore` 同步端口，`MailStore` 直接遵循 | ✅ `Ports.swift`、`MailStore/SyncStoreConformance.swift` | `SyncEngineTests`、`MailStoreTests` |
+| 平台端口 | ✅ `Ports.swift` | `FileAttachmentFilesTests` 等 |
+
+## 验证计划
+
+| 维度 | 证明方式 |
+|---|---|
+| 契约形状 | `MailDomainTests` 值类型默认值与相等性；编译期端口遵循 |
+| 错误目录 | `EASAdapter.map` 表驱动断言（401→authFailed 等） |
+| 正文契约 | `EASAdapterTests` 的 HTML/纯文本/截断三例（D10） |
+| 依赖约束 | `Scripts/check-architecture.sh` 门 1：`MailDomain` 只 import `Foundation` |
+
+## 依赖约束
+
+- 只依赖 Foundation；不 import 任何本仓 target、GRDB、URLSession 包装。
+- 上层通过端口与值类型使用；实现只在组合根出现。

@@ -2,7 +2,7 @@
 layer: design
 module: mail
 status: designed
-updated: 2026-11-13
+updated: 2026-11-14
 flow: mail/receive
 scenario: SCN-0003
 ---
@@ -13,31 +13,32 @@ scenario: SCN-0003
 
 ## 入口
 
-- `CMP-EAS#sync`、`CMP-EAS#fetchBody`
-- `SyncEngine.syncOnce()`（`start` / `forceSync` 未实现，刷新由 App 的 5 分钟轮询驱动）
-- `CMP-STORE#applySyncBatch`
+- `CMP-SCN-SYNC#refresh`、`#startAutoRefresh`
+- `CMP-SYNC#syncOnce`（`design/components/CMP-SYNC/spec.md`）
+- `CMP-DOMAIN#MailGateway.fetchMessages`（经 `CMP-EASADAPTER`）
+- `CMP-STORE#applySyncBatch`（`MailStore` 直接遵循 `CMP-DOMAIN#SyncStore`）
 
 ## 运行序
 
 流程 `F-RECEIVE-02`：
 
-1. SyncEngine 从 `sync_state` 读该集合的 `sync_key`；无则用 `0`。
-2. `CMP-EAS#sync(collection, key, window=25)`。
+1. `SyncEngine` 从 `sync_state` 读该集合的 `sync_key`；无则用 `0`。
+2. `fetchMessages(collectionID, key, window=25)`。
 3. 若 `SyncKey=0` 首轮只回新 key → 用新 key 立即再 Sync 一次取条目。
-4. `CMP-STORE#applySyncBatch(adds, changes, deletes, newKey)`：数据与 key 同事务提交。
-5. `MoreAvailable` → 继续下一批，直到拉完或达到单轮预算。
-6. 提交成功后发新邮件事件 → 通知策略（M3）。
+4. `applySyncBatch`：数据与 key 同事务提交。
+5. 本轮新增少于 `window` 即停；最多 `maxRounds=5` 轮（`MoreAvailable` 不可靠，见 playbook §3）。
+6. 成功后 `SyncScene` 按 `added > 0` 发通知（`SCN-0003` 的通知策略归 `SyncScene`）。
 
 失败路径：
 
 - 批次失败 → 整批回滚，key 不推进，退避后重试；
-- `Sync/Status=3/4` → `syncKeyInvalid`：清本地该集合后按 key `0` 重建；
-- `503` + `Retry-After` → 按服务器值退避，不并发补拉；
+- `Sync/Status=3/4` → `syncKeyInvalid`：`resetCollection` 后按 key `0` 重建；
+- `503` + `Retry-After` → `SyncEngine` 等一次后重试一次，仍失败则本次失败；
 - 正文缺失 → 占位，转 `SCN-0004` 的补拉路径。
 
 ## 不可变引用
 
-- `CMP-STORE#applySyncBatch` 的「同一事务」与 `(account, folder, server_id)` 幂等键。
+- `MailStore.applySyncBatch` 的「同一事务」与 `(account, folder, server_id)` 幂等键。
 - `Sync` 请求体最小化（playbook §3）；多带元素会得到 `Status=4`。
 
 ## 测试
@@ -51,13 +52,13 @@ scenario: SCN-0003
 
 ## 状态
 
-`designed`（2026-11-13 核对）。运行序、引用、测试方案与入口齐；实现与验证如下。
+`designed`（2026-11-14 核对）。运行序、引用、测试方案与入口已按实现更新；实现与验证如下。
 
-实现：`syncOnce`（Provision → FolderSync → 收件箱分页 → 落库）已落地，真机 5 轮 × 25 封；`start/stop/stateStream` 未实现。分页停止条件以实测为准：本轮新增少于 `WindowSize` 即停（playbook §3）。
+实现：`SyncEngine.syncOnce`（Provision → FolderSync → 收件箱分页 → 落库）已落地；`SyncScene.refresh` 包单飞与通知（`1f0c0b3`）；真机 5 轮 × 25 封（重构前）。`start/stop/stateStream` 仍未实现。
 
 | 测试项 | 现状 |
 |---|---|
-| `T-SCN-0003-01` | 部分（组件级）：`SyncEngineTests`「first sync is two requests and only the window is written」断言窗口与 key，真机 125 封入列表；「列表 30 条」未在测试中断言 |
+| `T-SCN-0003-01` | 部分（组件级）：`SyncEngineTests`「first sync is two requests and only the window is written」断言窗口与 key；「列表 30 条」未在测试中断言 |
 | `T-SCN-0003-02` | 通过（组件级）：`SyncEngineTests`「incremental sync resumes from the stored key」 |
 | `T-SCN-0003-03` | 通过（组件级）：`MailStoreTests`「re-applying the same batch keeps one row per server id」 |
 | `T-SCN-0003-04` | 通过（组件级）：`MailStoreTests`「a failed batch does not advance the key」 |

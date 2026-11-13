@@ -2,7 +2,7 @@
 layer: design
 module: mail
 status: designed
-updated: 2026-11-13
+updated: 2026-11-14
 flow: mail/read
 scenario: SCN-0005
 ---
@@ -13,30 +13,33 @@ scenario: SCN-0005
 
 ## 入口
 
-- `CMP-EAS#fetchAttachment`
-- `AttachmentCache`（architecture §2，L0）
-- `MailStore.markAttachmentCached`（附件元数据写入口）
+- `CMP-SCN-READ#attachments`、`#downloadAttachment`（`design/components/CMP-SCN-READ/spec.md`）
+- `CMP-DOMAIN#AttachmentFiles`（生产实现 `FileAttachmentFiles`，见 `design/components/CMP-ROOT/spec.md`）
+- `CMP-DOMAIN#MailGateway.fetchAttachment`（经 `CMP-EASADAPTER`）
+- `CMP-STORE#markAttachmentCached`（附件元数据写入口）
 
 ## 运行序
 
 流程 `F-READ-02`：
 
-1. 阅读页按附件元数据（名称、大小、contentId）渲染列表。
-2. 点击 → 查缓存；命中则直接打开。
-3. 未命中 → `CMP-EAS#fetchAttachment(ref)`：优先 `FileReference` 直取；旧版本回退 `AttachmentName` 路径。
-4. 流式写盘到缓存目录，边写边校验大小；完成后更新元数据（缓存路径、校验值）。
-5. 打开：系统 Quick Look 或默认程序；正文内联图片走同一缓存。
+1. 阅读页按附件元数据（名称、大小、`fileReference`）渲染列表。
+2. 点击 → `AttachmentFiles.cachedURL` 命中则直接返回并打开。
+3. 未命中 → `fetchAttachment(fileReference)` 整包下载（base64 解码）。
+4. `AttachmentFiles.store` 原子写盘并执行 2 GB 最旧优先淘汰。
+5. `markAttachmentCached` 记录缓存路径；返回 URL 给 UI 打开。
+6. 同一 `fileReference` 的并发点击共享一次下载（`FlightBoard` 单飞）。
 
 失败路径：
 
-- 超过默认上限 25MB → 提示「请用原客户端下载」，不发起下载；
-- `404` / `FileReference` 失效 → 回退 `AttachmentName` 路径重试一次；
-- 网络中断 → 保留临时文件，下次点击续传；校验失败则删除重下。
+- 超过 25MB → **未实现**，当前不判断大小；
+- `404` / `FileReference` 失效 → **未实现** `AttachmentName` 回退；
+- 网络中断 → **未实现**断点续传；当前整包下载后原子写，失败则无文件；
+- 存储失败 → `MailError.storage` 上抛，UI 提示可重试。
 
 ## 不可变引用
 
-- 缓存目录布局与淘汰策略：总上限 2 GB、按修改时间最旧优先（`history/decisions/2026-11-09-attachment-cache-cap.md`，契约在 `design/components/CMP-APP/spec.md`）。
-- `FileReference` 优先、`AttachmentName` 回退的技能顺序（playbook §5）。
+- 缓存目录布局与淘汰策略：总上限 2 GB、按修改时间最旧优先（`history/decisions/2026-11-09-attachment-cache-cap.md`，契约在 `CMP-ROOT`/`FileAttachmentFiles`）。
+- `FileReference` 直取的协议细节（playbook §5）。
 
 ## 测试
 
@@ -49,15 +52,15 @@ scenario: SCN-0005
 
 ## 状态
 
-`designed`（2026-11-13 核对）。运行序、引用、测试方案与入口齐；实现与验证如下。
+`designed`（2026-11-14 核对）。入口已从 `MailService` 改为 `ReadScene` + `AttachmentFiles` 端口；实现与验证如下。
 
-实现：`EASClient.fetchAttachment`（`FileReference` 直取、base64 解码）、`MailService` 写缓存并调 `AttachmentCache.prune`（2 GB 最旧优先，2 个单测）、`MessageBodyView` 附件条点击下载。**未做**：25MB 上限判断、断点续传、`AttachmentName` 回退、真机下载与打开。
+实现：`ReadScene.downloadAttachment`（缓存命中、单飞、先落盘再 `markAttachmentCached`）、`FileAttachmentFiles`（确定性文件名、原子写、2 GB 最旧优先淘汰）、`EASAdapter.fetchAttachment` 已落地；`MessageBodyView` 附件条点击调 VM。**未做**：25MB 上限判断、断点续传、`AttachmentName` 回退、真机下载与打开。
 
 | 测试项 | 现状 |
 |---|---|
-| `T-SCN-0005-01` | 未验：仅 `EASClientTests`「fetchAttachment decodes the base64 payload」；真机「下载完成、可打开」未做 |
+| `T-SCN-0005-01` | 部分（组件级）：`ScenesTests`「downloadAttachment fetches, stores and records the cache path」、`FileAttachmentFilesTests`「a stored file is discoverable and keeps its bytes」；真机「下载完成、可打开」未做 |
 | `T-SCN-0005-02` | 未实现：下载前没有 25MB 判断 |
 | `T-SCN-0005-03` | 未实现：无断点续传，整包下载后原子写 |
 | `T-SCN-0005-04` | 未实现：只按 `FileReference` 取，无 `AttachmentName` 回退 |
 
-未转 `verified` 的原因：3 正 + 1 反均未落地或未验证。
+未转 `verified` 的原因：01 无真机证据，02–04 均未落地。
