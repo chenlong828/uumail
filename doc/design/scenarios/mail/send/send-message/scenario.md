@@ -60,7 +60,7 @@ scenario: SCN-0006
 
 | 测试项 | 现状 |
 |---|---|
-| `T-SCN-0006-01` | 部分：CLI `send` 真机投递通过、outbox 清空（重构前，`history/works/2026-11-09-m4-hardening/result.md`）；UI 点击后回列表与「Sent 出现」未验 |
+| `T-SCN-0006-01` | 部分：CLI `send` 真机投递通过（重构前，`history/works/2026-11-09-m4-hardening/result.md`）；2026-11-14 用户真机实测 App 端到端发送与接收通过；「Sent 出现」仍依赖服务器 `SaveInSentItems`，未单独断言 |
 | `T-SCN-0006-02` | 通过（组件级）：`ScenesTests`「send enqueues locally and returns immediately without touching the network」；`OutboxTests`「offline enqueue recovers later and delivers exactly once」；`OutboxPumpTests`「start delivers a row queued before the app launched」；`CompositionTests` bootstrap 用例断言泵每行只投一次 |
 | `T-SCN-0006-03` | 未实现：撰写不支持加附件 |
 | `T-SCN-0006-04` | 未验：`OutboxTests` 断言 `ClientId = outboxID` 与超时归类，但没有「服务器只收到一封」的真实幂等验证 |
