@@ -1,4 +1,5 @@
 import Foundation
+import MailDomain
 import Testing
 
 @testable import SyncEngine
@@ -13,19 +14,23 @@ actor FakeGateway: MailGateway {
     private(set) var calls: [Call] = []
     private var folderListing: FolderListing
     private var deltas: [String: MessageDelta]
-    private var provisionError: MailGatewayError?
+    private var provisionError: MailError?
     private var remainingThrottles: Int
 
     init(
         folderListing: FolderListing,
         deltas: [String: MessageDelta],
-        provisionError: MailGatewayError? = nil,
+        provisionError: MailError? = nil,
         throttles: Int = 0
     ) {
         self.folderListing = folderListing
         self.deltas = deltas
         self.provisionError = provisionError
         self.remainingThrottles = throttles
+    }
+
+    func probe() async throws -> ServerCapabilities {
+        ServerCapabilities(protocolVersions: [], commands: [])
     }
 
     func provisionIfNeeded() async throws {
@@ -37,7 +42,7 @@ actor FakeGateway: MailGateway {
         calls.append(.folders(syncKey: syncKey))
         if remainingThrottles > 0 {
             remainingThrottles -= 1
-            throw MailGatewayError.throttled(retryAfterSeconds: 2)
+            throw MailError.throttled(seconds: 2)
         }
         return folderListing
     }
@@ -45,47 +50,59 @@ actor FakeGateway: MailGateway {
     func fetchMessages(collectionID: String, syncKey: String, window: Int, filterType: Int) async throws -> MessageDelta {
         calls.append(.messages(collection: collectionID, key: syncKey))
         guard let delta = deltas[syncKey] else {
-            throw MailGatewayError.syncKeyInvalid
+            throw MailError.syncKeyInvalid
         }
         return delta
     }
+
+    func fetchBody(collectionID: String, serverID: String) async throws -> String {
+        throw MailError.unsupported
+    }
+
+    func fetchAttachment(fileReference: String) async throws -> Data {
+        throw MailError.unsupported
+    }
+
+    func send(mime: Data, clientID: String) async throws {
+        throw MailError.unsupported
+    }
 }
 
-actor FakeStore: SyncStore {
-    private(set) var folderSnapshot: [FolderSummary] = []
+final class FakeStore: SyncStore, @unchecked Sendable {
+    private(set) var folderSnapshot: [Folder] = []
     private(set) var snapshotKey: String?
     private(set) var keys: [String: String] = [:]
     private(set) var batches: [MessageDelta] = []
     private(set) var resets: [String] = []
     var folderFailure: Error?
 
-    func folders(_ account: AccountRef) async throws -> [FolderSummary] {
+    func folders(_ account: AccountID) throws -> [Folder] {
         folderSnapshot
     }
 
-    func applyFolderSnapshot(_ account: AccountRef, folders: [FolderSummary], syncKey: String) async throws {
+    func applyFolderSnapshot(_ account: AccountID, folders: [Folder], syncKey: String) throws {
         if let folderFailure { throw folderFailure }
         folderSnapshot = folders
         snapshotKey = syncKey
     }
 
-    func syncKey(_ account: AccountRef, collection: String) async throws -> String? {
+    func syncKey(_ account: AccountID, collection: String) throws -> String? {
         keys[collection]
     }
 
-    func applySyncBatch(_ account: AccountRef, folder: String, delta: MessageDelta) async throws {
+    func applySyncBatch(_ account: AccountID, folder: String, delta: MessageDelta) throws {
         batches.append(delta)
         keys[folder] = delta.syncKey
     }
 
-    func resetCollection(_ account: AccountRef, folder: String) async throws {
+    func resetCollection(_ account: AccountID, folder: String) throws {
         resets.append(folder)
         keys[folder] = nil
     }
 }
 
-private let inbox = FolderSummary(serverID: "13", parentID: "0", displayName: "收件箱", type: 2)
-private let draft = FolderSummary(serverID: "4", parentID: "0", displayName: "草稿", type: 3)
+private let inbox = Folder(serverID: "13", parentID: "0", displayName: "收件箱", type: 2)
+private let draft = Folder(serverID: "4", parentID: "0", displayName: "草稿", type: 3)
 
 private func makeDelta(
     key: String,
@@ -93,7 +110,7 @@ private func makeDelta(
     more: Bool = false
 ) -> MessageDelta {
     MessageDelta(
-        added: added.map { MessageSummary(serverID: $0, subject: "s-\($0)") },
+        added: added.map { Message(serverID: $0, subject: "s-\($0)") },
         changed: [],
         removedServerIDs: [],
         syncKey: key,
@@ -113,16 +130,16 @@ struct SyncEngineTests {
             ]
         )
         let store = FakeStore()
-        let engine = SyncEngine(gateway: gateway, store: store, account: AccountRef("a"))
+        let engine = SyncEngine(gateway: gateway, store: store, account: AccountID("a"))
 
         let report = try await engine.syncOnce()
 
         #expect(report.folders == 2)
         #expect(report.added == 3)
         #expect(report.syncKey == "101")
-        #expect(await store.snapshotKey == "7")
-        #expect(await store.batches.count == 1, "the key-only bootstrap response must not be stored")
-        #expect(await store.batches.first?.added.map(\.serverID) == ["1", "2", "3"])
+        #expect(store.snapshotKey == "7")
+        #expect(store.batches.count == 1, "the key-only bootstrap response must not be stored")
+        #expect(store.batches.first?.added.map(\.serverID) == ["1", "2", "3"])
         #expect(await engine.currentState() == .idle)
 
         let keys = await gateway.calls.compactMap { call -> String? in
@@ -139,13 +156,13 @@ struct SyncEngineTests {
             deltas: ["101": makeDelta(key: "102", added: ["9"])]
         )
         let store = FakeStore()
-        try await store.applySyncBatch(AccountRef("a"), folder: "13", delta: makeDelta(key: "101", added: []))
-        let engine = SyncEngine(gateway: gateway, store: store, account: AccountRef("a"))
+        try store.applySyncBatch(AccountID("a"), folder: "13", delta: makeDelta(key: "101", added: []))
+        let engine = SyncEngine(gateway: gateway, store: store, account: AccountID("a"))
 
         let report = try await engine.syncOnce()
         #expect(report.added == 1)
         #expect(report.syncKey == "102")
-        #expect(await store.resets.isEmpty)
+        #expect(store.resets.isEmpty)
     }
 
     @Test("an invalid key resets the collection and rebuilds it")
@@ -158,12 +175,12 @@ struct SyncEngineTests {
             ]
         )
         let store = FakeStore()
-        try await store.applySyncBatch(AccountRef("a"), folder: "13", delta: makeDelta(key: "999", added: []))
-        let engine = SyncEngine(gateway: gateway, store: store, account: AccountRef("a"))
+        try store.applySyncBatch(AccountID("a"), folder: "13", delta: makeDelta(key: "999", added: []))
+        let engine = SyncEngine(gateway: gateway, store: store, account: AccountID("a"))
 
         // 999 is unknown to the fake gateway, so the first pull raises syncKeyInvalid.
         let report = try await engine.syncOnce()
-        #expect(await store.resets == ["13"])
+        #expect(store.resets == ["13"])
         #expect(report.added == 1)
         #expect(report.syncKey == "201")
     }
@@ -179,7 +196,7 @@ struct SyncEngineTests {
             ]
         )
         let store = FakeStore()
-        let engine = SyncEngine(gateway: gateway, store: store, account: AccountRef("a"))
+        let engine = SyncEngine(gateway: gateway, store: store, account: AccountID("a"))
         let report = try await engine.syncOnce()
         #expect(report.added == 2)
         #expect(report.rounds == 2)
@@ -194,9 +211,9 @@ struct SyncEngineTests {
             provisionError: .deviceNotRegistered
         )
         let store = FakeStore()
-        let engine = SyncEngine(gateway: gateway, store: store, account: AccountRef("a"))
+        let engine = SyncEngine(gateway: gateway, store: store, account: AccountID("a"))
 
-        await #expect(throws: MailGatewayError.deviceNotRegistered) {
+        await #expect(throws: MailError.deviceNotRegistered) {
             _ = try await engine.syncOnce()
         }
         guard case .failed(let failure) = await engine.currentState() else {
@@ -214,8 +231,8 @@ struct SyncEngineTests {
             deltas: [:]
         )
         let store = FakeStore()
-        let engine = SyncEngine(gateway: gateway, store: store, account: AccountRef("a"))
-        await #expect(throws: MailGatewayError.unsupported) {
+        let engine = SyncEngine(gateway: gateway, store: store, account: AccountID("a"))
+        await #expect(throws: MailError.unsupported) {
             _ = try await engine.syncOnce()
         }
     }
@@ -232,7 +249,7 @@ struct SyncEngineThrottleTests {
     func retriesAfterThrottle() async throws {
         let gateway = FakeGateway(
             folderListing: FolderListing(
-                folders: [FolderSummary(serverID: "13", parentID: "0", displayName: "收件箱", type: 2)],
+                folders: [Folder(serverID: "13", parentID: "0", displayName: "收件箱", type: 2)],
                 syncKey: "1"
             ),
             deltas: dangerousDeltas(),
@@ -243,7 +260,7 @@ struct SyncEngineThrottleTests {
         let engine = SyncEngine(
             gateway: gateway,
             store: store,
-            account: AccountRef("a"),
+            account: AccountID("a"),
             sleeper: { duration in await sleeps.add(duration) }
         )
         let report = try await engine.syncOnce()
@@ -256,7 +273,7 @@ struct SyncEngineThrottleTests {
         [
             "0": MessageDelta(added: [], changed: [], removedServerIDs: [], syncKey: "10", moreAvailable: false),
             "10": MessageDelta(
-                added: [MessageSummary(serverID: "1")], changed: [], removedServerIDs: [],
+                added: [Message(serverID: "1")], changed: [], removedServerIDs: [],
                 syncKey: "11", moreAvailable: false
             ),
         ]

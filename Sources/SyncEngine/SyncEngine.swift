@@ -1,4 +1,5 @@
 import Foundation
+import MailDomain
 
 /// Orchestrates one account: folder hierarchy first, then the inbox window.
 ///
@@ -43,7 +44,7 @@ public actor SyncEngine {
     public func syncOnce() async throws -> SyncReport {
         do {
             return try await runSync()
-        } catch MailGatewayError.throttled(let retryAfter) {
+        } catch MailError.throttled(let retryAfter) {
             // The server asked us to slow down; wait once and retry a single time.
             let seconds = min(max(retryAfter ?? 30, 1), 300)
             await sleeper(.seconds(seconds))
@@ -57,7 +58,7 @@ public actor SyncEngine {
             let folders = try await refreshFolders()
             let inbox = folders.first(where: \.isInbox)
             guard let inbox else {
-                throw MailGatewayError.unsupported
+                throw MailError.unsupported
             }
 
             state = .syncingMessages(folder: inbox.serverID)
@@ -84,8 +85,8 @@ public actor SyncEngine {
         // FolderSync is asked for the full hierarchy every time: an incremental key only
         // tells us that the tree changed, not what it now contains.
         let listing = try await gateway.fetchFolders(syncKey: "0")
-        try await store.applyFolderSnapshot(account, folders: listing.folders, syncKey: listing.syncKey)
-        return try await store.folders(account)
+        try store.applyFolderSnapshot(account, folders: listing.folders, syncKey: listing.syncKey)
+        return try store.folders(account)
     }
 
     // MARK: - Messages
@@ -95,7 +96,7 @@ public actor SyncEngine {
         var changed = 0
         var removed = 0
         var rounds = 0
-        var key = try await store.syncKey(account, collection: inbox.serverID) ?? "0"
+        var key = try store.syncKey(account, collection: inbox.serverID) ?? "0"
         var rebuilt = false
 
         // The gateway pages through the collection in `window`-sized batches and does not
@@ -116,7 +117,7 @@ public actor SyncEngine {
                 let delta = try await gateway.fetchMessages(
                     collectionID: inbox.serverID, syncKey: key, window: window, filterType: filterType
                 )
-                try await store.applySyncBatch(account, folder: inbox.serverID, delta: delta)
+                try store.applySyncBatch(account, folder: inbox.serverID, delta: delta)
                 added += delta.added.count
                 changed += delta.changed.count
                 removed += delta.removedServerIDs.count
@@ -126,10 +127,10 @@ public actor SyncEngine {
                 if delta.added.count < window && !delta.moreAvailable {
                     break
                 }
-            } catch MailGatewayError.syncKeyInvalid where !rebuilt {
+            } catch MailError.syncKeyInvalid where !rebuilt {
                 // Status 3/4: the server lost our cursor. Rebuild this collection from zero.
                 rebuilt = true
-                try await store.resetCollection(account, folder: inbox.serverID)
+                try store.resetCollection(account, folder: inbox.serverID)
                 key = "0"
             }
         }
@@ -142,8 +143,8 @@ public actor SyncEngine {
 
     // MARK: - Errors
 
-    private func map(_ error: Error) -> MailGatewayError {
-        if let gatewayError = error as? MailGatewayError {
+    private func map(_ error: Error) -> MailError {
+        if let gatewayError = error as? MailError {
             return gatewayError
         }
         return .offline

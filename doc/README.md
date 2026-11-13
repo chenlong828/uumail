@@ -17,7 +17,7 @@ macOS 原生邮件客户端，只走 Exchange ActiveSync（以「一台已登记
 
 - **现在能回答什么**：能不能用 EAS 收信发信？能，见 playbook 的能力矩阵。Ping 行不行？不行——三档心跳都只回 `Status=4`，客户端固定 5 分钟轮询（playbook §5.2）。首版做什么？单账号、最小策略握手、本机联系人、不做 OAuth（2026-11-09 确认）。
 - **还不能回答什么**：MoveItems 未验证；本地保留策略未定（`plan/open-questions.md` Q1）。
-- **下一步**：W-SCN-REFACTOR 设计冻结（`works/2026-11-10-scene-refactor/architecture-spec.md`，第二轮评审待确认），冻结后按场景收口重构；M1 场景卡待转 `verified`。
+- **下一步**：W-SCN-REFACTOR 已冻结（2026-11-13，整体结论通过）；T-1110-01 `MailDomain` 已落地，接着做 T-1110-02 `EASAdapter`；M1 场景卡待转 `verified`。
 
 ## 目录约定
 

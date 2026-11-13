@@ -1,14 +1,17 @@
 import Foundation
+import MailDomain
 
-public struct AccountID: Hashable, Sendable, CustomStringConvertible {
-    public let raw: String
-
-    public init(_ raw: String) {
-        self.raw = raw
-    }
-
-    public var description: String { raw }
-}
+// Transitional names: the canonical values now live in `MailDomain` (T-1110-01).
+// Call sites migrate off these aliases in later tasks of W-SCN-REFACTOR.
+public typealias AccountID = MailDomain.AccountID
+public typealias MailFolder = MailDomain.Folder
+public typealias StoredFolder = MailDomain.Folder
+public typealias MailAttachment = MailDomain.Attachment
+public typealias StoredAttachment = MailDomain.Attachment
+public typealias MailMessage = MailDomain.Message
+public typealias StoredMessage = MailDomain.Message
+public typealias MailDraft = MailDomain.Draft
+public typealias StoredOutboxItem = MailDomain.OutboxItem
 
 public struct NewAccount: Sendable {
     public var displayName: String
@@ -20,150 +23,6 @@ public struct NewAccount: Sendable {
         self.address = address
         self.host = host
     }
-}
-
-/// A folder as the store knows it. Deliberately not the protocol layer's type:
-/// the store contract must not depend on EAS shapes.
-public struct MailFolder: Equatable, Sendable {
-    public var serverID: String
-    public var parentID: String?
-    public var displayName: String
-    public var type: Int
-
-    public init(serverID: String, parentID: String?, displayName: String, type: Int) {
-        self.serverID = serverID
-        self.parentID = parentID
-        self.displayName = displayName
-        self.type = type
-    }
-}
-
-public struct StoredFolder: Equatable, Sendable {
-    public var serverID: String
-    public var parentID: String?
-    public var displayName: String
-    public var type: Int
-
-    public init(serverID: String, parentID: String?, displayName: String, type: Int) {
-        self.serverID = serverID
-        self.parentID = parentID
-        self.displayName = displayName
-        self.type = type
-    }
-}
-
-public struct MailAttachment: Equatable, Sendable {
-    public var displayName: String
-    public var fileReference: String
-    public var size: Int?
-
-    public init(displayName: String, fileReference: String, size: Int?) {
-        self.displayName = displayName
-        self.fileReference = fileReference
-        self.size = size
-    }
-}
-
-public struct StoredAttachment: Equatable, Sendable, Identifiable {
-    public var messageID: String
-    public var displayName: String
-    public var fileReference: String
-    public var size: Int?
-    public var cachePath: String?
-    public var id: String { fileReference }
-}
-
-public struct MailMessage: Equatable, Sendable {
-    public var serverID: String
-    public var subject: String?
-    public var sender: String?
-    public var recipients: String?
-    public var receivedRaw: String?
-    public var isRead: Bool
-    public var importance: Int?
-    public var bodyPreview: String?
-    public var attachments: [MailAttachment] = []
-
-    public init(
-        serverID: String,
-        subject: String? = nil,
-        sender: String? = nil,
-        recipients: String? = nil,
-        receivedRaw: String? = nil,
-        isRead: Bool = false,
-        importance: Int? = nil,
-        bodyPreview: String? = nil
-    ) {
-        self.serverID = serverID
-        self.subject = subject
-        self.sender = sender
-        self.recipients = recipients
-        self.receivedRaw = receivedRaw
-        self.isRead = isRead
-        self.importance = importance
-        self.bodyPreview = bodyPreview
-    }
-}
-
-public struct StoredMessage: Equatable, Sendable {
-    public var serverID: String
-    public var subject: String?
-    public var sender: String?
-    public var receivedRaw: String?
-    public var isRead: Bool
-    public var bodyPreview: String?
-    public var folderID: String?
-
-    public init(
-        serverID: String,
-        subject: String?,
-        sender: String?,
-        receivedRaw: String?,
-        isRead: Bool,
-        bodyPreview: String?,
-        folderID: String? = nil
-    ) {
-        self.serverID = serverID
-        self.subject = subject
-        self.sender = sender
-        self.receivedRaw = receivedRaw
-        self.isRead = isRead
-        self.bodyPreview = bodyPreview
-    }
-}
-
-public struct MailDraft: Equatable, Sendable {
-    public var to: String
-    public var cc: String?
-    public var subject: String
-    public var body: String
-    public var inReplyTo: String?
-    public var references: String?
-    public var isDraft: Bool
-
-    public init(to: String, cc: String?, subject: String, body: String,
-                inReplyTo: String? = nil, references: String? = nil, isDraft: Bool = false) {
-        self.to = to
-        self.cc = cc
-        self.subject = subject
-        self.body = body
-        self.inReplyTo = inReplyTo
-        self.references = references
-        self.isDraft = isDraft
-    }
-}
-
-public struct StoredOutboxItem: Equatable, Sendable {
-    public var id: String
-    public var to: String
-    public var cc: String?
-    public var subject: String
-    public var body: String
-    public var inReplyTo: String?
-    public var references: String?
-    public var state: String
-    public var attempts: Int
-    public var lastError: String?
 }
 
 public enum MailStoreError: Error, Equatable, Sendable {

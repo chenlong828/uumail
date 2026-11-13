@@ -1,13 +1,26 @@
 import EASClient
 import Foundation
+import MailDomain
 import MailStore
 import SyncEngine
 
-/// Adapts the EAS client to the sync engine's gateway port. This is the anti-corruption
-/// point: EAS status codes become domain errors here and nowhere else.
+/// Adapts the EAS client to the domain gateway port. This is the anti-corruption
+/// point: EAS status codes become `MailError` here and nowhere else.
 public struct EASGateway: MailGateway {
     public let client: EASClient
     public init(client: EASClient) { self.client = client }
+
+    public func probe() async throws -> ServerCapabilities {
+        do {
+            let capabilities = try await client.options()
+            return ServerCapabilities(
+                protocolVersions: capabilities.protocolVersions,
+                commands: capabilities.commands
+            )
+        } catch {
+            throw Self.map(error)
+        }
+    }
 
     public func provisionIfNeeded() async throws {
         if await client.currentPolicyKey() == nil {
@@ -24,7 +37,7 @@ public struct EASGateway: MailGateway {
             let result = try await client.folderSync(syncKey: syncKey)
             return FolderListing(
                 folders: result.folders.map {
-                    FolderSummary(
+                    Folder(
                         serverID: $0.serverID,
                         parentID: $0.parentID,
                         displayName: $0.displayName,
@@ -44,8 +57,8 @@ public struct EASGateway: MailGateway {
                 collectionID: collectionID, syncKey: syncKey, window: window, filterType: filterType
             )
             return MessageDelta(
-                added: result.added.map(Self.summary),
-                changed: result.changed.map(Self.summary),
+                added: result.added.map(Self.message),
+                changed: result.changed.map(Self.message),
                 removedServerIDs: result.removedServerIDs,
                 syncKey: result.syncKey,
                 moreAvailable: result.moreAvailable
@@ -55,8 +68,34 @@ public struct EASGateway: MailGateway {
         }
     }
 
-    private static func summary(_ message: EASMessage) -> MessageSummary {
-        MessageSummary(
+    /// The port exposes the payload only; truncation is re-fetched inside `EASClient`
+    /// and is not part of the domain contract (the pane treats a short body as normal).
+    public func fetchBody(collectionID: String, serverID: String) async throws -> String {
+        do {
+            return try await client.fetchBody(collectionID: collectionID, serverID: serverID).payload
+        } catch {
+            throw Self.map(error)
+        }
+    }
+
+    public func fetchAttachment(fileReference: String) async throws -> Data {
+        do {
+            return try await client.fetchAttachment(fileReference: fileReference)
+        } catch {
+            throw Self.map(error)
+        }
+    }
+
+    public func send(mime: Data, clientID: String) async throws {
+        do {
+            try await client.send(mime: mime, clientID: clientID)
+        } catch {
+            throw Self.map(error)
+        }
+    }
+
+    private static func message(_ message: EASMessage) -> Message {
+        Message(
             serverID: message.serverID,
             subject: message.subject,
             sender: message.from,
@@ -64,11 +103,14 @@ public struct EASGateway: MailGateway {
             receivedRaw: message.dateReceived,
             isRead: message.isRead ?? false,
             importance: message.importance,
-            bodyPreview: message.bodyPreview
+            bodyPreview: message.bodyPreview,
+            attachments: message.attachments.map {
+                Attachment(displayName: $0.displayName, fileReference: $0.fileReference, size: $0.size)
+            }
         )
     }
 
-    public static func map(_ error: Error) -> MailGatewayError {
+    public static func map(_ error: Error) -> MailError {
         guard let eas = error as? EASError else {
             return .offline
         }
@@ -77,7 +119,7 @@ public struct EASGateway: MailGateway {
         case .deviceNotRegistered: return .deviceNotRegistered
         case .policyRequired: return .policyBlocked
         case .syncKeyInvalid: return .syncKeyInvalid
-        case .throttled(let after): return .throttled(retryAfterSeconds: after)
+        case .throttled(let after): return .throttled(seconds: after)
         case .transient: return .offline
         case .gatewayRejected, .protocolRejected, .permanent, .malformedResponse:
             return .unsupported
@@ -85,62 +127,36 @@ public struct EASGateway: MailGateway {
     }
 }
 
-/// Adapts MailStore to the sync engine's store port.
+/// Adapts MailStore to the sync store port. Both sides now speak the domain values,
+/// so this is a straight pass-through until the adapter is deleted (T-1110-02).
 public struct StoreAdapter: SyncStore {
     public let store: MailStore
-    public let account: AccountID
-    public init(store: MailStore, account: AccountID) { self.store = store; self.account = account }
+    public init(store: MailStore) { self.store = store }
 
-    public func folders(_ ref: AccountRef) async throws -> [FolderSummary] {
-        try store.folders(account: account).map {
-            FolderSummary(
-                serverID: $0.serverID,
-                parentID: $0.parentID,
-                displayName: $0.displayName,
-                type: $0.type
-            )
-        }
+    public func folders(_ account: AccountID) throws -> [Folder] {
+        try store.folders(account: account)
     }
 
-    public func applyFolderSnapshot(_ ref: AccountRef, folders: [FolderSummary], syncKey: String) async throws {
-        try store.applyFolderSnapshot(
-            account: account,
-            folders: folders.map {
-                MailFolder(serverID: $0.serverID, parentID: $0.parentID, displayName: $0.displayName, type: $0.type)
-            },
-            syncKey: syncKey
-        )
+    public func applyFolderSnapshot(_ account: AccountID, folders: [Folder], syncKey: String) throws {
+        try store.applyFolderSnapshot(account: account, folders: folders, syncKey: syncKey)
     }
 
-    public func syncKey(_ ref: AccountRef, collection: String) async throws -> String? {
+    public func syncKey(_ account: AccountID, collection: String) throws -> String? {
         try store.syncKey(account: account, collection: collection)
     }
 
-    public func applySyncBatch(_ ref: AccountRef, folder: String, delta: MessageDelta) async throws {
+    public func applySyncBatch(_ account: AccountID, folder: String, delta: MessageDelta) throws {
         try store.applySyncBatch(
             account: account,
             folder: folder,
-            added: delta.added.map(Self.mailMessage),
-            changed: delta.changed.map(Self.mailMessage),
+            added: delta.added,
+            changed: delta.changed,
             removedServerIDs: delta.removedServerIDs,
             syncKey: delta.syncKey
         )
     }
 
-    public func resetCollection(_ ref: AccountRef, folder: String) async throws {
+    public func resetCollection(_ account: AccountID, folder: String) throws {
         try store.resetCollection(account: account, folder: folder)
-    }
-
-    private static func mailMessage(_ message: MessageSummary) -> MailMessage {
-        MailMessage(
-            serverID: message.serverID,
-            subject: message.subject,
-            sender: message.sender,
-            recipients: message.recipients,
-            receivedRaw: message.receivedRaw,
-            isRead: message.isRead,
-            importance: message.importance,
-            bodyPreview: message.bodyPreview
-        )
     }
 }

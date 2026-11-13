@@ -1,25 +1,11 @@
 import Foundation
 import Security
 
-/// Credentials live in the Keychain, never in the database or a config file.
-/// One account per install for now (design D8).
-public struct StoredAccountConfiguration: Codable, Equatable, Sendable {
-    public var host: String
-    public var account: String
-    public var password: String
-    public var domain: String
-    public var deviceID: String
-    public var displayName: String
+import MailDomain
 
-    public init(host: String, account: String, password: String, domain: String, deviceID: String, displayName: String) {
-        self.host = host
-        self.account = account
-        self.password = password
-        self.domain = domain
-        self.deviceID = deviceID
-        self.displayName = displayName
-    }
-}
+/// Credentials live in the Keychain, never in the database or a config file.
+/// One account per install for now (design D8). Canonical shape: `ServerConfiguration`.
+public typealias StoredAccountConfiguration = ServerConfiguration
 
 public enum KeychainError: Error, Equatable, Sendable {
     case status(OSStatus)

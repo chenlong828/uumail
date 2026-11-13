@@ -29,7 +29,7 @@ public final class MailService: MailServiceProtocol, MailSendService, @unchecked
         accountID = try Self.existingOrNewAccount(store: store, configuration: configuration)
         engine = SyncEngine(
             gateway: EASGateway(client: client),
-            store: StoreAdapter(store: store, account: accountID),
+            store: StoreAdapter(store: store),
             account: AccountRef(accountID.raw)
         )
     }

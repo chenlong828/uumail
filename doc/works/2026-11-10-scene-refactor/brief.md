@@ -2,7 +2,7 @@
 layer: works
 module: global
 status: active
-updated: 2026-11-10
+updated: 2026-11-13
 ---
 
 # W-SCN-REFACTOR 场景收口与分层重构
@@ -66,7 +66,7 @@ updated: 2026-11-10
 
 | ID | 类型 | 组件 | 状态 | 内容 | 装载 |
 |---|---|---|---|---|---|
-| T-1110-01 | change | CMP-DOMAIN | pending | 新建 `MailDomain`：值类型、端口、`MailError`、`ServerConfiguration`；`typealias` 过渡 | `Sources/MailDomain/**`、`Package.swift` |
+| T-1110-01 | change | CMP-DOMAIN | done | 新建 `MailDomain`：值类型、端口、`MailError`、`ServerConfiguration`；`typealias` 过渡 | `Sources/MailDomain/**`、`Package.swift` |
 | T-1110-02 | change | CMP-EASADAPTER | pending | `EASAdapter` 实现 `MailGateway` v2；`MailService` 内部改走端口 | `Sources/EASAdapter/**`、`MailService.swift` |
 | T-1110-03 | change | CMP-UC-* | pending | 新建 `Scenes`：AccountSetup / Sync / Read / Compose | `Sources/Scenes/**` |
 | T-1110-04 | change | CMP-PRES | pending | 薄视图模型；视图去 `service`、去编排 | `Sources/Presentation/**`、`Sources/uumail/**` |
@@ -97,4 +97,10 @@ updated: 2026-11-10
 ## 评审状态
 
 - 第一轮（2026-11-10）：边界与四个决策已确认。
-- 第二轮：`architecture-spec.md` 完整规格与走查，**待最终确认**。确认后冻结并进入 T-1110-01。
+- 第二轮（2026-11-13）：`architecture-spec.md` 完整规格与走查**通过**；D1–D9 逐条确认，无附加条件。规格冻结，进入 T-1110-01。
+
+## 执行记录
+
+| 任务 | 日期 | 结论 |
+|---|---|---|
+| T-1110-01 | 2026-11-13 | `MailDomain` 目标落地（`Values/Errors/Configuration/Ports`，仅依赖 Foundation）；`MailStore`、`SyncEngine` 的值类型改为 `typealias`，`SyncStore` 改为同步、`EASGateway` 实现 7 个操作；新增 `MailDomainTests` 3 例；83 个测试全绿 |
