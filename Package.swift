@@ -11,6 +11,7 @@ let package = Package(
         .library(name: "MailStore", targets: ["MailStore"]),
         .library(name: "SyncEngine", targets: ["SyncEngine"]),
         .library(name: "Outbox", targets: ["Outbox"]),
+        .library(name: "Scenes", targets: ["Scenes"]),
         .library(name: "Composition", targets: ["Composition"]),
         .library(name: "AppServices", targets: ["AppServices"]),
         .executable(name: "uumail", targets: ["uumail"]),
@@ -35,10 +36,14 @@ let package = Package(
         ),
         .target(name: "SyncEngine", dependencies: ["MailDomain"]),
         .target(name: "Outbox", dependencies: ["MailDomain", "MailStore"]),
+        .target(
+            name: "Scenes",
+            dependencies: ["MailDomain", "MailStore", "SyncEngine", "Outbox"]
+        ),
         .target(name: "Composition", dependencies: ["MailDomain"]),
         .target(
             name: "AppServices",
-            dependencies: ["EASAdapter", "EASClient", "MailDomain", "MailStore", "Outbox", "SyncEngine"]
+            dependencies: ["EASAdapter", "EASClient", "MailDomain", "MailStore", "Outbox", "Scenes", "SyncEngine"]
         ),
         .executableTarget(
             name: "uumail",
@@ -56,6 +61,7 @@ let package = Package(
         .testTarget(name: "MailStoreTests", dependencies: ["MailStore", "MailDomain"]),
         .testTarget(name: "OutboxTests", dependencies: ["Outbox", "MailStore", "MailDomain"]),
         .testTarget(name: "SyncEngineTests", dependencies: ["SyncEngine"]),
+        .testTarget(name: "ScenesTests", dependencies: ["Scenes", "MailDomain", "MailStore", "SyncEngine", "Outbox"]),
         .testTarget(name: "AppServicesTests", dependencies: ["AppServices"]),
     ]
 )

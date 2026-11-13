@@ -1,6 +1,7 @@
 import Foundation
 import MailStore
 import Observation
+import Scenes
 import SyncEngine
 
 /// Presentation state for the mailbox window. Owns no persistence: the service does.

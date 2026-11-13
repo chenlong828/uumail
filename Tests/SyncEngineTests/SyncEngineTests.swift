@@ -55,7 +55,7 @@ actor FakeGateway: MailGateway {
         return delta
     }
 
-    func fetchBody(collectionID: String, serverID: String) async throws -> String {
+    func fetchBody(collectionID: String, serverID: String) async throws -> FetchedBody {
         throw MailError.unsupported
     }
 

@@ -2,7 +2,7 @@
 layer: works
 module: global
 status: active
-updated: 2026-11-13
+updated: 2026-11-14
 ---
 
 # W-SCN-REFACTOR 场景收口与分层重构
@@ -68,7 +68,7 @@ updated: 2026-11-13
 |---|---|---|---|---|---|
 | T-1110-01 | change | CMP-DOMAIN | done | 新建 `MailDomain`：值类型、端口、`MailError`、`ServerConfiguration`；`typealias` 过渡 | `Sources/MailDomain/**`、`Package.swift` |
 | T-1110-02 | change | CMP-EASADAPTER | done | `EASAdapter` 实现 `MailGateway` v2；`MailService` 内部改走端口 | `Sources/EASAdapter/**`、`MailService.swift` |
-| T-1110-03 | change | CMP-UC-* | pending | 新建 `Scenes`：AccountSetup / Sync / Read / Compose | `Sources/Scenes/**` |
+| T-1110-03 | change | CMP-UC-* | done | 新建 `Scenes`：AccountSetup / Sync / Read / Compose | `Sources/Scenes/**` |
 | T-1110-04 | change | CMP-PRES | pending | 薄视图模型；视图去 `service`、去编排 | `Sources/Presentation/**`、`Sources/uumail/**` |
 | T-1110-05 | change | CMP-CLI | pending | `uumailctl` 改调场景；删重复账号逻辑 | `Sources/uumailctl/**` |
 | T-1110-06 | change | CMP-OUT | done | `Outbox` 冷投递、租约、退避；`MailStore` 新增 claim/mark 契约 | `Sources/Outbox/**`、`MailStore.swift` |
@@ -107,3 +107,4 @@ updated: 2026-11-13
 | T-1110-07 | 2026-11-13 | `FileAttachmentFiles`（Composition 目标）：确定性文件名、原子写、2 GB 最旧优先淘汰；`AttachmentRef` 增加 `displayName`；3 个单测。附件流程接入 `ReadScene` 随 T-1110-03 |
 | T-1110-02 | 2026-11-13 | 新建 `EASAdapter` 目标（`EASAdapter` 类型 + 唯一错误映射）；`MailService` 的正文/发信/附件改走端口，`isHTML`/`isTruncated` 由 `FetchedBody` 保留（D10）；新增 `EASAdapterTests` 4 例；87 个测试全绿 |
 | T-1110-06 | 2026-11-13 | 新建 `Outbox` 目标：入队只落本地行、`UPDATE … RETURNING` 单句领取、120s 租约、30s→2m→10m→30m 后翻倍封顶 24h、失败分类与手动重试、`ClientId = outboxID`；`MimeBuilder` 迁入 Outbox，From/Message-ID 取 `MailStore.account`（返回新增 `host`）；`MailStore` 迁移 `v8_outbox_v2`（`sending_since`/`next_attempt_at`、`failed`→`failed_retryable`）与 `claim/mark/release/cancel/outboxItem`、`discardAccount`/`markAccountReady`、`outboxNotClaimable`/`accountNotEmpty`；`MailService.send` 改为入队后一次投递；新增 `OutboxTests`，`MailStoreTests` 随契约更新（状态值改名、需先 claim）；120 个测试全绿。解释：`releaseOutbox` 兼作手动重试（spec 未单列 retry 写契约）；sending 中取消用进程内标记、投递返回后经 queued→canceled 落终态；账号行缺失视为永久失败 |
+| T-1110-03 | 2026-11-14 | 新建 `Scenes`（依赖 MailDomain/MailStore/SyncEngine/Outbox）：`AccountSetupScene`（probe/provision → 建号或复用 → 文件夹快照 → ready → 凭据最后；失败只回滚本次新建账号）、`SyncScene`（单飞、授权请求一次、added>0 才通知、auth/device/policy 暂停自动刷新）、`ReadScene`（本地读零网络、缓存优先、按 `MessageRef` 单飞补拉且先落库再 yield、附件经 `AttachmentFiles`）、`ComposeScene`（Re:/Fwd: 与引用规则照搬 `ComposeModel`、入队即返回、空收件人拒绝）；`HTMLText` 迁入 Scenes，`MailService`/`MailboxModel` 改 import；新增 `ScenesTests` 22 例，142 个测试全绿。偏差/解释：`Outbox` 是 actor，故 `send`/`pending`/`retry`/`cancel` 必须是 async；回滚不删复用的既有无消息账号；`AccountInput` 无协议字段，凭据按 `ServerConfiguration` 默认值补；顺带修正 `SyncEngineTests` 的 `fetchBody` 返回类型（T-1110-02 遗留，旧构建缓存掩盖了编译错误） |

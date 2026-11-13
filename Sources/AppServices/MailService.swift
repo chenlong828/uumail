@@ -5,6 +5,7 @@ import Foundation
 import MailDomain
 import MailStore
 import Outbox
+import Scenes
 import SyncEngine
 
 /// Composition root shared by the app and the CLI: owns the store, the client and the

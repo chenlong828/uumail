@@ -1,0 +1,191 @@
+import Foundation
+import MailDomain
+import MailStore
+
+/// Identifies one message's body: its folder and the server-side id.
+public struct MessageRef: Hashable, Sendable {
+    public var folderID: String
+    public var serverID: String
+
+    public init(folderID: String, serverID: String) {
+        self.folderID = folderID
+        self.serverID = serverID
+    }
+}
+
+/// What opening a message reports. `cached` is the locally stored HTML; `loaded` carries
+/// the freshly fetched body with plain text already converted to HTML (D10: the scene
+/// layer owns that conversion, the presentation keeps `isTruncated`).
+public enum BodyEvent: Equatable, Sendable {
+    case cached(String)
+    case loaded(FetchedBody)
+    case failed(MailError)
+}
+
+/// The read path: local queries are network-free, opening a body is cache-first with a
+/// single-flight fetch-and-store, and attachments go through the `AttachmentFiles` port.
+///
+/// The only mutable state is the in-flight request tables (spec §4.9/§7): the scene value
+/// itself is stateless, so it stays `Sendable` and cheap to copy.
+public struct ReadScene: Sendable {
+    private let store: MailStore
+    private let account: AccountID
+    private let gateway: any MailGateway
+    private let files: any AttachmentFiles
+
+    private let bodyFlights = FlightBoard<MessageRef, FetchedBody>()
+    private let attachmentFlights = FlightBoard<String, URL>()
+
+    public init(
+        store: MailStore,
+        account: AccountID,
+        gateway: any MailGateway,
+        files: any AttachmentFiles
+    ) {
+        self.store = store
+        self.account = account
+        self.gateway = gateway
+        self.files = files
+    }
+
+    // MARK: - Local reads (never touch the network)
+
+    public func folders() throws -> [Folder] {
+        try store.folders(account: account)
+    }
+
+    public func messages(folderID: String, limit: Int = 200) throws -> [Message] {
+        try store.messages(account: account, folder: folderID, limit: limit)
+    }
+
+    public func search(_ query: String, limit: Int = 100) throws -> [Message] {
+        try store.searchLocal(account: account, query: query, limit: limit)
+    }
+
+    public func attachments(for ref: MessageRef) throws -> [Attachment] {
+        try store.attachments(account: account, folder: ref.folderID, messageID: ref.serverID)
+    }
+
+    /// The stored body as HTML, or `nil` when it has never been fetched.
+    public func bodyIfCached(_ ref: MessageRef) throws -> String? {
+        guard let stored = try store.body(account: account, folder: ref.folderID, serverID: ref.serverID) else {
+            return nil
+        }
+        return stored.isHTML ? stored.text : HTMLText.fromPlainText(stored.text)
+    }
+
+    // MARK: - Body
+
+    /// Opens one body: a cached body is yielded immediately without touching the network;
+    /// otherwise the body is fetched once per `MessageRef`, stored as HTML, and only then
+    /// yielded as `loaded` (so a repeat open hits the cache).
+    public func open(_ ref: MessageRef) -> AsyncStream<BodyEvent> {
+        let (stream, continuation) = AsyncStream<BodyEvent>.makeStream()
+        let flights = bodyFlights
+        let task = Task { [self] in
+            do {
+                if let cached = try bodyIfCached(ref) {
+                    continuation.yield(.cached(cached))
+                    continuation.finish()
+                    return
+                }
+                let fetched = try await fetchBody(ref)
+                try Task.checkCancellation()
+                continuation.yield(.loaded(fetched))
+            } catch is CancellationError {
+                // The consumer went away: nothing is yielded and the fetch never applies
+                // its body (the check inside `fetchBody` runs before `applyBody`).
+            } catch {
+                continuation.yield(.failed(Self.classify(error)))
+            }
+            continuation.finish()
+        }
+        continuation.onTermination = { @Sendable _ in
+            task.cancel()
+            Task { await flights.cancel(ref) }
+        }
+        return stream
+    }
+
+    private func fetchBody(_ ref: MessageRef) async throws -> FetchedBody {
+        try await bodyFlights.run(ref) { [self] in
+            let fetched = try await gateway.fetchBody(
+                collectionID: ref.folderID,
+                serverID: ref.serverID
+            )
+            try Task.checkCancellation()
+            let html = fetched.isHTML ? fetched.text : HTMLText.fromPlainText(fetched.text)
+            try store.applyBody(
+                account: account,
+                folder: ref.folderID,
+                serverID: ref.serverID,
+                html: html
+            )
+            return FetchedBody(text: html, isHTML: true, isTruncated: fetched.isTruncated)
+        }
+    }
+
+    // MARK: - Attachments
+
+    /// Returns the cached file, or fetches, stores and records it. The `AttachmentFiles`
+    /// port owns the on-disk budget; the scene only marks the row after the file exists.
+    public func downloadAttachment(_ attachment: Attachment, in ref: MessageRef) async throws -> URL {
+        let reference = AttachmentRef(
+            fileReference: attachment.fileReference,
+            displayName: attachment.displayName
+        )
+        if let cached = files.cachedURL(for: reference) {
+            return cached
+        }
+
+        do {
+            return try await attachmentFlights.run(attachment.fileReference) { [self] in
+                // Another caller may have finished the same download while this one waited.
+                if let cached = files.cachedURL(for: reference) {
+                    return cached
+                }
+                let data = try await gateway.fetchAttachment(fileReference: attachment.fileReference)
+                let url = try files.store(data, for: reference)
+                try store.markAttachmentCached(
+                    account: account,
+                    folder: ref.folderID,
+                    messageID: ref.serverID,
+                    fileReference: attachment.fileReference,
+                    cachePath: url.path
+                )
+                return url
+            }
+        } catch {
+            throw Self.classify(error)
+        }
+    }
+
+    private static func classify(_ error: Error) -> MailError {
+        (error as? MailError) ?? .storage(reason: String(describing: error))
+    }
+}
+
+/// Single-flight table: callers with the same key share one task and one result.
+private actor FlightBoard<Key: Hashable & Sendable, Value: Sendable> {
+    private var tasks: [Key: Task<Value, Error>] = [:]
+
+    func run(_ key: Key, operation: @Sendable @escaping () async throws -> Value) async throws -> Value {
+        if let task = tasks[key] {
+            return try await task.value
+        }
+        let task = Task { try await operation() }
+        tasks[key] = task
+        do {
+            let value = try await task.value
+            tasks[key] = nil
+            return value
+        } catch {
+            tasks[key] = nil
+            throw error
+        }
+    }
+
+    func cancel(_ key: Key) {
+        tasks[key]?.cancel()
+    }
+}
