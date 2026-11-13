@@ -1,9 +1,11 @@
-import AppServices
+import Composition
 import Darwin
 import EASClient
 import Foundation
+import MailDomain
 import MailStore
-import SyncEngine
+import Outbox
+import Scenes
 
 @main
 struct UumailCtl {
@@ -26,9 +28,10 @@ struct UumailCtl {
         }
         let flags = Set(arguments.dropFirst().filter { $0.hasPrefix("--") })
         let configuration = try loadConfiguration(insecure: flags.contains("--insecure"))
+        let easConfiguration = CommandLineComposition.easConfiguration(configuration)
         let client = EASClient(
-            configuration: configuration,
-            transport: URLSessionTransport(configuration: configuration)
+            configuration: easConfiguration,
+            transport: URLSessionTransport(configuration: easConfiguration)
         )
 
         switch command {
@@ -75,23 +78,29 @@ struct UumailCtl {
                 FileHandle.standardError.write(Data("send: --to <address> is required\n".utf8))
                 exit(2)
             }
-            let service = try MailService(
-                configuration: configuration,
-                databasePath: value(of: "--db", in: arguments) ?? ".build/outbox.sqlite"
+            let composition = try await CommandLineComposition.make(
+                databasePath: value(of: "--db", in: arguments) ?? ".build/outbox.sqlite",
+                configuration: configuration
             )
-            let draft = MailDraft(
+            let draft = Draft(
                 to: to,
                 cc: nil,
                 subject: value(of: "--subject", in: arguments) ?? "uumail 测试",
                 body: value(of: "--body", in: arguments) ?? "这是一封来自 uumail 的测试邮件。"
             )
+            let id: OutboxID
             do {
-                let id = try await service.send(draft)
-                print("sent: outbox \(id) cleared")
-            } catch let error as MailGatewayError {
-                print("send failed: \(error) (item kept for retry)")
+                id = try await composition.compose.send(draft, account: composition.account)
+            } catch {
+                print("send failed: \(error)")
                 exit(3)
             }
+            let outcomes = await composition.outbox.flushAll(account: composition.account)
+            if let failure = outcomes.first(where: { $0.outboxID == id })?.error {
+                print("send failed: \(failure) (item kept for retry)")
+                exit(3)
+            }
+            print("sent: outbox \(id) cleared")
 
         case "body":
             guard let folder = value(of: "--folder", in: arguments),
@@ -102,11 +111,32 @@ struct UumailCtl {
             if let path = value(of: "--db", in: arguments) {
                 // Goes through the real composition root, so the store side of the read
                 // path (HTML conversion + body table) is exercised too.
-                let service = try MailService(configuration: configuration, databasePath: path)
-                let stored = try await service.fetchBody(folderID: folder, serverID: server)
-                let cached = try service.body(folderID: folder, serverID: server) ?? ""
-                print("body: truncated=\(stored.isTruncated) chars=\(stored.html.count) stored=\(cached.count)")
-                print(stored.html.prefix(1_000))
+                let composition = try await CommandLineComposition.make(
+                    databasePath: path,
+                    configuration: configuration
+                )
+                let ref = MessageRef(folderID: folder, serverID: server)
+                var html: String?
+                var truncated = false
+                var failure: MailError?
+                for await event in composition.read.open(ref) {
+                    switch event {
+                    case .cached(let cachedHTML):
+                        html = cachedHTML
+                    case .loaded(let fetched):
+                        html = fetched.text
+                        truncated = fetched.isTruncated
+                    case .failed(let error):
+                        failure = error
+                    }
+                }
+                if let failure {
+                    print("body failed: \(failure)")
+                    exit(3)
+                }
+                let cached = (try? composition.read.bodyIfCached(ref)) ?? nil
+                print("body: truncated=\(truncated) chars=\(html?.count ?? 0) stored=\(cached?.count ?? 0)")
+                print((html ?? "").prefix(1_000))
                 exit(0)
             }
             let fetched = try await client.fetchBody(collectionID: folder, serverID: server)
@@ -129,15 +159,7 @@ struct UumailCtl {
         case "seed":
             // Writes the account into the login Keychain so the app starts configured.
             // The password never touches a file: it comes from the environment.
-            let saved = StoredAccountConfiguration(
-                host: configuration.host,
-                account: configuration.account,
-                password: configuration.password,
-                domain: configuration.domain,
-                deviceID: configuration.deviceID,
-                displayName: configuration.account
-            )
-            try KeychainAccountStore().save(saved)
+            try KeychainCredentialStore().save(configuration)
             print("keychain seeded: \(configuration.account)@\(configuration.host)")
 
         case "sync":
@@ -145,16 +167,19 @@ struct UumailCtl {
                 FileHandle.standardError.write(Data("sync: --db <path> is required\n".utf8))
                 exit(2)
             }
-            let service = try MailService(configuration: configuration, databasePath: path)
-            do {
-                let report = try await service.syncOnce()
+            let composition = try await CommandLineComposition.make(
+                databasePath: path,
+                configuration: configuration
+            )
+            let outcome = await composition.sync.refresh()
+            if let report = outcome.report {
                 print("synced: \(report.folders) folders, +\(report.added) added, ~\(report.changed) changed, -\(report.removed) removed, \(report.rounds) rounds, key \(report.syncKey)")
-            } catch let error as MailGatewayError {
-                print("sync failed: \(error)")
+            } else {
+                print("sync failed: \(String(describing: outcome.error))")
                 exit(3)
             }
-            if let inbox = try service.folders().first(where: { $0.type == 2 }) {
-                let stored = try service.messages(folderID: inbox.serverID, limit: 10)
+            if let inbox = try composition.read.folders().first(where: { $0.type == 2 }) {
+                let stored = try composition.read.messages(folderID: inbox.serverID, limit: 10)
                 print("latest \(stored.count) in \(inbox.displayName):")
                 for message in stored {
                     print("  [\(message.receivedRaw ?? "")] \(message.subject ?? "(no subject)") <- \(message.sender ?? "")")
@@ -213,21 +238,10 @@ struct UumailCtl {
         return arguments[index + 1]
     }
 
-    static func loadConfiguration(insecure: Bool) throws -> EASConfiguration {
-        let env = ProcessInfo.processInfo.environment
-        func require(_ key: String) throws -> String {
-            guard let value = env[key], !value.isEmpty else {
-                throw ConfigurationError.missing(key)
-            }
-            return value
-        }
-        return EASConfiguration(
-            host: try require("EAS_HOST"),
-            account: try require("EAS_USER"),
-            password: try require("EAS_PASS"),
-            domain: env["EAS_DOMAIN"] ?? "",
-            deviceID: try require("EAS_DEVICE_ID"),
-            allowInsecureTLS: insecure
+    static func loadConfiguration(insecure: Bool) throws -> ServerConfiguration {
+        try CommandLineComposition.configuration(
+            environment: ProcessInfo.processInfo.environment,
+            insecure: insecure
         )
     }
 
@@ -253,15 +267,5 @@ struct UumailCtl {
         Flags:
           --insecure           skip TLS verification (only for internal CAs)
         """)
-    }
-}
-
-enum ConfigurationError: Error, CustomStringConvertible {
-    case missing(String)
-
-    var description: String {
-        switch self {
-        case .missing(let key): "missing environment variable \(key)"
-        }
     }
 }

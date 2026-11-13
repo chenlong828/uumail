@@ -21,17 +21,27 @@ public final class MailboxViewModel {
     private let syncScene: SyncScene
     private let composeScene: ComposeScene
     private let account: AccountID
+    /// Wakes the composition's delivery pump after an enqueue. Composition owns the loop;
+    /// the view model only forwards the signal.
+    private let onEnqueued: (@MainActor () -> Void)?
 
     private var autoRefreshTask: Task<Void, Never>?
     private var bodyTask: Task<Void, Never>?
     private var openingRef: MessageRef?
     private var openedBody: MessageRef?
 
-    public init(read: ReadScene, sync: SyncScene, compose: ComposeScene, account: AccountID) {
+    public init(
+        read: ReadScene,
+        sync: SyncScene,
+        compose: ComposeScene,
+        account: AccountID,
+        onEnqueued: (@MainActor () -> Void)? = nil
+    ) {
         self.read = read
         self.syncScene = sync
         self.composeScene = compose
         self.account = account
+        self.onEnqueued = onEnqueued
     }
 
     // MARK: - Derived state
@@ -266,7 +276,7 @@ public final class MailboxViewModel {
     // MARK: - Compose
 
     public func composeNew() -> ComposeViewModel {
-        ComposeViewModel(mode: .new, scene: composeScene, account: account)
+        ComposeViewModel(mode: .new, scene: composeScene, account: account, onEnqueued: onEnqueued)
     }
 
     public func composeReply() -> ComposeViewModel? {
@@ -275,7 +285,8 @@ public final class MailboxViewModel {
             replyTo: message,
             bodyHTML: quotableHTML,
             scene: composeScene,
-            account: account
+            account: account,
+            onEnqueued: onEnqueued
         )
     }
 
@@ -285,7 +296,8 @@ public final class MailboxViewModel {
             forwarding: message,
             bodyHTML: quotableHTML,
             scene: composeScene,
-            account: account
+            account: account,
+            onEnqueued: onEnqueued
         )
     }
 

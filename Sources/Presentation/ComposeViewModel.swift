@@ -34,6 +34,8 @@ public final class ComposeViewModel: Identifiable {
     private let scene: ComposeScene
     private let account: AccountID
     private let inReplyTo: String?
+    /// Forwarded to the composition's delivery pump: an enqueue is the signal to flush.
+    private let onEnqueued: (@MainActor () -> Void)?
 
     public init(
         mode: Mode,
@@ -43,7 +45,8 @@ public final class ComposeViewModel: Identifiable {
         body: String = "",
         inReplyTo: String? = nil,
         scene: ComposeScene,
-        account: AccountID
+        account: AccountID,
+        onEnqueued: (@MainActor () -> Void)? = nil
     ) {
         self.mode = mode
         self.to = to
@@ -53,6 +56,7 @@ public final class ComposeViewModel: Identifiable {
         self.inReplyTo = inReplyTo
         self.scene = scene
         self.account = account
+        self.onEnqueued = onEnqueued
     }
 
     /// Reply seed built by `ComposeScene` (address extraction and quoting rules).
@@ -60,7 +64,8 @@ public final class ComposeViewModel: Identifiable {
         replyTo message: Message,
         bodyHTML: String?,
         scene: ComposeScene,
-        account: AccountID
+        account: AccountID,
+        onEnqueued: (@MainActor () -> Void)? = nil
     ) {
         let draft = scene.replySeed(to: message, bodyHTML: bodyHTML)
         self.init(
@@ -71,7 +76,8 @@ public final class ComposeViewModel: Identifiable {
             body: draft.body,
             inReplyTo: draft.inReplyTo,
             scene: scene,
-            account: account
+            account: account,
+            onEnqueued: onEnqueued
         )
     }
 
@@ -80,7 +86,8 @@ public final class ComposeViewModel: Identifiable {
         forwarding message: Message,
         bodyHTML: String?,
         scene: ComposeScene,
-        account: AccountID
+        account: AccountID,
+        onEnqueued: (@MainActor () -> Void)? = nil
     ) {
         let draft = scene.forwardSeed(from: message, bodyHTML: bodyHTML)
         self.init(
@@ -91,7 +98,8 @@ public final class ComposeViewModel: Identifiable {
             body: draft.body,
             inReplyTo: draft.inReplyTo,
             scene: scene,
-            account: account
+            account: account,
+            onEnqueued: onEnqueued
         )
     }
 
@@ -130,6 +138,8 @@ public final class ComposeViewModel: Identifiable {
         do {
             _ = try await scene.send(draft, account: account)
             status = .queued
+            // The row is committed; the composition's pump decides when to deliver it.
+            onEnqueued?()
             return true
         } catch {
             status = .failed(ErrorText.text(for: error))

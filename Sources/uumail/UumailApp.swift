@@ -1,3 +1,4 @@
+import AppKit
 import Composition
 import SwiftUI
 
@@ -34,6 +35,11 @@ struct UumailApp: App {
             .frame(minWidth: 900, minHeight: 560)
             .task { composition?.start() }
             .onDisappear { composition?.stop() }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+                // The mailbox window may already be gone when the app terminates; stop the
+                // refresh cadence and the delivery pump explicitly.
+                composition?.stop()
+            }
         }
     }
 }
