@@ -74,7 +74,13 @@ let package = Package(
         ),
         .testTarget(name: "OutboxTests", dependencies: ["Outbox", "MailStore", "MailDomain"]),
         .testTarget(name: "SyncEngineTests", dependencies: ["SyncEngine"]),
-        .testTarget(name: "ScenesTests", dependencies: ["Scenes", "MailDomain", "MailStore", "SyncEngine", "Outbox"]),
+        .testTarget(
+            name: "ScenesTests",
+            dependencies: [
+                "Scenes", "MailDomain", "MailStore", "SyncEngine", "Outbox",
+                .product(name: "GRDB", package: "GRDB.swift"),
+            ]
+        ),
         .testTarget(
             name: "PresentationTests",
             dependencies: ["Presentation", "Scenes", "MailDomain", "MailStore", "SyncEngine", "Outbox"]

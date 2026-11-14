@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import MailDomain
 import MailStore
 import Outbox
@@ -135,36 +136,50 @@ struct ComposeSceneTests {
 
     @Test("replyAll reads the Cc written by the post-migration backfill")
     func replyAllUsesBackfilledCc() throws {
-        let (scene, store, account, _) = try makeScene(accountAddress: "me@corp.test")
-        try store.applyFolderSnapshot(
-            account: account,
-            folders: [Folder(serverID: "13", parentID: nil, displayName: "收件箱", type: 2)],
-            syncKey: "folders-key"
-        )
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("uumail-replyall-backfill-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let path = directory.appendingPathComponent("pre-v9.sqlite").path
+        try makePreV9Database(at: path)
+
+        // Opening the old file runs v9: the cc column is added and message cursors rewind.
+        let store = try MailStore(path: path)
+        let account = AccountID("account-1")
+        let migrated = try #require(try store.messages(account: account, folder: "13").first)
+        #expect(migrated.serverID == "101")
+        #expect(migrated.cc == nil)
+        #expect(try store.syncKey(account: account, collection: "13") == "0")
+
+        // The next sync re-pulls the same message as `changed`; the Cc is coalesced in.
         try store.applySyncBatch(
             account: account,
             folder: "13",
-            added: [
+            added: [],
+            changed: [
                 MailMessage(
                     serverID: "101",
                     subject: "旧邮件",
                     sender: "z@corp.test",
-                    recipients: "a@corp.test",
+                    recipients: "a@corp.test; b@corp.test",
                     receivedRaw: "2026-11-08T05:11:18.000Z",
                     cc: "c@corp.test"
                 )
             ],
-            changed: [],
             removedServerIDs: [],
             syncKey: "1"
         )
+        let backfilled = try #require(try store.messages(account: account, folder: "13").first)
+        #expect(backfilled.cc == "c@corp.test")
+        #expect(try store.body(account: account, folder: "13", serverID: "101")?.text == "<p>正文</p>")
 
-        let stored = try #require(try store.messages(account: account, folder: "13").first)
-        #expect(stored.cc == "c@corp.test")
+        let scene = ComposeScene(
+            store: store,
+            outbox: Outbox(store: store, gateway: FakeGateway(), clock: FixedClock())
+        )
+        let draft = scene.replyAllSeed(to: backfilled, bodyHTML: nil, account: account)
 
-        let draft = scene.replyAllSeed(to: stored, bodyHTML: nil, account: account)
-
-        #expect(draft.to == "z@corp.test; a@corp.test")
+        #expect(draft.to == "z@corp.test; a@corp.test; b@corp.test")
         #expect(draft.cc == "c@corp.test")
     }
 
@@ -226,5 +241,103 @@ struct ComposeSceneTests {
         let store = try MailStore.inMemory()
         let outbox = Outbox(store: store, gateway: FakeGateway(), clock: FixedClock())
         return ComposeScene(store: store, outbox: outbox)
+    }
+}
+
+/// Pre-v9 shape for `replyAllUsesBackfilledCc`: v1–v8 are recorded as applied so opening
+/// the file runs exactly the v9 step. The tables match what v9 and `applySyncBatch` touch;
+/// the message has a body so the backfill can be checked to preserve it.
+/// (Kept local to this target; `MigrationTests` has its own richer v8/v9 fixtures.)
+private func makePreV9Database(at path: String) throws {
+    let queue = try DatabaseQueue(path: path)
+    try queue.write { db in
+        try db.execute(sql: """
+            CREATE TABLE grdb_migrations (identifier TEXT NOT NULL PRIMARY KEY);
+            INSERT INTO grdb_migrations (identifier) VALUES
+                ('v1_accounts_folders'), ('v2_messages'), ('v3_body_html'),
+                ('v6_search'), ('v5_outbox'), ('v4_attachments'), ('v7_preview_split'),
+                ('v8_outbox_v2');
+
+            CREATE TABLE accounts (
+                id TEXT PRIMARY KEY,
+                display_name TEXT NOT NULL,
+                address TEXT NOT NULL,
+                host TEXT NOT NULL,
+                state TEXT NOT NULL,
+                created_at REAL NOT NULL
+            );
+
+            CREATE TABLE folders (
+                account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                server_id TEXT NOT NULL,
+                parent_id TEXT,
+                display_name TEXT NOT NULL,
+                type INTEGER NOT NULL,
+                deleted_at REAL,
+                updated_at REAL NOT NULL,
+                PRIMARY KEY (account_id, server_id)
+            );
+
+            CREATE TABLE sync_state (
+                account_id TEXT NOT NULL,
+                collection TEXT NOT NULL,
+                sync_key TEXT NOT NULL,
+                last_sync_at REAL,
+                last_error TEXT,
+                PRIMARY KEY (account_id, collection)
+            );
+
+            CREATE TABLE messages (
+                account_id TEXT NOT NULL,
+                folder_id TEXT NOT NULL,
+                server_id TEXT NOT NULL,
+                subject TEXT,
+                sender TEXT,
+                recipients TEXT,
+                received_raw TEXT,
+                is_read INTEGER NOT NULL DEFAULT 0,
+                importance INTEGER,
+                preview TEXT,
+                deleted_at REAL,
+                updated_at REAL NOT NULL,
+                PRIMARY KEY (account_id, folder_id, server_id)
+            );
+
+            CREATE TABLE message_bodies (
+                account_id TEXT NOT NULL,
+                folder_id TEXT NOT NULL,
+                server_id TEXT NOT NULL,
+                text TEXT,
+                fetched_at REAL,
+                is_html INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (account_id, folder_id, server_id)
+            );
+
+            CREATE VIRTUAL TABLE messages_fts USING fts5(
+                subject, sender, body, tokenize='trigram'
+            );
+
+            INSERT INTO accounts (id, display_name, address, host, state, created_at)
+            VALUES ('account-1', 'J Doe', 'jdoe@corp.test', 'mail.corp.test', 'ready', 1700000000);
+
+            INSERT INTO folders (account_id, server_id, parent_id, display_name, type, deleted_at, updated_at)
+            VALUES ('account-1', '13', '0', '收件箱', 2, NULL, 1700000000);
+
+            INSERT INTO messages (
+                account_id, folder_id, server_id, subject, sender, recipients,
+                received_raw, is_read, importance, preview, deleted_at, updated_at
+            ) VALUES (
+                'account-1', '13', '101', '旧邮件', 'z@corp.test', 'a@corp.test; b@corp.test',
+                '2026-11-08T05:11:18.000Z', 0, 1, '摘要', NULL, 1700000000
+            );
+
+            INSERT INTO message_bodies (account_id, folder_id, server_id, text, fetched_at, is_html)
+            VALUES ('account-1', '13', '101', '<p>正文</p>', 1700000001, 1);
+
+            INSERT INTO sync_state (account_id, collection, sync_key, last_sync_at, last_error)
+            VALUES
+                ('account-1', 'folders', 'folders-key-9', 1700000000, NULL),
+                ('account-1', '13', 'msg-key-9', 1700000000, NULL);
+            """)
     }
 }

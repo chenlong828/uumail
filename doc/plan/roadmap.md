@@ -18,7 +18,7 @@ updated: 2026-11-14
 |---|---|---|---|
 | M0 协议探针 | 证明外网 EAS 通道可用，锁定线格式、设备身份与命令覆盖 | 命令行跑通 `OPTIONS → Provision → FolderSync → Sync → ItemOperations → SendMail`，实测状态码与能力矩阵成文 | 已完成（`history/works/2026-11-09-eas-probe/`） |
 | M1 只读客户端 | 账号接入、文件夹树、列表、正文、附件、离线缓存 | 五个只读场景（SCN-0001…0005）全部 `verified` | 进行中：账号、文件夹树、列表、正文已通；附件 02–04 未实现；场景卡待转 `verified` |
-| M2 发送与草稿 | Outbox、SendMail、回复/转发、草稿、Sent 镜像、全部回复 | send-message 场景 `verified`；离线发送可在联网后只发一次 | 进行中：Outbox 入队/冷投递/重试已实现；Sent 镜像与撰写附件未做；全部回复 `SCN-0007` `verified`（2026-11-14，T-1114-09），REQ-0012 `delivered`；其余场景卡待 `verified` |
+| M2 发送与草稿 | Outbox、SendMail、回复/转发、草稿、Sent 镜像、全部回复 | send-message 场景 `verified`；离线发送可在联网后只发一次 | 进行中：Outbox 入队/冷投递/重试已实现；Sent 镜像与撰写附件未做；全部回复 `SCN-0007` `verified`（2026-11-14，T-1114-09，含真机 UI 冒烟），REQ-0012 `delivered`；其余场景卡待 `verified` |
 | M3 体验 | Ping、通知、本地搜索、错误恢复与空态 | 新邮件端到端 ≤ 60s 可见（Ping 或轮询）；搜索、通知场景 `verified` | 进行中：Ping 不支持 → 5 分钟轮询；搜索与通知已落地，场景卡待 `verified` |
 | M4 加固 | 策略、限流、安全、性能 | 限流退避、缓存上限、安全审计、5k 性能基线已落 | 已完成（`history/works/2026-11-09-m4-hardening/`） |
 
@@ -33,7 +33,7 @@ updated: 2026-11-14
 | W-M1-04 正文渲染与附件下载 | M1 | W-M1-03 | CMP-STORE、CMP-EAS、AttachmentCache | 已实现；SCN-0004、SCN-0005 待 `verified`（附件真机未验） |
 | W-M2-01 Outbox 与发信 | M2 | W-M1-04 | CMP-OUT、CMP-EAS | 已完成（无过程记录，见下）：协议、队列、撰写界面；真机自测信投递成功 |
 | W-M2-02 回复/转发与草稿 | M2 | W-M2-01 | CMP-OUT、CMP-STORE | 已实现（无过程记录，见下）；回复/转发复用 `SCN-0006`，草稿无场景卡 |
-| W-M2-03 全部回复与抄送预填 | M2 | W-M2-02；REQ-0012 `delivered` | CMP-EAS、CMP-DOMAIN、CMP-EASADAPTER、CMP-STORE、CMP-SCN-COMPOSE、CMP-PRES、CMP-APP | 已完成（2026-11-14）：`T-1114-02`…`T-1114-08` 落地 Cc 采集、领域/存储、`replyAllSeed`、视图模型与工具栏；`T-1114-09` 验证 3 正 1 反全绿，`SCN-0007` 转 `verified`、REQ-0012 转 `delivered`；全量 182 tests / 38 suites、架构 4 门过；真机 UI 点击冒烟未跑，登记为发布前人工项。任务表见本文 §W-M2-03 任务表 |
+| W-M2-03 全部回复与抄送预填 | M2 | W-M2-02；REQ-0012 `delivered` | CMP-EAS、CMP-DOMAIN、CMP-EASADAPTER、CMP-STORE、CMP-SCN-COMPOSE、CMP-PRES、CMP-APP | 已完成（2026-11-14）：`T-1114-02`…`T-1114-08` 落地 Cc 采集、领域/存储、`replyAllSeed`、视图模型与工具栏；`T-1114-09` 验证 3 正 1 反全绿，`SCN-0007` 转 `verified`、REQ-0012 转 `delivered`；全量 182 tests / 38 suites、架构 4 门过；真机 UI 冒烟已完成（本地录制网关，未向真实邮箱投递）。任务表见本文 §W-M2-03 任务表 |
 | W-M3-01 Ping 与通知 | M3 | W-M2-01 | CMP-SYNC、通知策略 | Ping 实测不支持 → 轮询；通知已落地（无过程记录，无独立场景卡） |
 | W-M3-02 本地搜索 | M3 | W-M1-03 | CMP-STORE | 已实现（无过程记录，无独立场景卡）；FTS 不扫正文列 |
 | W-SCN-REFACTOR 场景收口与分层重构 | M1/M2/M3 结构前置 | W-DOC-01、M4 结论 | 全仓 | 已完成（`history/works/2026-11-10-scene-refactor/`）：4 场景、9 库 + 2 可执行、159 测试、4 架构门 |
@@ -76,7 +76,7 @@ updated: 2026-11-14
 | `T-1114-06` | `change` | `CMP-SCN-COMPOSE` | T-1114-01、T-1114-03 | 已完成（2026-11-14） | `replyAllSeed` + 地址解析/去重/排除自己 + 3 例组件测试；176 测试全绿 |
 | `T-1114-07` | `change` | `CMP-PRES` | T-1114-06 | 已完成（2026-11-14） | `Mode.replyAll`、`composeReplyAll`、视图模型测试；`PresentationTests` 28 例、全量 181 测试全绿 |
 | `T-1114-08` | `change` | `CMP-APP` | T-1114-07 | 已完成（2026-11-14） | 工具栏「全部回复」按钮，视图不拼地址；编译 + VM 接线，真机冒烟留 T-1114-09 |
-| `T-1114-09` | `verify` | SCN-0007 / REQ-0012 | 全部 | 已完成（2026-11-14） | 3 正 1 反全绿（补 `replyAllUsesBackfilledCc` 闭合回填→全部回复缺口）、`SCN-0006` 回归无退化、架构 4 门过；全量 182 tests / 38 suites；`SCN-0007` → `verified`、REQ-0012 → `delivered`；真机 UI 冒烟未跑，登记为发布前人工项 |
+| `T-1114-09` | `verify` | SCN-0007 / REQ-0012 | 全部 | 已完成（2026-11-14，第 2 轮） | 3 正 1 反全绿（`replyAllUsesBackfilledCc` 改为自带 pre-v9 fixture，真实走 v9 迁移 → `applySyncBatch(changed:)` → `replyAllSeed`）、`SCN-0006` 回归无退化、架构 4 门过；全量 182 tests / 38 suites；`SCN-0007` → `verified`、REQ-0012 → `delivered`；真机 UI 冒烟已完成（带 Cc 多人邮件全部回复 → To/Cc → 发送 → outbox/MIME，自己邮件不含自己；本地录制网关，未向真实邮箱投递） |
 
 并行关系：`T-1114-02` 与 `T-1114-03` 可并行；之后 `T-1114-04`、`T-1114-05`、`T-1114-06` 分属三个组件可并行。
 

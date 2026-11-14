@@ -58,7 +58,7 @@ scenario: SCN-0007
 |---|---|---|---|
 | `T-SCN-0007-01` | 正 | 原邮件 `From="张三" <z@corp.test>`、`To="a@corp.test; b@corp.test"`、`Cc="c@corp.test; z@corp.test"`；账号 `me@corp.test`。全部回复 → `To == "z@corp.test; a@corp.test; b@corp.test"`，`Cc == "c@corp.test"`（`z@` 已在 To，从 Cc 去掉），主题 `Re:`，正文含引用。 | `ScenesTests/ComposeSceneTests.replyAllFillsSenderAndOriginalRecipients` |
 | `T-SCN-0007-02` | 正 | 同一封邮件全部回复并发送 → outbox 行 `to/cc` 与种子一致；MIME 带 `Cc:` 且地址与 outbox 行一致；投递只一次。 | `PresentationTests/ComposeViewModelTests.replyAllSendCarriesCcIntoOutbox` + 既有 `OutboxTests/OutboxDeliveryTests.deliversOnce`（以 `c@d.e` 断言 `Cc:` 进 MIME） |
-| `T-SCN-0007-03` | 正 | 构造 pre-v9 库：已同步消息无 `cc`，有正文与附件缓存；v9 迁移后消息集合 `sync_key == "0"`、`folders` key 不变、`cc == nil` 可读；按既有 key 0 bootstrap 路径重拉（`SyncEngineTests.bootstrap` 已覆盖两请求语义）；store 层用 `applySyncBatch` 写入同一消息 + Cc → 本地 `Message.cc` 可读，正文/附件仍在；全部回复带出 Cc。 | `MailStoreTests/MigrationTests.v9MessageCcMigration` + 既有 `SyncEngineTests/SyncEngineTests.bootstrap` + `ScenesTests/ComposeSceneTests.replyAllUsesBackfilledCc` |
+| `T-SCN-0007-03` | 正 | 构造 pre-v9 库：已同步消息无 `cc`，有正文与附件缓存；v9 迁移后消息集合 `sync_key == "0"`、`folders` key 不变、`cc == nil` 可读；按既有 key 0 bootstrap 路径重拉（`SyncEngineTests.bootstrap` 已覆盖两请求语义）；store 层用 `applySyncBatch(changed:)` 把同一消息 + Cc 写回 → 本地 `Message.cc` 可读，正文/附件仍在；同一 store 上 `replyAllSeed` 带出 Cc。 | `MailStoreTests/MigrationTests.v9MessageCcMigration` + 既有 `SyncEngineTests/SyncEngineTests.bootstrap` + `ScenesTests/ComposeSceneTests.replyAllUsesBackfilledCc`（该用例自带 pre-v9 fixture，真实走 v9 迁移 → `applySyncBatch(changed:)` → `replyAllSeed`） |
 | `T-SCN-0007-04` | 反 | 头缺失/畸形：无 `From`、`To` 为空、`Cc` 只有自己、重复地址、引号内逗号、裸通讯组名/只有显示名。断言：不崩溃、不编造、不重复、不含自己；`To` 为空时 `canSend == false`；手填后可发送。 | `ScenesTests/ComposeSceneTests.replyAllSkipsMalformedAndSelf` + `PresentationTests/ComposeViewModelTests.replyAllEmptyToCannotSend` |
 
 支撑测试（不属于 3+1 断言，但组件出口要求）：
@@ -79,10 +79,12 @@ scenario: SCN-0007
 | 测试 | 断言 | 结果 |
 |---|---|---|
 | `T-SCN-0007-01` `ScenesTests/ComposeSceneTests.replyAllFillsSenderAndOriginalRecipients` | `To` = 原发件人 + 原收件人、保序；`Cc` 去重且减去已在 `To` 者；主题/引用不变 | 通过 |
-| `T-SCN-0007-02` `PresentationTests/ComposeViewModelTests.replyAllSendCarriesCcIntoOutbox` + `OutboxTests/OutboxTests.deliversOnce` | outbox 行 `to/cc` 与种子一致；MIME 带 `Cc:`；`ClientId` 幂等、只投递一次 | 通过 |
-| `T-SCN-0007-03` `MailStoreTests/MigrationTests.v9MessageCcMigration` + `SyncEngineTests.bootstrap` + `ScenesTests/ComposeSceneTests.replyAllUsesBackfilledCc` | pre-v9 库 `cc == nil`、正文/附件保留、消息 `sync_key` 置 `"0"`、folders key 不变；回填写入同一消息的 Cc；全部回复带出该 Cc | 通过 |
+| `T-SCN-0007-02` `PresentationTests/ComposeViewModelTests.replyAllSendCarriesCcIntoOutbox` + `OutboxTests/OutboxDeliveryTests.deliversOnce` | outbox 行 `to/cc` 与种子一致；MIME 带 `Cc:`；`ClientId` 幂等、只投递一次 | 通过 |
+| `T-SCN-0007-03` `MailStoreTests/MigrationTests.v9MessageCcMigration` + `SyncEngineTests.bootstrap` + `ScenesTests/ComposeSceneTests.replyAllUsesBackfilledCc` | pre-v9 库 `cc == nil`、正文/附件保留、消息 `sync_key` 置 `"0"`、folders key 不变；同一用例内 pre-v9 → v9 迁移 → `applySyncBatch(changed:)` 把 Cc 写回同一消息 → `replyAllSeed` 带出该 Cc | 通过 |
 | `T-SCN-0007-04` `ScenesTests/ComposeSceneTests.replyAllSkipsMalformedAndSelf` + `PresentationTests/ComposeViewModelTests.replyAllEmptyToCannotSend` | 畸形/重复/自己/无 `From`/空 `To` 不崩溃、不编造；空 `To` 时 `canSend == false`，手填后可发送 | 通过 |
 
 支撑测试：`ComposeSceneTests` 10 例（含「账号地址读取失败不排除任何地址」）、`ComposeViewModelTests` 8 例、`MailboxViewModelTests` 16 例（5 suites）、`MigrationTests` 2 例、`EASClientTests` 27 例（6 suites）、`EASAdapterTests` 6 例、`MailDomainTests` 10 例、`Outbox` 相关 30 例（4 suites）、`OutboxPumpTests` 3 例；全量 **182 tests / 38 suites** 绿，架构门 4/4 PASS。`SCN-0006` 回归：发送入队、离线恢复、泵投递、单次投递与 MIME `Cc:` 用例均未退化；`SCN-0006` 自身仍为 `designed`，其未验项不变。
 
-实现沿革：`designed`（2026-11-14，T-1114-01）；`T-1114-02`（Sync 信封 `Cc` 采集）、`T-1114-03`（`Message.cc`、`AddressList`）、`T-1114-04`（适配层映射）、`T-1114-05`（schema v9 回填）、`T-1114-06`（`replyAllSeed`）、`T-1114-07`（视图模型）、`T-1114-08`（工具栏）已落地。未执行项：真机 UI 点击冒烟（实际点「全部回复」→ 编辑 → 发送）未在本环境运行，属发布前人工冒烟；按钮动作与禁用条件由 `MailboxViewModelTests` 2 例接线承担。
+实现沿革：`designed`（2026-11-14，T-1114-01）；`T-1114-02`（Sync 信封 `Cc` 采集）、`T-1114-03`（`Message.cc`、`AddressList`）、`T-1114-04`（适配层映射）、`T-1114-05`（schema v9 回填）、`T-1114-06`（`replyAllSeed`）、`T-1114-07`（视图模型）、`T-1114-08`（工具栏）已落地。
+
+真机 UI 冒烟（2026-11-14，T-1114-09 第 2 轮）：在 macOS 26.6.2 的图形会话里启动真实 `uumail` app bundle（DEBUG），使用应用数据库的副本，并插入一封本地构造的「带 Cc 多人邮件」——`From` 为当前账号自己、`To` 为 `a@corp.test; b@corp.test`、`Cc` 为 `c@corp.test; 自己`。通过应用自身 AX 树选中该邮件并点击「全部回复」：撰写页 `To = a@corp.test; b@corp.test`、`Cc = c@corp.test`，自己未出现在任一栏；点击「发送」后 Outbox 行 `to/cc` 与种子一致，`MimeBuilder` 生成的 MIME 含 `To:`/`Cc:` 且无自己。为避免向真实同事投递，冒烟使用仅本地的录制网关：MIME 落盘后返回 `offline`，Outbox 行保留为 `failed_retryable`，未向真实邮箱发信。被测的工具栏点击、`ComposeScene.replyAllSeed`、`Outbox`、`MimeBuilder` 均为真实代码。
