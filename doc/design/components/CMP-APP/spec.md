@@ -67,11 +67,11 @@ component: CMP-APP
 
 - 列表焦点：`MailboxView` 给消息列表加 `@FocusState` 与 `.focusable()`，在聚焦容器上挂 `.onDeleteCommand { Task { await viewModel.deleteSelected() } }`；若最小探针证明 `List` 不吃 `onDeleteCommand`，改用 `.onKeyPress(.delete)`（仅列表聚焦时）。**不用全局 `NSEvent` 监听器**，避免抢搜索框/正文/撰写页的按键。
 - 焦点排他：绑定只挂在列表上；搜索框、正文 WebView、撰写 sheet、配置页各自持有焦点，不进入删除路径。验收含「焦点在搜索框按 Delete/Backspace 不删除」。
-- 前台状态：`@Environment(\.scenePhase)` + `onAppear`/`onChange` 调 `viewModel.setApplicationActive(phase == .active)`；视图只转发，不判计时。若实测 macOS 窗口失焦时 `scenePhase` 不变，改用 `NSApplication.didBecomeActiveNotification`/`willResignActiveNotification`，仍只转发。
+- 前台状态：`onAppear` 读 `NSApp.isActive`，并监听 `NSApplication.didBecomeActiveNotification` / `willResignActiveNotification` 调 `viewModel.setApplicationActive(...)`；视图只转发，不判计时。**2026-11-14 实测**：真实 SwiftUI `WindowGroup` 窗口的 `@Environment(\.scenePhase)` 始终 `.active`，即使应用失活/回焦（`NSApp.isActive` 与两个通知会变），所以不用 `scenePhase` 作为前台信号（备用方案转正）。
 - 列表与状态栏：`ForEach`/空态/计数改用 `viewModel.visibleMessages`；状态栏优先显示 `viewModel.deleteErrorText`（带警告图标），否则显示同步状态。视图不判 `MailError`、不拼中文。
 - 列表身份（R23）：搜索模式跨文件夹结果不得只用 `serverID` 作 `ForEach`/`List(selection:)`/tag 的身份；按 `CMP-PRES` 的 `MessageRef`/等价复合键方案接线，否则同 ID 邮件会选错/删错。若需要改 `Selection.messageID` 的公开类型/语义，按 P2 契约变更另评。
 - 不改：工具栏按钮、搜索框绑定、正文渲染、撰写 sheet；仍单选中。
 - 验证：编译 + `MailboxViewModelTests` 的删除/计时接线；T-1114-18 先做焦点/按键最小探针（AX 或真机），证据入 `evidence/`；探针失败则停下上报，不用全局监听器兜底。
 - 尺寸：`MailboxView` 当前 175 行，预计 +20～25，仍低于 300。
 
-**实现（2026-11-14）**：`MailboxView` 列表使用 `visibleMessages` 与复合 `listKey`，加 `@FocusState`/`.focusable()`、`.onDeleteCommand` 主路径与 `.onKeyPress(.delete)` 备选、`scenePhase` 转发、状态栏 `deleteErrorText`。最小 UI 探针（SwiftUI + `NSEvent`，见 `task-spaces/20261114-232232/evidence/ui-delete-probe*`）：列表聚焦时 `deleteCommands=1`、搜索框聚焦时 `deleteCommands=0`，证明命中与焦点排他；`keyPresses=0` 说明 `.onDeleteCommand` 已消费按键。**真机窗口未跑**，探针是独立最小宿主，不等于真机 AX 证据。
+**实现（2026-11-14）**：`MailboxView` 列表使用 `visibleMessages` 与复合 `listKey`，加 `@FocusState`/`.focusable()`、`.onDeleteCommand` 主路径与 `.onKeyPress(.delete)` 备选、`NSApplication` 前台通知转发、状态栏 `deleteErrorText`。焦点 UI 探针（SwiftUI + `NSEvent`，见 `task-spaces/20261114-232232/evidence/ui-delete-probe-focus.txt`）逐上下文验证：列表 `deleteCommands=1`；搜索框 / 正文 `NSTextView` / 撰写 sheet / 配置页均 `deleteCommands=0`，并记录各自 firstResponder 证明按键落在目标控件上。真实 SwiftUI `WindowGroup` 前台探针（`evidence/scene-phase-probe.txt`）：`scenePhase` 始终 `.active`，`NSApp.isActive` 与 `willResignActive`/`didBecomeActive` 通知会变化；实现已改用通知，视图只转发。探针是独立宿主，不是 `uumail` bundle 的 AX 驱动；列表命中/排他与前台信号机制均已实测。

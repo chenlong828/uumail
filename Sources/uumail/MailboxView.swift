@@ -5,7 +5,6 @@ import SwiftUI
 
 struct MailboxView: View {
     @Bindable var viewModel: MailboxViewModel
-    @Environment(\.scenePhase) private var scenePhase
     @State private var compose: ComposeViewModel?
     @State private var searchText = ""
     @FocusState private var messageListFocused: Bool
@@ -33,9 +32,15 @@ struct MailboxView: View {
             .onChange(of: viewModel.selection.searchQuery) { _, query in
                 if searchText != query { searchText = query }
             }
-            .onAppear { viewModel.setApplicationActive(scenePhase == .active) }
-            .onChange(of: scenePhase) { _, phase in
-                viewModel.setApplicationActive(phase == .active)
+            // A SwiftUI window's scenePhase stays `.active` when the app is deactivated on
+            // macOS (measured 2026-11-14), so foreground state comes from NSApplication:
+            // the view only forwards, the view model owns the timer rule.
+            .onAppear { viewModel.setApplicationActive(NSApp.isActive) }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                viewModel.setApplicationActive(true)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.willResignActiveNotification)) { _ in
+                viewModel.setApplicationActive(false)
             }
             .toolbar {
                 ToolbarItemGroup(placement: .primaryAction) {
