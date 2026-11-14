@@ -8,6 +8,16 @@ import Testing
 // Test doubles for the scene contracts. Nothing here reaches the network or the
 // system Keychain/notification center.
 
+struct UnsupportedWriteGateway: MailWriteGateway {
+    func markRead(collectionID: String, serverID: String, syncKey: String) async throws -> MessageDelta {
+        throw MailError.unsupported
+    }
+
+    func delete(collectionID: String, serverID: String, syncKey: String) async throws -> MessageDelta {
+        throw MailError.unsupported
+    }
+}
+
 /// Configurable gateway fake shared by the scene tests.
 actor FakeGateway: MailGateway {
     enum Call: Equatable {

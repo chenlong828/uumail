@@ -77,7 +77,7 @@ public struct CommandLineComposition {
             account = try await setup.connect(AccountInput(configuration: configuration)).accountID
         }
 
-        let engine = SyncEngine(gateway: gateway, store: store, account: account)
+        let engine = SyncEngine(gateway: gateway, store: store, account: account, writeGateway: endpoints.write)
         let outbox = Outbox(store: store, gateway: gateway, clock: SystemMailClock())
         return CommandLineComposition(
             configuration: configuration,

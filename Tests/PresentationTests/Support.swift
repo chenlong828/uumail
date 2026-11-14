@@ -12,6 +12,16 @@ import Presentation
 // model is exercised through the same ports the app uses; nothing touches the network,
 // the system Keychain or the notification center.
 
+struct UnsupportedWriteGateway: MailWriteGateway {
+    func markRead(collectionID: String, serverID: String, syncKey: String) async throws -> MessageDelta {
+        throw MailError.unsupported
+    }
+
+    func delete(collectionID: String, serverID: String, syncKey: String) async throws -> MessageDelta {
+        throw MailError.unsupported
+    }
+}
+
 final class PresentationFakeGateway: MailGateway, @unchecked Sendable {
     nonisolated(unsafe) var folderListing: FolderListing
     nonisolated(unsafe) var deltas: [String: MessageDelta]
@@ -187,7 +197,7 @@ func makeMailboxFixture(
         )
     }
 
-    let engine = SyncEngine(gateway: gateway, store: store, account: account, sleeper: { _ in })
+    let engine = SyncEngine(gateway: gateway, store: store, account: account, writeGateway: UnsupportedWriteGateway(), sleeper: { _ in })
     let syncScene = SyncScene(engine: engine, notifier: notifier, clock: clock)
     let outbox = Outbox(store: store, gateway: gateway, clock: clock)
     let readScene = ReadScene(

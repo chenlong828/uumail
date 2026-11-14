@@ -4,6 +4,17 @@ import Testing
 
 @testable import SyncEngine
 
+/// Read-only test stand-in: the real production target has no such type.
+struct UnsupportedWriteGateway: MailWriteGateway {
+    func markRead(collectionID: String, serverID: String, syncKey: String) async throws -> MessageDelta {
+        throw MailError.unsupported
+    }
+
+    func delete(collectionID: String, serverID: String, syncKey: String) async throws -> MessageDelta {
+        throw MailError.unsupported
+    }
+}
+
 actor FakeGateway: MailGateway {
     enum Call: Equatable {
         case provision
@@ -16,6 +27,9 @@ actor FakeGateway: MailGateway {
     private var deltas: [String: MessageDelta]
     private var provisionError: MailError?
     private var remainingThrottles: Int
+    private var messagesGate: AsyncGate?
+
+    func setMessagesGate(_ gate: AsyncGate?) { messagesGate = gate }
 
     init(
         folderListing: FolderListing,
@@ -49,6 +63,7 @@ actor FakeGateway: MailGateway {
 
     func fetchMessages(collectionID: String, syncKey: String, window: Int, filterType: Int) async throws -> MessageDelta {
         calls.append(.messages(collection: collectionID, key: syncKey))
+        await messagesGate?.wait()
         guard let delta = deltas[syncKey] else {
             throw MailError.syncKeyInvalid
         }
@@ -153,7 +168,7 @@ struct SyncEngineTests {
             ]
         )
         let store = FakeStore()
-        let engine = SyncEngine(gateway: gateway, store: store, account: AccountID("a"))
+        let engine = SyncEngine(gateway: gateway, store: store, account: AccountID("a"), writeGateway: UnsupportedWriteGateway())
 
         let report = try await engine.syncOnce()
 
@@ -180,7 +195,7 @@ struct SyncEngineTests {
         )
         let store = FakeStore()
         try store.applySyncBatch(AccountID("a"), folder: "13", delta: makeDelta(key: "101", added: []))
-        let engine = SyncEngine(gateway: gateway, store: store, account: AccountID("a"))
+        let engine = SyncEngine(gateway: gateway, store: store, account: AccountID("a"), writeGateway: UnsupportedWriteGateway())
 
         let report = try await engine.syncOnce()
         #expect(report.added == 1)
@@ -199,7 +214,7 @@ struct SyncEngineTests {
         )
         let store = FakeStore()
         try store.applySyncBatch(AccountID("a"), folder: "13", delta: makeDelta(key: "999", added: []))
-        let engine = SyncEngine(gateway: gateway, store: store, account: AccountID("a"))
+        let engine = SyncEngine(gateway: gateway, store: store, account: AccountID("a"), writeGateway: UnsupportedWriteGateway())
 
         // 999 is unknown to the fake gateway, so the first pull raises syncKeyInvalid.
         let report = try await engine.syncOnce()
@@ -219,7 +234,7 @@ struct SyncEngineTests {
             ]
         )
         let store = FakeStore()
-        let engine = SyncEngine(gateway: gateway, store: store, account: AccountID("a"))
+        let engine = SyncEngine(gateway: gateway, store: store, account: AccountID("a"), writeGateway: UnsupportedWriteGateway())
         let report = try await engine.syncOnce()
         #expect(report.added == 2)
         #expect(report.rounds == 2)
@@ -234,7 +249,7 @@ struct SyncEngineTests {
             provisionError: .deviceNotRegistered
         )
         let store = FakeStore()
-        let engine = SyncEngine(gateway: gateway, store: store, account: AccountID("a"))
+        let engine = SyncEngine(gateway: gateway, store: store, account: AccountID("a"), writeGateway: UnsupportedWriteGateway())
 
         await #expect(throws: MailError.deviceNotRegistered) {
             _ = try await engine.syncOnce()
@@ -254,7 +269,7 @@ struct SyncEngineTests {
             deltas: [:]
         )
         let store = FakeStore()
-        let engine = SyncEngine(gateway: gateway, store: store, account: AccountID("a"))
+        let engine = SyncEngine(gateway: gateway, store: store, account: AccountID("a"), writeGateway: UnsupportedWriteGateway())
         await #expect(throws: MailError.unsupported) {
             _ = try await engine.syncOnce()
         }
@@ -284,6 +299,7 @@ struct SyncEngineThrottleTests {
             gateway: gateway,
             store: store,
             account: AccountID("a"),
+            writeGateway: UnsupportedWriteGateway(),
             sleeper: { duration in await sleeps.add(duration) }
         )
         let report = try await engine.syncOnce()
@@ -300,5 +316,242 @@ struct SyncEngineThrottleTests {
                 syncKey: "11", moreAvailable: false
             ),
         ]
+    }
+}
+
+
+/// One-shot async gate for serialization tests: the first `wait` suspends until `open`.
+actor AsyncGate {
+    private var isOpen = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private(set) var waitCount = 0
+
+    func wait() async {
+        waitCount += 1
+        if isOpen { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func open() {
+        isOpen = true
+        for waiter in waiters { waiter.resume() }
+        waiters.removeAll()
+    }
+
+    func waitUntilWaiting() async {
+        for _ in 0..<10_000 {
+            if waitCount > 0 { return }
+            await Task.yield()
+        }
+    }
+}
+
+actor RecordingWriteGateway: MailWriteGateway {
+    enum Call: Equatable {
+        case markRead(collectionID: String, serverID: String, key: String)
+        case delete(collectionID: String, serverID: String, key: String)
+    }
+
+    private(set) var calls: [Call] = []
+    private var delta: MessageDelta
+    private var error: MailError?
+    private var gate: AsyncGate?
+
+    init(delta: MessageDelta, error: MailError? = nil) {
+        self.delta = delta
+        self.error = error
+    }
+
+    func setGate(_ gate: AsyncGate?) { self.gate = gate }
+    func setError(_ error: MailError?) { self.error = error }
+
+    func markRead(collectionID: String, serverID: String, syncKey: String) async throws -> MessageDelta {
+        calls.append(.markRead(collectionID: collectionID, serverID: serverID, key: syncKey))
+        await gate?.wait()
+        if let error { throw error }
+        return delta
+    }
+
+    func delete(collectionID: String, serverID: String, syncKey: String) async throws -> MessageDelta {
+        calls.append(.delete(collectionID: collectionID, serverID: serverID, key: syncKey))
+        await gate?.wait()
+        if let error { throw error }
+        return delta
+    }
+}
+
+@Suite("SyncEngine write path")
+struct SyncEngineWriteTests {
+    private func store(key: String) throws -> FakeStore {
+        let store = FakeStore()
+        try store.applySyncBatch(
+            AccountID("a"), folder: "13",
+            delta: MessageDelta(added: [], changed: [], removedServerIDs: [], syncKey: key, moreAvailable: false)
+        )
+        return store
+    }
+
+    private func delta(key: String, removed: [String] = [], more: Bool = false) -> MessageDelta {
+        MessageDelta(
+            added: [], changed: [], removedServerIDs: removed,
+            syncKey: key, moreAvailable: more
+        )
+    }
+
+    @Test("markRead pins the local fact, sends one command with the current key and advances once")
+    func markReadWritesOnceAndAdvancesKey() async throws {
+        let store = try store(key: "5")
+        let gateway = FakeGateway(folderListing: FolderListing(folders: [inbox], syncKey: "1"), deltas: [:])
+        let write = RecordingWriteGateway(delta: delta(key: "6"))
+        let engine = SyncEngine(gateway: gateway, store: store, account: AccountID("a"), writeGateway: write)
+
+        try await engine.markRead(collectionID: "13", serverID: "101")
+
+        #expect(store.markReadCalls == ["101"], "the engine pins the local read before the network")
+        #expect(await write.calls == [.markRead(collectionID: "13", serverID: "101", key: "5")])
+        #expect(store.commitMarkReads.count == 1)
+        #expect(try store.syncKey(AccountID("a"), collection: "13") == "6")
+    }
+
+    @Test("deleteMessage commits the soft delete only after the server confirms and advances the key once")
+    func deleteAdvancesKeyOnce() async throws {
+        let store = try store(key: "5")
+        let gateway = FakeGateway(folderListing: FolderListing(folders: [inbox], syncKey: "1"), deltas: [:])
+        let write = RecordingWriteGateway(delta: delta(key: "7", removed: ["101"]))
+        let engine = SyncEngine(gateway: gateway, store: store, account: AccountID("a"), writeGateway: write)
+
+        try await engine.deleteMessage(collectionID: "13", serverID: "101")
+
+        #expect(await write.calls == [.delete(collectionID: "13", serverID: "101", key: "5")])
+        #expect(store.commitDeletes.count == 1)
+        #expect(store.commitDeletes.first?.removedServerIDs == ["101"])
+        #expect(try store.syncKey(AccountID("a"), collection: "13") == "7")
+    }
+
+    @Test("a gateway failure leaves the key and the local state untouched")
+    func writeFailureDoesNotCommit() async throws {
+        let store = try store(key: "5")
+        let gateway = FakeGateway(folderListing: FolderListing(folders: [inbox], syncKey: "1"), deltas: [:])
+        let write = RecordingWriteGateway(delta: delta(key: "6"), error: .offline)
+        let engine = SyncEngine(gateway: gateway, store: store, account: AccountID("a"), writeGateway: write)
+
+        await #expect(throws: MailError.offline) {
+            try await engine.deleteMessage(collectionID: "13", serverID: "101")
+        }
+        #expect(try store.syncKey(AccountID("a"), collection: "13") == "5")
+        #expect(store.commitDeletes.isEmpty)
+    }
+
+    @Test("a write response with MoreAvailable is refused instead of committed")
+    func moreAvailableWriteIsRefused() async throws {
+        let store = try store(key: "5")
+        let gateway = FakeGateway(folderListing: FolderListing(folders: [inbox], syncKey: "1"), deltas: [:])
+        let write = RecordingWriteGateway(delta: delta(key: "6", more: true))
+        let engine = SyncEngine(gateway: gateway, store: store, account: AccountID("a"), writeGateway: write)
+
+        await #expect(throws: MailError.unsupported) {
+            try await engine.markRead(collectionID: "13", serverID: "101")
+        }
+        #expect(try store.syncKey(AccountID("a"), collection: "13") == "5")
+        #expect(store.commitMarkReads.isEmpty)
+    }
+
+    @Test("a missing or bootstrap key fails before any write goes out")
+    func missingKeySendsNothing() async throws {
+        let store = FakeStore()
+        let gateway = FakeGateway(folderListing: FolderListing(folders: [inbox], syncKey: "1"), deltas: [:])
+        let write = RecordingWriteGateway(delta: delta(key: "6"))
+        let engine = SyncEngine(gateway: gateway, store: store, account: AccountID("a"), writeGateway: write)
+
+        await #expect(throws: MailError.syncKeyInvalid) {
+            try await engine.markRead(collectionID: "13", serverID: "101")
+        }
+        #expect(await write.calls.isEmpty)
+    }
+
+    @Test("a write waits for an in-flight sync and then starts from the new key")
+    func writeWaitsForSync() async throws {
+        let store = try store(key: "5")
+        let gateway = FakeGateway(
+            folderListing: FolderListing(folders: [inbox], syncKey: "1"),
+            deltas: ["5": delta(key: "6")]
+        )
+        let gate = AsyncGate()
+        await gateway.setMessagesGate(gate)
+        let write = RecordingWriteGateway(delta: delta(key: "7"))
+        let engine = SyncEngine(gateway: gateway, store: store, account: AccountID("a"), writeGateway: write)
+
+        let syncTask = Task { try await engine.syncOnce() }
+        await gate.waitUntilWaiting()
+        let writeTask = Task { try await engine.markRead(collectionID: "13", serverID: "101") }
+        try await Task.sleep(for: .milliseconds(20))
+        #expect(await write.calls.isEmpty, "the write must not interleave with the gated sync")
+
+        await gate.open()
+        _ = try await syncTask.value
+        try await writeTask.value
+        #expect(await write.calls == [.markRead(collectionID: "13", serverID: "101", key: "6")])
+        #expect(try store.syncKey(AccountID("a"), collection: "13") == "7")
+    }
+
+    @Test("a sync waits for an in-flight write and reads the key it advanced")
+    func syncWaitsForWrite() async throws {
+        let store = try store(key: "5")
+        let gateway = FakeGateway(
+            folderListing: FolderListing(folders: [inbox], syncKey: "1"),
+            deltas: ["6": delta(key: "7")]
+        )
+        let write = RecordingWriteGateway(delta: delta(key: "6"))
+        let gate = AsyncGate()
+        await write.setGate(gate)
+        let engine = SyncEngine(gateway: gateway, store: store, account: AccountID("a"), writeGateway: write)
+
+        let writeTask = Task { try await engine.markRead(collectionID: "13", serverID: "101") }
+        await gate.waitUntilWaiting()
+        let syncTask = Task { try await engine.syncOnce() }
+        try await Task.sleep(for: .milliseconds(20))
+        let keysBeforeRelease = await gateway.calls.compactMap { call -> String? in
+            if case .messages(_, let key) = call { return key }
+            return nil
+        }
+        #expect(keysBeforeRelease.isEmpty, "the sync must not fetch while the write owns the gate")
+
+        await gate.open()
+        try await writeTask.value
+        _ = try await syncTask.value
+        let keys = await gateway.calls.compactMap { call -> String? in
+            if case .messages(_, let key) = call { return key }
+            return nil
+        }
+        #expect(keys == ["6"])
+        #expect(try store.syncKey(AccountID("a"), collection: "13") == "7")
+    }
+
+    @Test("a cancelled queued write never reaches the gateway")
+    func cancelledWaiterSendsNothing() async throws {
+        let store = try store(key: "5")
+        let gateway = FakeGateway(folderListing: FolderListing(folders: [inbox], syncKey: "1"), deltas: [:])
+        let gate = AsyncGate()
+        let write = RecordingWriteGateway(delta: delta(key: "6"))
+        await write.setGate(gate)
+        let engine = SyncEngine(gateway: gateway, store: store, account: AccountID("a"), writeGateway: write)
+
+        let first = Task { try await engine.markRead(collectionID: "13", serverID: "101") }
+        await gate.waitUntilWaiting()
+        let second = Task { try await engine.deleteMessage(collectionID: "13", serverID: "102") }
+        try await Task.sleep(for: .milliseconds(20))
+        second.cancel()
+        await gate.open()
+        try await first.value
+
+        do {
+            try await second.value
+            Issue.record("expected CancellationError")
+        } catch is CancellationError {
+            // expected
+        } catch {
+            Issue.record("expected CancellationError, got \(error)")
+        }
+        #expect(await write.calls.count == 1)
     }
 }

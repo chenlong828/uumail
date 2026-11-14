@@ -15,7 +15,7 @@ struct SyncSceneTests {
         notifier: FakeNotifier = FakeNotifier(),
         account: AccountID = AccountID("a")
     ) -> SyncScene {
-        let engine = SyncEngine(gateway: gateway, store: store, account: account, sleeper: { _ in })
+        let engine = SyncEngine(gateway: gateway, store: store, account: account, writeGateway: UnsupportedWriteGateway(), sleeper: { _ in })
         return SyncScene(engine: engine, notifier: notifier, clock: clock)
     }
 

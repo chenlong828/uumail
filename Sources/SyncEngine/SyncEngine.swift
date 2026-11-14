@@ -7,10 +7,14 @@ import MailDomain
 /// 1. `SyncKey=0` answers with a fresh key and no items, so a first sync is two
 ///    requests and the key is only persisted together with the window it carried.
 /// 2. A batch and its key commit together (the store port enforces the transaction).
+///
+/// A read and a write (read marker/delete) share one collection key. The explicit FIFO
+/// gate, not actor reentrancy, is what keeps them serial.
 public actor SyncEngine {
     private let gateway: any MailGateway
     private let store: any SyncStore
     private let account: AccountRef
+    private let writeGateway: any MailWriteGateway
     private let window: Int
     private let maxRounds: Int
     private let filterType: Int
@@ -19,10 +23,15 @@ public actor SyncEngine {
     private var state: SyncState = .idle
     private var consecutiveFailures = 0
 
+    // FIFO gate: `busy` stays true when a waiter owns the next turn.
+    private var gateBusy = false
+    private var waiters: [(id: UUID, continuation: CheckedContinuation<Void, Error>)] = []
+
     public init(
         gateway: any MailGateway,
         store: any SyncStore,
         account: AccountRef,
+        writeGateway: any MailWriteGateway,
         window: Int = 25,
         maxRounds: Int = 5,
         filterType: Int = 5,
@@ -31,6 +40,7 @@ public actor SyncEngine {
         self.gateway = gateway
         self.store = store
         self.account = account
+        self.writeGateway = writeGateway
         self.window = window
         self.maxRounds = maxRounds
         self.filterType = filterType
@@ -91,6 +101,15 @@ public actor SyncEngine {
 
     // MARK: - Messages
 
+    private struct RoundResult {
+        var added = 0
+        var changed = 0
+        var removed = 0
+        var rounds = 0
+        var moreAvailable = false
+        var reset = false
+    }
+
     private func syncInbox(_ inbox: FolderSummary, folderCount: Int) async throws -> SyncReport {
         var added = 0
         var changed = 0
@@ -104,34 +123,22 @@ public actor SyncEngine {
         // than the window. Measured 2026-11-09: every call returned 25 items with
         // MoreAvailable absent while ~150 messages still queued up.
         while rounds < maxRounds {
-            if key == "0" {
-                // First sync of a collection: SyncKey=0 answers with a key and no items.
-                let bootstrap = try await gateway.fetchMessages(
-                    collectionID: inbox.serverID, syncKey: "0", window: window, filterType: filterType
-                )
-                key = bootstrap.syncKey
+            let result = try await syncRound(
+                inbox, allowReset: !rebuilt, currentKey: key
+            )
+            if result.reset {
+                rebuilt = true
+                key = "0"
                 continue
             }
+            added += result.added
+            changed += result.changed
+            removed += result.removed
+            rounds += result.rounds
+            key = try store.syncKey(account, collection: inbox.serverID) ?? key
 
-            do {
-                let delta = try await gateway.fetchMessages(
-                    collectionID: inbox.serverID, syncKey: key, window: window, filterType: filterType
-                )
-                try store.applySyncBatch(account, folder: inbox.serverID, delta: delta)
-                added += delta.added.count
-                changed += delta.changed.count
-                removed += delta.removedServerIDs.count
-                rounds += 1
-                key = delta.syncKey
-
-                if delta.added.count < window && !delta.moreAvailable {
-                    break
-                }
-            } catch MailError.syncKeyInvalid where !rebuilt {
-                // Status 3/4: the server lost our cursor. Rebuild this collection from zero.
-                rebuilt = true
-                try store.resetCollection(account, folder: inbox.serverID)
-                key = "0"
+            if result.added < window && !result.moreAvailable {
+                break
             }
         }
 
@@ -139,6 +146,120 @@ public actor SyncEngine {
             folders: folderCount, added: added, changed: changed,
             removed: removed, rounds: rounds, syncKey: key
         )
+    }
+
+    /// One gated round: re-read the key, optionally bootstrap, then exactly one Sync and
+    /// its commit. A stale key resets the collection inside the same critical section.
+    private func syncRound(
+        _ inbox: FolderSummary, allowReset: Bool, currentKey: String
+    ) async throws -> RoundResult {
+        try await acquire()
+        defer { release() }
+        if Task.isCancelled { throw CancellationError() }
+
+        var key = try store.syncKey(account, collection: inbox.serverID) ?? currentKey
+        if key == "0" {
+            // SyncKey=0 answers with a key and no items. Ask for the window immediately in
+            // the same critical section so a write cannot slip in between the two calls.
+            let bootstrap = try await gateway.fetchMessages(
+                collectionID: inbox.serverID, syncKey: "0", window: window, filterType: filterType
+            )
+            key = bootstrap.syncKey
+            guard key != "0" else { throw MailError.unsupported }
+        }
+
+        do {
+            let delta = try await gateway.fetchMessages(
+                collectionID: inbox.serverID, syncKey: key, window: window, filterType: filterType
+            )
+            try store.applySyncBatch(account, folder: inbox.serverID, delta: delta)
+            return RoundResult(
+                added: delta.added.count,
+                changed: delta.changed.count,
+                removed: delta.removedServerIDs.count,
+                rounds: 1,
+                moreAvailable: delta.moreAvailable
+            )
+        } catch MailError.syncKeyInvalid where allowReset {
+            try store.resetCollection(account, folder: inbox.serverID)
+            return RoundResult(reset: true)
+        }
+    }
+
+    // MARK: - Write path
+
+    /// Marks one message read on the server. The caller already made it read locally; this
+    /// pins the local fact again, sends one Sync command and commits its delta + key.
+    public func markRead(collectionID: String, serverID: String) async throws {
+        try await acquire()
+        defer { release() }
+        if Task.isCancelled { throw CancellationError() }
+
+        _ = try store.markRead(account, folder: collectionID, serverID: serverID)
+        let key = try currentKey(collectionID)
+        let delta = try await writeGateway.markRead(
+            collectionID: collectionID, serverID: serverID, syncKey: key
+        )
+        guard !delta.moreAvailable else { throw MailError.unsupported }
+        try store.commitMarkRead(account, folder: collectionID, serverID: serverID, delta: delta)
+    }
+
+    /// Deletes one message on the server. Nothing is soft-deleted locally until the server
+    /// has confirmed and the response delta + key commit together.
+    public func deleteMessage(collectionID: String, serverID: String) async throws {
+        try await acquire()
+        defer { release() }
+        if Task.isCancelled { throw CancellationError() }
+
+        let key = try currentKey(collectionID)
+        let delta = try await writeGateway.delete(
+            collectionID: collectionID, serverID: serverID, syncKey: key
+        )
+        guard !delta.moreAvailable else { throw MailError.unsupported }
+        try store.commitDelete(account, folder: collectionID, serverID: serverID, delta: delta)
+    }
+
+    private func currentKey(_ collectionID: String) throws -> String {
+        guard let key = try store.syncKey(account, collection: collectionID), key != "0" else {
+            throw MailError.syncKeyInvalid
+        }
+        return key
+    }
+
+    // MARK: - Gate
+
+    private func acquire() async throws {
+        if Task.isCancelled { throw CancellationError() }
+        if !gateBusy {
+            gateBusy = true
+            return
+        }
+        let id = UUID()
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                if Task.isCancelled {
+                    continuation.resume(throwing: CancellationError())
+                } else {
+                    waiters.append((id, continuation))
+                }
+            }
+        } onCancel: {
+            Task { await self.cancelWaiter(id) }
+        }
+    }
+
+    private func cancelWaiter(_ id: UUID) {
+        guard let index = waiters.firstIndex(where: { $0.id == id }) else { return }
+        waiters.remove(at: index).continuation.resume(throwing: CancellationError())
+    }
+
+    /// Hands the gate to the next FIFO waiter without clearing `busy`.
+    private func release() {
+        if waiters.isEmpty {
+            gateBusy = false
+        } else {
+            waiters.removeFirst().continuation.resume()
+        }
     }
 
     // MARK: - Errors
