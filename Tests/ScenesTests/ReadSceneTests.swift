@@ -1,9 +1,11 @@
 import Foundation
 import MailDomain
 import MailStore
+import SyncEngine
 import Testing
 
 @testable import Scenes
+import SyncEngine
 
 @Suite("ReadScene")
 struct ReadSceneTests {
@@ -13,9 +15,14 @@ struct ReadSceneTests {
         store: MailStore,
         account: AccountID,
         gateway: FakeGateway,
-        files: FakeAttachmentFiles = FakeAttachmentFiles()
+        files: FakeAttachmentFiles = FakeAttachmentFiles(),
+        write: any MailWriteGateway = UnsupportedWriteGateway()
     ) -> ReadScene {
-        ReadScene(store: store, account: account, gateway: gateway, files: files)
+        let engine = SyncEngine(
+            gateway: gateway, store: store, account: account,
+            writeGateway: write, sleeper: { _ in }
+        )
+        return ReadScene(store: store, account: account, gateway: gateway, files: files, writeEngine: engine)
     }
 
     @Test("a cached body is yielded without touching the gateway")
@@ -151,5 +158,128 @@ private extension FakeAttachmentFiles {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("uumail-scenes-tests")
             .appendingPathComponent("\(reference.fileReference)-\(reference.displayName)")
+    }
+}
+
+@Suite("ReadScene write path")
+struct ReadSceneWriteTests {
+    private let ref = MessageRef(folderID: "13", serverID: "101")
+
+    private func seeded(with write: any MailWriteGateway) throws -> (ReadScene, MailStore, AccountID) {
+        let (store, account) = try seededReadStore()
+        try store.applySyncBatch(
+            account: account,
+            folder: "13",
+            added: [Message(serverID: "101", subject: "目标", sender: "a@corp.test")],
+            changed: [],
+            removedServerIDs: [],
+            syncKey: "5"
+        )
+        let gateway = FakeGateway()
+        let engine = SyncEngine(
+            gateway: gateway, store: store, account: account,
+            writeGateway: write, sleeper: { _ in }
+        )
+        let scene = ReadScene(
+            store: store, account: account, gateway: gateway,
+            files: FakeAttachmentFiles(), writeEngine: engine
+        )
+        return (scene, store, account)
+    }
+
+    @Test("markReadLocally persists first, then writeBackMarkRead sends one gated command")
+    func markReadLocallyPersistsBeforeWriteBack() async throws {
+        let write = RecordingWriteGateway(delta: MessageDelta(
+            added: [], changed: [], removedServerIDs: [], syncKey: "6", moreAvailable: false
+        ))
+        let (scene, store, account) = try seeded(with: write)
+
+        #expect(try scene.markReadLocally(ref) == true)
+        #expect(try store.messages(account: account, folder: "13").first?.isRead == true)
+
+        let outcome = await scene.writeBackMarkRead(ref)
+        #expect(outcome == .succeeded)
+        #expect(await write.calls == [.markRead(collectionID: "13", serverID: "101", key: "5")])
+        #expect(try store.syncKey(account: account, collection: "13") == "6")
+    }
+
+    @Test("a failed write-back keeps the local read and never rolls back")
+    func markReadKeepsLocalReadWhenWriteBackFails() async throws {
+        let write = RecordingWriteGateway(delta: MessageDelta(
+            added: [], changed: [], removedServerIDs: [], syncKey: "6", moreAvailable: false
+        ))
+        await write.setFailure(.offline)
+        let (scene, store, account) = try seeded(with: write)
+
+        #expect(try scene.markReadLocally(ref) == true)
+        let outcome = await scene.writeBackMarkRead(ref)
+
+        #expect(outcome == .failed(.offline))
+        #expect(try store.messages(account: account, folder: "13").first?.isRead == true)
+        #expect(try store.syncKey(account: account, collection: "13") == "5")
+    }
+
+    @Test("deleteMessage soft-deletes only after the gateway succeeds")
+    func deleteSoftDeletesOnlyAfterGatewaySuccess() async throws {
+        let write = RecordingWriteGateway(delta: MessageDelta(
+            added: [], changed: [], removedServerIDs: ["101"], syncKey: "7", moreAvailable: false
+        ))
+        let (scene, store, account) = try seeded(with: write)
+
+        try await scene.deleteMessage(ref)
+
+        #expect(try store.messages(account: account, folder: "13").isEmpty)
+        #expect(try store.syncKey(account: account, collection: "13") == "7")
+        #expect(await write.calls == [.delete(collectionID: "13", serverID: "101", key: "5")])
+    }
+
+    @Test("a failed delete leaves the row and the key in place")
+    func deleteFailureDoesNotSoftDelete() async throws {
+        let write = RecordingWriteGateway(delta: MessageDelta(
+            added: [], changed: [], removedServerIDs: ["101"], syncKey: "7", moreAvailable: false
+        ))
+        await write.setFailure(.offline)
+        let (scene, store, account) = try seeded(with: write)
+
+        await expectMailError(.offline) {
+            try await scene.deleteMessage(ref)
+        }
+        #expect(try store.messages(account: account, folder: "13").map(\.serverID) == ["101"])
+        #expect(try store.syncKey(account: account, collection: "13") == "5")
+    }
+
+    @Test("deleteMessage propagates cancellation instead of folding it into storage")
+    func deleteCancellationPropagates() async throws {
+        let write = RecordingWriteGateway(delta: MessageDelta(
+            added: [], changed: [], removedServerIDs: [], syncKey: "7", moreAvailable: false
+        ))
+        await write.setCancels(true)
+        let (scene, store, account) = try seeded(with: write)
+
+        await #expect(throws: CancellationError.self) {
+            try await scene.deleteMessage(ref)
+        }
+        #expect(try store.messages(account: account, folder: "13").map(\.serverID) == ["101"])
+    }
+
+    @Test("a non-MailError delete failure is stored as storage")
+    func nonMailErrorBecomesStorage() async throws {
+        let write = RecordingWriteGateway(delta: MessageDelta(
+            added: [], changed: [], removedServerIDs: [], syncKey: "7", moreAvailable: false
+        ))
+        await write.setThrowsRaw(true)
+        let (scene, store, account) = try seeded(with: write)
+
+        do {
+            try await scene.deleteMessage(ref)
+            Issue.record("expected storage error")
+        } catch let error as MailError {
+            guard case .storage(let reason) = error else {
+                Issue.record("expected storage, got \(error)")
+                return
+            }
+            #expect(reason.contains("raw"))
+        }
+        #expect(try store.messages(account: account, folder: "13").map(\.serverID) == ["101"])
     }
 }

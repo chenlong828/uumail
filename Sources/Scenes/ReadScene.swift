@@ -1,6 +1,7 @@
 import Foundation
 import MailDomain
 import MailStore
+import SyncEngine
 
 /// Identifies one message's body: its folder and the server-side id.
 public struct MessageRef: Hashable, Sendable {
@@ -27,11 +28,18 @@ public enum BodyEvent: Equatable, Sendable {
 ///
 /// The only mutable state is the in-flight request tables (spec §4.9/§7): the scene value
 /// itself is stateless, so it stays `Sendable` and cheap to copy.
+public enum WriteOutcome: Equatable, Sendable {
+    case succeeded
+    case failed(MailError)
+}
+
 public struct ReadScene: Sendable {
     private let store: MailStore
     private let account: AccountID
     private let gateway: any MailGateway
     private let files: any AttachmentFiles
+    /// The account's single `SyncEngine`; the write methods are the only network paths.
+    private let writeEngine: SyncEngine
 
     private let bodyFlights = FlightBoard<MessageRef, FetchedBody>()
     private let attachmentFlights = FlightBoard<String, URL>()
@@ -40,12 +48,14 @@ public struct ReadScene: Sendable {
         store: MailStore,
         account: AccountID,
         gateway: any MailGateway,
-        files: any AttachmentFiles
+        files: any AttachmentFiles,
+        writeEngine: SyncEngine
     ) {
         self.store = store
         self.account = account
         self.gateway = gateway
         self.files = files
+        self.writeEngine = writeEngine
     }
 
     // MARK: - Local reads (never touch the network)
@@ -72,6 +82,37 @@ public struct ReadScene: Sendable {
             return nil
         }
         return stored.isHTML ? stored.text : HTMLText.fromPlainText(stored.text)
+    }
+
+    // MARK: - Write path
+
+    /// Local half of the read marker: zero network. Returns whether this was a real 0→1.
+    @discardableResult
+    public func markReadLocally(_ ref: MessageRef) throws -> Bool {
+        try store.markRead(account: account, folder: ref.folderID, serverID: ref.serverID)
+    }
+
+    /// Best-effort server write-back. Failure never rolls the local read back and is not
+    /// surfaced to the presentation layer; `.failed` exists for diagnostics/tests.
+    public func writeBackMarkRead(_ ref: MessageRef) async -> WriteOutcome {
+        do {
+            try await writeEngine.markRead(collectionID: ref.folderID, serverID: ref.serverID)
+            return .succeeded
+        } catch {
+            return .failed(Self.classify(error))
+        }
+    }
+
+    /// Server-confirmed delete. The local soft delete happens inside the engine's store
+    /// commit; this method never pre-deletes. Cancellation propagates for PRES to restore.
+    public func deleteMessage(_ ref: MessageRef) async throws {
+        do {
+            try await writeEngine.deleteMessage(collectionID: ref.folderID, serverID: ref.serverID)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw Self.classify(error)
+        }
     }
 
     // MARK: - Body

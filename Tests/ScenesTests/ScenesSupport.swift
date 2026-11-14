@@ -18,6 +18,43 @@ struct UnsupportedWriteGateway: MailWriteGateway {
     }
 }
 
+enum FakeWriteFailure: Error, Sendable { case raw }
+
+actor RecordingWriteGateway: MailWriteGateway {
+    enum Call: Equatable {
+        case markRead(collectionID: String, serverID: String, key: String)
+        case delete(collectionID: String, serverID: String, key: String)
+    }
+
+    private(set) var calls: [Call] = []
+    private var delta: MessageDelta
+    private var failure: MailError?
+    private var cancels = false
+    private var throwsRaw = false
+
+    init(delta: MessageDelta) { self.delta = delta }
+
+    func setFailure(_ failure: MailError?) { self.failure = failure }
+    func setCancels(_ value: Bool) { cancels = value }
+    func setThrowsRaw(_ value: Bool) { throwsRaw = value }
+
+    func markRead(collectionID: String, serverID: String, syncKey: String) async throws -> MessageDelta {
+        try await respond(.markRead(collectionID: collectionID, serverID: serverID, key: syncKey))
+    }
+
+    func delete(collectionID: String, serverID: String, syncKey: String) async throws -> MessageDelta {
+        try await respond(.delete(collectionID: collectionID, serverID: serverID, key: syncKey))
+    }
+
+    private func respond(_ call: Call) throws -> MessageDelta {
+        calls.append(call)
+        if cancels { throw CancellationError() }
+        if throwsRaw { throw FakeWriteFailure.raw }
+        if let failure { throw failure }
+        return delta
+    }
+}
+
 /// Configurable gateway fake shared by the scene tests.
 actor FakeGateway: MailGateway {
     enum Call: Equatable {

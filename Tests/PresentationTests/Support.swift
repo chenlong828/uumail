@@ -204,7 +204,8 @@ func makeMailboxFixture(
         store: store,
         account: account,
         gateway: gateway,
-        files: PresentationFakeAttachmentFiles()
+        files: PresentationFakeAttachmentFiles(),
+        writeEngine: engine
     )
     let composeScene = ComposeScene(store: store, outbox: outbox)
     let viewModel = MailboxViewModel(

@@ -155,7 +155,8 @@ public final class AppComposition {
                 store: store,
                 account: account,
                 gateway: gateway,
-                files: FileAttachmentFiles(directory: AppPaths.attachmentsDirectory)
+                files: FileAttachmentFiles(directory: AppPaths.attachmentsDirectory),
+                writeEngine: engine
             ),
             sync: SyncScene(engine: engine, notifier: notifier, clock: SystemMailClock()),
             compose: ComposeScene(store: store, outbox: outbox),

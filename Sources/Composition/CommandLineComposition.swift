@@ -87,7 +87,8 @@ public struct CommandLineComposition {
                 store: store,
                 account: account,
                 gateway: gateway,
-                files: FileAttachmentFiles(directory: AppPaths.attachmentsDirectory)
+                files: FileAttachmentFiles(directory: AppPaths.attachmentsDirectory),
+                writeEngine: engine
             ),
             sync: SyncScene(engine: engine, notifier: SilentNotifier(), clock: SystemMailClock()),
             compose: ComposeScene(store: store, outbox: outbox),
