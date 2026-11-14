@@ -469,8 +469,8 @@ struct SyncEngineWriteTests {
         #expect(await write.calls.isEmpty)
     }
 
-    @Test("a write waits for an in-flight sync and then starts from the new key")
-    func writeWaitsForSync() async throws {
+    @Test("T-SCN-0008-03: markRead is serialized with syncOnce and starts from the new key")
+    func markReadIsSerializedWithSyncOnce() async throws {
         let store = try store(key: "5")
         let gateway = FakeGateway(
             folderListing: FolderListing(folders: [inbox], syncKey: "1"),
@@ -492,6 +492,23 @@ struct SyncEngineWriteTests {
         try await writeTask.value
         #expect(await write.calls == [.markRead(collectionID: "13", serverID: "101", key: "6")])
         #expect(try store.syncKey(AccountID("a"), collection: "13") == "7")
+    }
+
+    @Test("T-SCN-0009-03: a repeated delete uses the current key and does not advance it twice")
+    func deleteIsIdempotentAndAdvancesKeyOnce() async throws {
+        let store = try store(key: "5")
+        let gateway = FakeGateway(folderListing: FolderListing(folders: [inbox], syncKey: "1"), deltas: [:])
+        let write = RecordingWriteGateway(delta: delta(key: "6", removed: ["101"]))
+        let engine = SyncEngine(gateway: gateway, store: store, account: AccountID("a"), writeGateway: write)
+
+        try await engine.deleteMessage(collectionID: "13", serverID: "101")
+        try await engine.deleteMessage(collectionID: "13", serverID: "101")
+
+        #expect(await write.calls == [
+            .delete(collectionID: "13", serverID: "101", key: "5"),
+            .delete(collectionID: "13", serverID: "101", key: "6"),
+        ])
+        #expect(try store.syncKey(AccountID("a"), collection: "13") == "6")
     }
 
     @Test("a sync waits for an in-flight write and reads the key it advanced")

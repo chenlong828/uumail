@@ -262,6 +262,21 @@ struct ReadSceneWriteTests {
         #expect(try store.messages(account: account, folder: "13").map(\.serverID) == ["101"])
     }
 
+    @Test("T-SCN-0009-03: the next incremental sync does not resurrect a deleted row")
+    func deleteDoesNotResurrectOnNextSync() async throws {
+        let write = RecordingWriteGateway(delta: MessageDelta(
+            added: [], changed: [], removedServerIDs: ["101"], syncKey: "7", moreAvailable: false
+        ))
+        let (scene, store, account) = try seeded(with: write)
+        try await scene.deleteMessage(ref)
+
+        try store.applySyncBatch(
+            account: account, folder: "13",
+            added: [], changed: [], removedServerIDs: ["101"], syncKey: "8"
+        )
+        #expect(try store.messages(account: account, folder: "13").isEmpty)
+    }
+
     @Test("a non-MailError delete failure is stored as storage")
     func nonMailErrorBecomesStorage() async throws {
         let write = RecordingWriteGateway(delta: MessageDelta(
