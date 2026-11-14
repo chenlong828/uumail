@@ -228,7 +228,7 @@ public protocol SyncStore: Sendable {
 - 实现都在 `Composition/Platform/`：`KeychainCredentialStore`、`EphemeralCredentialStore`、`SystemNotifier`、`FileAttachmentFiles`、`SystemMailClock`、`AppPaths`；CLI 另有 `SilentNotifier`（`CommandLineComposition` 内）。
 - `AttachmentFiles.store` 原子写并执行预算淘汰（2 GB 最旧优先，`history/decisions/2026-11-09-attachment-cache-cap.md`）。
 
-### 3.4 `MailStore` v2（schema v8 delta）
+### 3.4 `MailStore` v2（schema v8 → v9 delta）
 
 | 契约 | 说明 |
 |---|---|
@@ -240,9 +240,9 @@ public protocol SyncStore: Sendable {
 | `saveDraft/enqueueOutbox/pendingOutbox` | 草稿不入队、发送意图入队 |
 
 - schema v8（`v8_outbox_v2`）：`outbox` 增加 `sending_since`、`next_attempt_at`；状态取值 `draft/queued/sending/failed_retryable/failed_permanent/canceled`（旧 `failed` → `failed_retryable`）。
-- 计划（SCN-0007，T-1114-05）：v9 只加可空 `cc` 列，并把非 `folders` 的 message `sync_key` 置 `"0"` 触发一次回填；保留正文/附件，不调用 `resetCollection`。未落地前仍以 v8 为准，细节见 `design/components/CMP-STORE/spec.md` 的设计增量。
+- schema v9（`v9_message_cc`，T-1114-05）：`messages` 加可空 `cc` 列，并把非 `folders` 的 message `sync_key` 置 `"0"` 触发一次回填；保留正文/附件，不调用 `resetCollection`。`applySyncBatch` 写入 To/Cc 且用 `COALESCE` 防止只带 `Read` 的 `Change` 清空已有值；`messages`/`searchLocal` 都映射 `recipients` 与 `cc`。
 - 错误：`MailStoreError` 含 `folderNotFound/accountNotFound/invalidFolder/outboxNotClaimable/accountNotEmpty/database`。
-- 迁移测试：`Tests/MailStoreTests/MigrationTests.swift` 用 pre-v8 fixture 验证 `failed` 前滚与旧字段可读。
+- 迁移测试：`Tests/MailStoreTests/MigrationTests.swift` 用 pre-v8 fixture 验证 `failed` 前滚与旧字段可读，用 pre-v9 fixture 验证 `cc` 空可读、正文/附件保留、消息游标归零与回填写入。
 
 ### 3.5 `Outbox`（L1b actor）
 
@@ -363,10 +363,10 @@ CommandLineComposition（127 行）
 
 ### 7.1 当前验证面
 
-- `./Scripts/swiftw test` → **159 tests / 37 suites**（2026-11-14 最终验证）。
+- `./Scripts/swiftw test` → **173 tests / 37 suites**（2026-11-14，T-1114-05 后复测）。
 - 测试 target：`MailDomainTests`、`MailStoreTests`、`SyncEngineTests`、`OutboxTests`、`EASClientTests`、`EASAdapterTests`、`ScenesTests`、`PresentationTests`、`CompositionTests`。
 - `bash Scripts/check-architecture.sh` → 4 门：per-target import 白名单、场景互调、`AppComposition` ≤200 行、`Composition` 业务 switch。4 门全过。
-- schema 迁移：`MailStoreTests/MigrationTests` 的 pre-v8 fixture。
+- schema 迁移：`MailStoreTests/MigrationTests` 的 pre-v8 与 pre-v9 fixture。
 - 性能：`MailStoreTests/PerformanceTests` 5k 基线；重构后未复测 P95。
 
 ### 7.2 门禁的已知局限

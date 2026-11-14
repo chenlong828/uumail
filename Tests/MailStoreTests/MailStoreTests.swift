@@ -143,6 +143,61 @@ struct MailStoreSyncTests {
         #expect(try store.syncKey(account: id, collection: "13") == "2")
     }
 
+    @Test("a batch stores To and Cc and the list read exposes them")
+    func storesRecipientsAndCc() throws {
+        let (store, id) = try seededStore()
+        try store.applySyncBatch(
+            account: id,
+            folder: "13",
+            added: [
+                MailMessage(serverID: "101", subject: "周报", sender: "a@corp.test",
+                            recipients: "a@corp.test; b@corp.test",
+                            receivedRaw: "2026-11-08T05:11:18.000Z", cc: "c@corp.test"),
+            ],
+            changed: [],
+            removedServerIDs: [],
+            syncKey: "2"
+        )
+
+        let message = try #require(try store.messages(account: id, folder: "13").first)
+        #expect(message.recipients == "a@corp.test; b@corp.test")
+        #expect(message.cc == "c@corp.test")
+    }
+
+    @Test("a partial Change keeps the stored To and Cc")
+    func partialChangeKeepsRecipientsAndCc() throws {
+        let (store, id) = try seededStore()
+        try store.applySyncBatch(
+            account: id,
+            folder: "13",
+            added: [
+                MailMessage(serverID: "101", subject: "周报",
+                            recipients: "a@corp.test; b@corp.test",
+                            receivedRaw: "2026-11-08T05:11:18.000Z", cc: "c@corp.test"),
+            ],
+            changed: [],
+            removedServerIDs: [],
+            syncKey: "2"
+        )
+        // EAS `Change` can carry only the Read flag: it must not erase the envelope's To/Cc.
+        try store.applySyncBatch(
+            account: id,
+            folder: "13",
+            added: [],
+            changed: [
+                MailMessage(serverID: "101", subject: "周报",
+                            receivedRaw: "2026-11-08T05:11:18.000Z", isRead: true),
+            ],
+            removedServerIDs: [],
+            syncKey: "3"
+        )
+
+        let message = try #require(try store.messages(account: id, folder: "13").first)
+        #expect(message.isRead)
+        #expect(message.recipients == "a@corp.test; b@corp.test")
+        #expect(message.cc == "c@corp.test")
+    }
+
     @Test("re-applying the same batch keeps one row per server id")
     func idempotentBatch() throws {
         let (store, id) = try seededStore()
@@ -500,6 +555,28 @@ struct MailStoreSearchTests {
         try store.applyBody(account: id, folder: "13", serverID: "2",
                             html: "<p>单拎补丁申请流程说明</p>")
         #expect(try store.searchLocal(account: id, query: "补丁申请").map(\.serverID) == ["2"])
+    }
+
+    @Test("search results carry To and Cc for reply-all seeding")
+    func searchCarriesRecipientsAndCc() throws {
+        let (store, id) = try seeded()
+        try store.applySyncBatch(
+            account: id,
+            folder: "13",
+            added: [
+                MailMessage(serverID: "3", subject: "全部回复测试", sender: "z@corp.test",
+                            recipients: "a@corp.test; b@corp.test",
+                            receivedRaw: "2026-11-06T05:11:18.000Z", cc: "c@corp.test"),
+            ],
+            changed: [],
+            removedServerIDs: [],
+            syncKey: "3"
+        )
+
+        let hit = try #require(try store.searchLocal(account: id, query: "全部回复").first)
+        #expect(hit.serverID == "3")
+        #expect(hit.recipients == "a@corp.test; b@corp.test")
+        #expect(hit.cc == "c@corp.test")
     }
 
     @Test("blank queries return nothing instead of everything")

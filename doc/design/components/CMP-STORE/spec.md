@@ -10,7 +10,7 @@ component: CMP-STORE
 
 ## 模块卡
 
-- 状态：`active`（schema v8；账号、文件夹、消息、正文、附件、outbox、FTS 读写均已落地）
+- 状态：`active`（schema v9；账号、文件夹、消息、正文、附件、outbox、FTS 读写均已落地）
 - 单元：组件
 - 层 / 类型：L1a；领域基础（数据服务，唯一写入口）
 - 业务价值：为列表、阅读、搜索、发送意图提供**唯一权威本地副本**；没有它，同一封邮件会以三种口径出现在三个模块里。
@@ -23,11 +23,11 @@ component: CMP-STORE
 - 入口：`Sources/MailStore/MailStore.swift#MailStore`、`SyncStoreConformance.swift`（`MailStore: SyncStore`）
 - 依赖：`MailDomain`、GRDB。扇出 2。
 - 冷热：读热、写冷热混合；`DatabaseQueue` 单写。
-- 尺寸预算：目标 ≤900 行；当前 852 行（`MailStore.swift` 818 + `SyncStoreConformance.swift` 34，`wc -l` 2026-11-14；此前记 890 为旧值）。
+- 尺寸预算：目标 ≤1000 行；当前 916 行（`MailStore.swift` 683 + `Migrations.swift` 161 + `SyncStoreConformance.swift` 34 + `Values.swift` 38，`wc -l` 2026-11-14；T-1114-05 拆出迁移后实测 916，按设计增量约定由 900 上调至 1000）。
 - 单独运行：`./Scripts/swiftw test --filter MailStoreTests`
 - 删除测试：删掉后场景、同步、搜索各自拼 SQL 并各自维护 SyncKey → 复杂度分散，是真边界。
 
-## 契约卡：MailStore v8
+## 契约卡：MailStore v9
 
 - 账号：`createAccount(NewAccount)`（`draft`）、`markAccountReady`、`discardAccount`（仅无消息）、`account(_:)`（返回 `displayName/address/host`）、`accounts()`。
 - 文件夹与同步：`folders(account:)`、`applyFolderSnapshot(account:folders:syncKey:)`、`applySyncBatch(account:folder:added:changed:removedServerIDs:syncKey:)`、`syncKey(account:collection:)`、`resetCollection(account:folder:)`。
@@ -39,8 +39,8 @@ component: CMP-STORE
 - 幂等 / 顺序 / 并发：批次幂等；单写队列；跨进程靠 SQL 原子更新与租约。
 - 超时 / 取消 / 背压：单事务目标 ≤2s；批次大小由 `SyncEngine` 控制。
 - 一致性 / 可见性：提交后立即可见；信封与正文同生同灭。
-- 兼容性 / 废弃：schema 只前进；v8 只加列/扩取值，旧库可前滚。`MailStore/Values.swift` 仍保留指向 `MailDomain` 的过渡 `typealias`（未删，见 `design/architecture.md` §10）。
-- 契约测试：`MailStoreTests` 35 例、`MigrationTests` 1、`PerformanceTests` 1、`Smoke` 1。
+- 兼容性 / 废弃：schema 只前进；v9 只加 `messages.cc` 可空列并把非 `folders` 的 `sync_key` 置 `"0"`，旧库可前滚。`MailStore/Values.swift` 仍保留指向 `MailDomain` 的过渡 `typealias`（未删，见 `design/architecture.md` §10）。
+- 契约测试：`MailStoreTests` 38 例、`MigrationTests` 2、`PerformanceTests` 1、`Smoke` 1。
 
 ## 数据所有权
 
@@ -59,13 +59,13 @@ component: CMP-STORE
 
 | 契约 | 代码 | 测试 |
 |---|---|---|
-| schema v1→v8 迁移（含 `failed` → `failed_retryable`） | ✅ | 迁移 1 例 + 各用例 `inMemory()` |
+| schema v1→v9 迁移（含 `failed` → `failed_retryable`、消息游标回填） | ✅ | 迁移 2 例 + 各用例 `inMemory()` |
 | `applyFolderSnapshot`（幂等、软删、复活、回滚、未知账号） | ✅ | 6 例 |
-| `applySyncBatch`（信封/摘要、幂等、软删、回滚） | ✅ | 5 例 |
+| `applySyncBatch`（信封/摘要、幂等、软删、回滚、To/Cc 写入与 COALESCE） | ✅ | 7 例 |
 | `applyBody` / `body`（正文分表、摘要不冒充正文） | ✅ | 4 例 |
 | 附件元数据 + 缓存标记 | ✅ | 随正文/附件路径 |
 | outbox 入队/claim/lease/mark/release/cancel | ✅ | 10 例 |
-| `searchLocal`（FTS5 trigram；2 字回退 LIKE） | ✅ | 4 例 |
+| `searchLocal`（FTS5 trigram；2 字回退 LIKE；带回 To/Cc） | ✅ | 5 例 |
 | 账号 `ready`/`discard` | ✅ | 3 例 |
 | 旧 `page` / `messageDetail` | ⬜ 未按名实现 | 现行读契约是 `messages(folderID:limit:)` / `body(...)` |
 
@@ -76,14 +76,14 @@ component: CMP-STORE
 | 契约不变量 | 幂等 upsert、批次回滚、key 不推进、租约领取 |
 | 失败/降级 | 未知账号/文件夹、非法文件夹、不可领取状态 |
 | 冷热隔离 | 读写并发用例与 5k 基线 |
-| 数据/迁移 | pre-v8 fixture 前滚；空库建表 |
+| 数据/迁移 | pre-v8 / pre-v9 fixture 前滚；空库建表 |
 | 依赖 | 门 1：只 import `Foundation`/`GRDB`/`MailDomain` |
 
 ## 开放问题
 
 - 正文裁剪策略（时间窗口 vs 大小）见 `plan/open-questions.md` Q1；未定前不写清理契约。
 
-## 设计增量：schema v9（T-1114-05，待实现）
+## 设计增量：schema v9（T-1114-05，已实现 2026-11-14）
 
 - v9 只加可空列并重置消息集合游标：
 
@@ -94,8 +94,8 @@ component: CMP-STORE
 
   用 `UPDATE` 而非 `DELETE`，保留 `last_sync_at`；`folders` 的 key 不动。`SyncEngine` 已把 `"0"` 当首次同步处理，本组件不改同步引擎。
 - `applySyncBatch` 写入 `cc`；`recipients` 与 `cc` 的 UPDATE 用 `COALESCE(excluded..., messages...)`，避免 EAS `Change` 只带 `Read` 时清空已有 To/Cc。新增消息仍可写 `nil`。
-- `messages` 与 `searchLocal` 的 SELECT/映射补 `m.recipients`、`m.cc`；现状这两个读路径把已入库的 `recipients` 丢掉了，不补则全部回复只能看到发件人。
+- `messages` 与 `searchLocal` 的 SELECT/映射补 `m.recipients`、`m.cc`；此前这两个读路径会把已入库的 `recipients` 丢掉，不补则全部回复只能看到发件人。
 - 历史回填：不调用 `resetCollection`（它会删 `messages` 与 `message_bodies`）；迁移后下一次同步按窗口重拉最近 ≤5×25=125 封并 upsert `cc`，正文/附件/附件缓存完全不动。更早邮件保持 `cc = nil`，不伪造；`folders` key 保留（不被回填改写；`SyncEngine` 的 FolderSync 仍按既有逻辑每次全量树）。
-- 预算与拆文件：组件总预算保持 900 行；把 v1–v9 迁移注册抽到 `Sources/MailStore/Migrations.swift`（`MailStoreMigrations.register(on:)`），`MailStore.swift` 约 700 行，组件总量约 887 行。T-1114-05 落地时以 `wc -l` 为准；若超 900，先停下并按流程把预算调到 1000，不静默超。
-- 迁移测试：pre-v9 fixture 必须含 `messages`、`message_bodies`、`attachments`、`sync_state`（现有 pre-v8 fixture 只建 accounts/outbox，不能直接复用）；断言 `cc` 空可读、正文/附件仍在、消息 key `"0"`、folders key 不变；再 `applySyncBatch` 同一条消息 + Cc 后 `cc` 可读。
+- 预算与拆文件：组件总预算 1000 行（T-1114-05 实测 916 行后由 900 上调）；v1–v9 迁移注册抽到 `Sources/MailStore/Migrations.swift`（`MailStoreMigrations.register(on:)`），`MailStore.swift` 683 行、`Migrations.swift` 161 行，组件总量 916 行（`wc -l` 2026-11-14）。
+- 迁移测试：pre-v9 fixture 含 `messages`、`message_bodies`、`attachments`、`sync_state`；pre-v8 fixture 补建 `messages`/`sync_state` 以同跑 v8+v9。断言 `cc` 空可读、正文/附件仍在、消息 key `"0"`、folders key 不变；再 `applySyncBatch` 同一条消息 + Cc 后 `cc` 可读。
 - 不新增组件/target；`MailStore` 仍是唯一写入口。
