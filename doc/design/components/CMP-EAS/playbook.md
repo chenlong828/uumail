@@ -93,7 +93,7 @@ EAS 用 WBXML 1.3。以下四点按**实测字节**而非规范字面实现：
 | 联系人文件夹 | ⚠️ | 文件夹存在，Sync `Status=1` 但无条目（疑似为空） |
 | GAL 目录搜索 | ❌ | `Search` → `Store Status=2`；`Find` → 2；`ResolveRecipients` → 5 |
 | Ping 长轮询 | ❌ 不支持 | 三档心跳均立即 `Status=4`，见 §5.2；客户端改 5 分钟轮询 |
-| Sync 客户端写命令（Read/Delete） | ⚠️ 未验证（设计已定） | R16：T-1114-12 用录制/真机样本先证 `Change/Read=1` 与 `Delete` 被接受并返回新 key；MoveItems 仍不作备胎 |
+| Sync 客户端写命令（Read/Delete） | ✅ 已验证（2026-11-14 真机） | `Change/ApplicationData/Read=1` 与 `Delete/ServerId` 均 `Collection/Status=1` + 新 key；删除进入「已删除邮件」（`Type=4`）；重复删除同 ID 为成功 no-op；写响应携带整页 delta + `Collection/MoreAvailable`。见 §5.4 |
 | MoveItems | ⚠️ 未验证 | M1 不依赖；移动先落本地意图 |
 
 首版取舍：**读 + 发 + 附件为主干；联系人只做本机通讯录 + 收件人历史；GAL 入口不暴露。**
@@ -119,6 +119,15 @@ EAS 用 WBXML 1.3。以下四点按**实测字节**而非规范字面实现：
 - 用已登记设备对收件箱连续 `Sync`（首轮 `SyncKey=0` 只回新 key；第二轮取窗口内 25 封），`ApplicationData` 字段为 `To,Cc,From,Subject,DateReceived,DisplayTo,ThreadTopic,Importance,Read,Attachments,Body,MessageClass,InternetCPID,Flag,ContentClass,NativeBodyType,ConversationId,ConversationIndex,Categories,IsDraft`。
 - 抽样前 3 封均含 `To` 与 `Cc`；`Cc` 是单个字符串，可含多个地址（观察长度 67–259 字符）。空/纯空白 `Cc` 按无值处理。
 - 结论：REQ-0012 的 Cc 数据链路可直接从 Sync 信封取得，不需要 ItemOperations 逐封抓 MIME 头；`EASMessage.cc` 由 T-1114-02 落地。
+
+## 5.4 Sync 写命令真机实测（2026-11-14，R16）
+
+- 方法：用生产 `EASClient`（只加一层记录 transport）向真实网关发一条自测信，取到 `ServerId` 后发 `Change/ApplicationData/Read=1` 与 `Delete/ServerId`；每次写都用当前 `SyncKey`，响应完整解码。
+- 结果：
+  - `Read=1`：HTTP 200，`Collection/Status=1`，新 `SyncKey`，`MoreAvailable`（在 `Collection` 内），响应携带整页 100 条 `Add`；无逐条 `Status`。从新 key 读回，目标邮件 `Read=1`。
+  - `Delete`：HTTP 200，`Status=1`，新 key，整页 `Add`；收件箱的新窗口不再返回该 `ServerId`；在 `Type=4`「已删除邮件」里按 `FilterType=1` 找到同一封（新 `ServerId`），确认是 move-to-deleted，不是永久删除。
+  - 同一 `ServerId` 再删一次：仍 `Status=1` + 新 key，not-found 为成功 no-op，没有独立的逐条状态可映射。
+- 结论：写命令路径可交付；`MoreAvailable` 是正常分页信号，写响应必须提交 delta+key（不能拒绝）；不需要 `DeletesAsMoves=1`。证据：`task-spaces/20261114-232232/evidence/r16-real-gateway.txt`、`r16-probe.swift`、`r16-extract.swift`。
 
 ## 6. 设备登记与失效处理
 

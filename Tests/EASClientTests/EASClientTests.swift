@@ -251,7 +251,8 @@ struct EASSyncTests {
         status: String,
         syncKey: String,
         adds: [EASMessage],
-        moreAvailable: Bool = false
+        moreAvailable: Bool = false,
+        moreAvailableAtTopLevel: Bool = false
     ) -> Data {
         var commands: [WBXMLElement] = []
         for message in adds {
@@ -278,8 +279,13 @@ struct EASSyncTests {
         if !commands.isEmpty {
             collection.append(.children("Commands", commands))
         }
+        // The real gateway puts MoreAvailable inside Collection; older fixtures used the
+        // top-level shape, which stays supported.
+        if moreAvailable && !moreAvailableAtTopLevel {
+            collection.append(.empty("MoreAvailable"))
+        }
         var sync: [WBXMLElement] = [.children("Collections", [.children("Collection", collection)])]
-        if moreAvailable {
+        if moreAvailable && moreAvailableAtTopLevel {
             sync.append(.empty("MoreAvailable"))
         }
         return try! WBXMLCodec.standard().encode(.children("Sync", sync))
@@ -353,7 +359,7 @@ struct EASSyncTests {
         #expect(cc[2] == nil)
     }
 
-    @Test("MoreAvailable is reported so the caller keeps pulling")
+    @Test("MoreAvailable inside Collection is reported (real gateway shape)")
     func moreAvailable() async throws {
         let stub = StubTransport(responses: [
             EASHTTPResponse(status: 200, headers: [:], body: syncResponse(
@@ -364,6 +370,19 @@ struct EASSyncTests {
         let result = try await client.sync(collectionID: "13")
         #expect(result.moreAvailable == true)
         #expect(result.syncKey == "44")
+    }
+
+    @Test("a top-level MoreAvailable from older fixtures is still reported")
+    func moreAvailableTopLevel() async throws {
+        let stub = StubTransport(responses: [
+            EASHTTPResponse(status: 200, headers: [:], body: syncResponse(
+                status: "1", syncKey: "45", adds: [], moreAvailable: true, moreAvailableAtTopLevel: true
+            ))
+        ])
+        let client = EASClient(configuration: makeConfiguration(), transport: stub, policyKey: "1")
+        let result = try await client.sync(collectionID: "13")
+        #expect(result.moreAvailable == true)
+        #expect(result.syncKey == "45")
     }
 
     @Test("Sync status 3 and 4 mean the key is invalid")

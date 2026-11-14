@@ -448,7 +448,10 @@ public actor EASClient {
             changed: changed,
             removedServerIDs: removed,
             syncKey: newKey,
-            moreAvailable: syncNode.child("MoreAvailable") != nil
+            // The gateway puts MoreAvailable inside Collection; accept the top-level
+            // shape too so fixtures and other gateways keep working.
+            moreAvailable: collection.child("MoreAvailable") != nil
+                || syncNode.child("MoreAvailable") != nil
         )
     }
 
