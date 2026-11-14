@@ -29,6 +29,13 @@ public protocol SyncStore: Sendable {
     func applySyncBatch(_ account: AccountID, folder: String, delta: MessageDelta) throws
     /// Drops the local mirror of one collection so a full re-sync can rebuild it.
     func resetCollection(_ account: AccountID, folder: String) throws
+    /// Local half of the read marker: only the target row, no key or network.
+    @discardableResult
+    func markRead(_ account: AccountID, folder: String, serverID: String) throws -> Bool
+    /// Commits a server-confirmed read marker, its response delta and the new key atomically.
+    func commitMarkRead(_ account: AccountID, folder: String, serverID: String, delta: MessageDelta) throws
+    /// Commits a server-confirmed delete, its response delta and the new key atomically.
+    func commitDelete(_ account: AccountID, folder: String, serverID: String, delta: MessageDelta) throws
 }
 
 /// Credentials: Keychain in the app, in-memory in tests.

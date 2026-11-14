@@ -601,3 +601,145 @@ struct MailStoreShortQueryTests {
         #expect(try store.searchLocal(account: id, query: "周报").map(\.serverID) == ["1"])
     }
 }
+
+@Suite("MailStore write path")
+struct MailStoreWritePathTests {
+    private func seeded() throws -> (MailStore, AccountID) {
+        let store = try MailStore.inMemory()
+        let id = try store.createAccount(
+            NewAccount(displayName: "工作", address: "jdoe@corp.test", host: "mail.corp.test")
+        )
+        try store.applyFolderSnapshot(
+            account: id,
+            folders: [MailFolder(serverID: "13", parentID: "0", displayName: "收件箱", type: 2)],
+            syncKey: "1"
+        )
+        try store.applySyncBatch(
+            account: id,
+            folder: "13",
+            added: [
+                MailMessage(
+                    serverID: "101", subject: "目标", sender: "a@corp.test",
+                    recipients: "me@corp.test", receivedRaw: "2026-11-08T05:11:18.000Z",
+                    attachments: [Attachment(displayName: "报表.pdf", fileReference: "ref-1")]
+                ),
+                MailMessage(
+                    serverID: "102", subject: "邻居", sender: "b@corp.test",
+                    receivedRaw: "2026-11-08T04:11:18.000Z"
+                ),
+            ],
+            changed: [],
+            removedServerIDs: [],
+            syncKey: "2"
+        )
+        try store.applyBody(account: id, folder: "13", serverID: "101", html: "<p>正文</p>")
+        return (store, id)
+    }
+
+    private func delta(
+        added: [MailMessage] = [],
+        changed: [MailMessage] = [],
+        removed: [String] = [],
+        key: String
+    ) -> MessageDelta {
+        MessageDelta(added: added, changed: changed, removedServerIDs: removed, syncKey: key, moreAvailable: false)
+    }
+
+    @Test("markRead flips only the target unread row, is idempotent and leaves the key alone")
+    func markReadOnlyTarget() throws {
+        let (store, id) = try seeded()
+
+        #expect(try store.markRead(account: id, folder: "13", serverID: "101") == true)
+        let messages = try store.messages(account: id, folder: "13")
+        #expect(messages.first { $0.serverID == "101" }?.isRead == true)
+        #expect(messages.first { $0.serverID == "102" }?.isRead == false)
+        #expect(try store.markRead(account: id, folder: "13", serverID: "101") == false)
+        #expect(try store.syncKey(account: id, collection: "13") == "2", "a local read marker never advances the key")
+    }
+
+    @Test("commitMarkRead applies the delta and the local read in one commit")
+    func commitMarkReadAppliesDeltaAndEffect() throws {
+        let (store, id) = try seeded()
+        // The echo for the target is partial (nil subject/sender); the neighbour carries a real change.
+        let response = delta(
+            added: [MailMessage(serverID: "101", isRead: false)],
+            changed: [
+                MailMessage(serverID: "101", subject: nil, sender: nil, isRead: false),
+                MailMessage(serverID: "102", subject: "邻居-更新", isRead: true),
+            ],
+            key: "9"
+        )
+
+        try store.commitMarkRead(account: id, folder: "13", serverID: "101", delta: response)
+
+        let messages = try store.messages(account: id, folder: "13")
+        let target = try #require(messages.first { $0.serverID == "101" })
+        #expect(target.isRead == true, "the local effect wins over a Read=0 echo")
+        #expect(target.subject == "目标", "a partial echo must not wipe the target envelope")
+        #expect(target.sender == "a@corp.test")
+        #expect(messages.first { $0.serverID == "102" }?.subject == "邻居-更新")
+        #expect(try store.syncKey(account: id, collection: "13") == "9")
+    }
+
+    @Test("commitMarkRead rolls back and keeps the old key when the folder is unknown")
+    func commitMarkReadRollbackKeepsKey() throws {
+        let (store, id) = try seeded()
+        #expect(throws: MailStoreError.folderNotFound(account: id, folder: "999")) {
+            try store.commitMarkRead(
+                account: id, folder: "999", serverID: "101",
+                delta: delta(key: "9")
+            )
+        }
+        #expect(try store.syncKey(account: id, collection: "13") == "2")
+        #expect(try store.messages(account: id, folder: "13").first { $0.serverID == "101" }?.isRead == false)
+    }
+
+    @Test("commitDelete soft-deletes only the target, keeps body/attachment rows and advances the key")
+    func commitDeleteSoftDeletes() throws {
+        let (store, id) = try seeded()
+        try store.commitDelete(
+            account: id, folder: "13", serverID: "101",
+            delta: delta(removed: ["101"], key: "10")
+        )
+
+        let messages = try store.messages(account: id, folder: "13")
+        #expect(messages.map(\.serverID) == ["102"])
+        #expect(try store.body(account: id, folder: "13", serverID: "101")?.text == "<p>正文</p>")
+        #expect(try store.attachments(account: id, folder: "13", messageID: "101").count == 1)
+        #expect(try store.syncKey(account: id, collection: "13") == "10")
+
+        // A second delete is a no-op apart from the key it carried.
+        try store.commitDelete(
+            account: id, folder: "13", serverID: "101",
+            delta: delta(key: "11")
+        )
+        #expect(try store.syncKey(account: id, collection: "13") == "11")
+    }
+
+    @Test("a partial echo of the target cannot resurrect or overwrite it during commitDelete")
+    func commitDeleteProtectsTargetEnvelope() throws {
+        let (store, id) = try seeded()
+        try store.commitDelete(
+            account: id, folder: "13", serverID: "101",
+            delta: delta(
+                changed: [MailMessage(serverID: "101", subject: nil, sender: nil, isRead: false)],
+                key: "12"
+            )
+        )
+        #expect(try store.messages(account: id, folder: "13").map(\.serverID) == ["102"])
+        #expect(try store.syncKey(account: id, collection: "13") == "12")
+    }
+
+    @Test("commitDelete rolls back and keeps the old key on an unknown folder")
+    func commitDeleteRollbackKeepsKey() throws {
+        let (store, id) = try seeded()
+        #expect(throws: MailStoreError.folderNotFound(account: id, folder: "999")) {
+            try store.commitDelete(
+                account: id, folder: "999", serverID: "101",
+                delta: delta(removed: ["101"], key: "9")
+            )
+        }
+        #expect(try store.syncKey(account: id, collection: "13") == "2")
+        #expect(try store.messages(account: id, folder: "13").map(\.serverID) == ["101", "102"])
+    }
+}

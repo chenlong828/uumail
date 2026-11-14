@@ -74,7 +74,12 @@ final class FakeStore: SyncStore, @unchecked Sendable {
     private(set) var keys: [String: String] = [:]
     private(set) var batches: [MessageDelta] = []
     private(set) var resets: [String] = []
+    private(set) var markReadCalls: [String] = []
+    private(set) var commitMarkReads: [MessageDelta] = []
+    private(set) var commitDeletes: [MessageDelta] = []
     var folderFailure: Error?
+    var markReadResult = false
+    var commitFailure: Error?
 
     func folders(_ account: AccountID) throws -> [Folder] {
         folderSnapshot
@@ -98,6 +103,24 @@ final class FakeStore: SyncStore, @unchecked Sendable {
     func resetCollection(_ account: AccountID, folder: String) throws {
         resets.append(folder)
         keys[folder] = nil
+    }
+
+    @discardableResult
+    func markRead(_ account: AccountID, folder: String, serverID: String) throws -> Bool {
+        markReadCalls.append(serverID)
+        return markReadResult
+    }
+
+    func commitMarkRead(_ account: AccountID, folder: String, serverID: String, delta: MessageDelta) throws {
+        if let commitFailure { throw commitFailure }
+        commitMarkReads.append(delta)
+        keys[folder] = delta.syncKey
+    }
+
+    func commitDelete(_ account: AccountID, folder: String, serverID: String, delta: MessageDelta) throws {
+        if let commitFailure { throw commitFailure }
+        commitDeletes.append(delta)
+        keys[folder] = delta.syncKey
     }
 }
 

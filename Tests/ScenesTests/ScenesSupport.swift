@@ -157,6 +157,10 @@ final class FakeSyncStore: SyncStore, @unchecked Sendable {
     nonisolated(unsafe) var snapshotKey: String?
     nonisolated(unsafe) var keys: [String: String] = [:]
     nonisolated(unsafe) var folderFailure: Error?
+    nonisolated(unsafe) var markReadResult = false
+    nonisolated(unsafe) private(set) var markReadCalls: [String] = []
+    nonisolated(unsafe) private(set) var commitMarkReads: [MessageDelta] = []
+    nonisolated(unsafe) private(set) var commitDeletes: [MessageDelta] = []
 
     func folders(_ account: AccountID) throws -> [Folder] { folderSnapshot }
 
@@ -174,6 +178,22 @@ final class FakeSyncStore: SyncStore, @unchecked Sendable {
 
     func resetCollection(_ account: AccountID, folder: String) throws {
         keys[folder] = nil
+    }
+
+    @discardableResult
+    func markRead(_ account: AccountID, folder: String, serverID: String) throws -> Bool {
+        markReadCalls.append(serverID)
+        return markReadResult
+    }
+
+    func commitMarkRead(_ account: AccountID, folder: String, serverID: String, delta: MessageDelta) throws {
+        commitMarkReads.append(delta)
+        keys[folder] = delta.syncKey
+    }
+
+    func commitDelete(_ account: AccountID, folder: String, serverID: String, delta: MessageDelta) throws {
+        commitDeletes.append(delta)
+        keys[folder] = delta.syncKey
     }
 }
 

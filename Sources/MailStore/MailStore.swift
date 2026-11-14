@@ -193,86 +193,164 @@ public final class MailStore: @unchecked Sendable {
         removedServerIDs: [String],
         syncKey: String
     ) throws {
-        for message in added + changed where message.serverID.isEmpty {
-            throw MailStoreError.invalidFolder(reason: "empty message serverID")
-        }
-
+        let delta = MessageDelta(
+            added: added,
+            changed: changed,
+            removedServerIDs: removedServerIDs,
+            syncKey: syncKey,
+            moreAvailable: false
+        )
+        try validateMessageIDs(delta)
         try dbQueue.write { db in
-            let folderExists = try Bool.fetchOne(
-                db,
-                sql: "SELECT EXISTS(SELECT 1 FROM folders WHERE account_id = ? AND server_id = ? AND deleted_at IS NULL)",
-                arguments: [id.raw, folderID]
-            ) == true
-            guard folderExists else {
-                throw MailStoreError.folderNotFound(account: id, folder: folderID)
-            }
+            try applyDelta(db, account: id, folder: folderID, delta: delta)
+        }
+    }
 
-            let now = Date().timeIntervalSince1970
-            for message in added + changed {
-                try db.execute(
-                    sql: """
-                        INSERT INTO messages
-                            (account_id, folder_id, server_id, subject, sender, recipients, cc,
-                             received_raw, is_read, importance, preview, deleted_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
-                        ON CONFLICT(account_id, folder_id, server_id) DO UPDATE SET
-                            subject = excluded.subject,
-                            sender = excluded.sender,
-                            recipients = COALESCE(excluded.recipients, messages.recipients),
-                            cc = COALESCE(excluded.cc, messages.cc),
-                            received_raw = excluded.received_raw,
-                            is_read = excluded.is_read,
-                            importance = excluded.importance,
-                            preview = COALESCE(excluded.preview, messages.preview),
-                            deleted_at = NULL,
-                            updated_at = excluded.updated_at
-                        """,
-                    arguments: [
-                        id.raw, folderID, message.serverID, message.subject, message.sender,
-                        message.recipients, message.cc, message.receivedRaw, message.isRead ? 1 : 0,
-                        message.importance, message.bodyPreview, now,
-                    ]
-                )
-                for attachment in message.attachments {
-                    try db.execute(
-                        sql: """
-                            INSERT INTO attachments
-                                (account_id, folder_id, message_id, file_reference, display_name, size, cache_path, downloaded_at)
-                            VALUES (?, ?, ?, ?, ?, ?, NULL, NULL)
-                            ON CONFLICT(account_id, folder_id, message_id, file_reference) DO UPDATE SET
-                                display_name = excluded.display_name,
-                                size = excluded.size
-                            """,
-                        arguments: [id.raw, folderID, message.serverID, attachment.fileReference, attachment.displayName, attachment.size]
-                    )
-                }
-                // The preview rides on the envelope upsert above: it must never land in
-                // `message_bodies`, or the reading pane mistakes it for the fetched body.
-                try Self.reindexMessage(db, account: id, folder: folderID, serverID: message.serverID)
-            }
+    // MARK: - Local write path
 
-            for serverID in removedServerIDs {
-                try db.execute(
-                    sql: """
-                        UPDATE messages SET deleted_at = ?, updated_at = ?
-                        WHERE account_id = ? AND folder_id = ? AND server_id = ? AND deleted_at IS NULL
-                        """,
-                    arguments: [now, now, id.raw, folderID, serverID]
-                )
-            }
-
+    /// Local half of the two-phase read marker. Only the target row changes; no key,
+    /// body, attachment or FTS row is touched. Returns whether this was a real 0→1.
+    @discardableResult
+    public func markRead(account id: AccountID, folder folderID: String, serverID: String) throws -> Bool {
+        try dbQueue.write { db in
             try db.execute(
                 sql: """
-                    INSERT INTO sync_state (account_id, collection, sync_key, last_sync_at)
-                    VALUES (?, ?, ?, ?)
-                    ON CONFLICT(account_id, collection) DO UPDATE SET
-                        sync_key = excluded.sync_key,
-                        last_sync_at = excluded.last_sync_at,
-                        last_error = NULL
+                    UPDATE messages SET is_read = 1, updated_at = ?
+                    WHERE account_id = ? AND folder_id = ? AND server_id = ?
+                      AND is_read = 0 AND deleted_at IS NULL
                     """,
-                arguments: [id.raw, folderID, syncKey, now]
+                arguments: [Date().timeIntervalSince1970, id.raw, folderID, serverID]
+            )
+            return db.changesCount == 1
+        }
+    }
+
+    /// Server-confirmed read marker: response delta + local `is_read=1` + new key commit
+    /// together. The target's partial echo is skipped; the local effect is authoritative.
+    public func commitMarkRead(account id: AccountID, folder folderID: String, serverID: String, delta: MessageDelta) throws {
+        try commit(account: id, folder: folderID, serverID: serverID, delta: delta, effect: .markRead)
+    }
+
+    /// Server-confirmed delete: response delta + local soft delete + new key commit together.
+    public func commitDelete(account id: AccountID, folder folderID: String, serverID: String, delta: MessageDelta) throws {
+        try commit(account: id, folder: folderID, serverID: serverID, delta: delta, effect: .delete)
+    }
+
+    private enum CommitEffect { case none, markRead, delete }
+
+    private func validateMessageIDs(_ delta: MessageDelta) throws {
+        if (delta.added + delta.changed).contains(where: { $0.serverID.isEmpty }) {
+            throw MailStoreError.invalidFolder(reason: "empty message serverID")
+        }
+    }
+
+    private func commit(
+        account id: AccountID, folder folderID: String, serverID: String,
+        delta: MessageDelta, effect: CommitEffect
+    ) throws {
+        try validateMessageIDs(delta)
+        try dbQueue.write { db in
+            try applyDelta(
+                db, account: id, folder: folderID, delta: delta,
+                protectedServerID: serverID, effect: effect
             )
         }
+    }
+
+    /// Shared batch core for normal sync and server-confirmed writes. `protectedServerID`
+    /// skips the write target's partial echo so nil fields cannot wipe its envelope.
+    private func applyDelta(
+        _ db: Database, account id: AccountID, folder folderID: String, delta: MessageDelta,
+        protectedServerID: String? = nil, effect: CommitEffect = .none
+    ) throws {
+        guard try Bool.fetchOne(
+            db,
+            sql: "SELECT EXISTS(SELECT 1 FROM folders WHERE account_id = ? AND server_id = ? AND deleted_at IS NULL)",
+            arguments: [id.raw, folderID]
+        ) == true else {
+            throw MailStoreError.folderNotFound(account: id, folder: folderID)
+        }
+        let now = Date().timeIntervalSince1970
+        for message in (delta.added + delta.changed).filter({ $0.serverID != protectedServerID }) {
+            try db.execute(
+                sql: """
+                    INSERT INTO messages
+                        (account_id, folder_id, server_id, subject, sender, recipients, cc,
+                         received_raw, is_read, importance, preview, deleted_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
+                    ON CONFLICT(account_id, folder_id, server_id) DO UPDATE SET
+                        subject = excluded.subject,
+                        sender = excluded.sender,
+                        recipients = COALESCE(excluded.recipients, messages.recipients),
+                        cc = COALESCE(excluded.cc, messages.cc),
+                        received_raw = excluded.received_raw,
+                        is_read = excluded.is_read,
+                        importance = excluded.importance,
+                        preview = COALESCE(excluded.preview, messages.preview),
+                        deleted_at = NULL,
+                        updated_at = excluded.updated_at
+                    """,
+                arguments: [
+                    id.raw, folderID, message.serverID, message.subject, message.sender,
+                    message.recipients, message.cc, message.receivedRaw, message.isRead ? 1 : 0,
+                    message.importance, message.bodyPreview, now,
+                ]
+            )
+            for attachment in message.attachments {
+                try db.execute(
+                    sql: """
+                        INSERT INTO attachments
+                            (account_id, folder_id, message_id, file_reference, display_name, size, cache_path, downloaded_at)
+                        VALUES (?, ?, ?, ?, ?, ?, NULL, NULL)
+                        ON CONFLICT(account_id, folder_id, message_id, file_reference) DO UPDATE SET
+                            display_name = excluded.display_name,
+                            size = excluded.size
+                        """,
+                    arguments: [id.raw, folderID, message.serverID, attachment.fileReference, attachment.displayName, attachment.size]
+                )
+            }
+            try Self.reindexMessage(db, account: id, folder: folderID, serverID: message.serverID)
+        }
+
+        for serverID in delta.removedServerIDs {
+            try db.execute(
+                sql: """
+                    UPDATE messages SET deleted_at = ?, updated_at = ?
+                    WHERE account_id = ? AND folder_id = ? AND server_id = ? AND deleted_at IS NULL
+                    """,
+                arguments: [now, now, id.raw, folderID, serverID]
+            )
+        }
+
+        switch effect {
+        case .none:
+            break
+        case .markRead:
+            try db.execute(
+                sql: "UPDATE messages SET is_read = 1, updated_at = ? WHERE account_id = ? AND folder_id = ? AND server_id = ?",
+                arguments: [now, id.raw, folderID, protectedServerID ?? ""]
+            )
+        case .delete:
+            try db.execute(
+                sql: """
+                    UPDATE messages SET deleted_at = ?, updated_at = ?
+                    WHERE account_id = ? AND folder_id = ? AND server_id = ? AND deleted_at IS NULL
+                    """,
+                arguments: [now, now, id.raw, folderID, protectedServerID ?? ""]
+            )
+        }
+
+        try db.execute(
+            sql: """
+                INSERT INTO sync_state (account_id, collection, sync_key, last_sync_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(account_id, collection) DO UPDATE SET
+                    sync_key = excluded.sync_key,
+                    last_sync_at = excluded.last_sync_at,
+                    last_error = NULL
+                """,
+            arguments: [id.raw, folderID, delta.syncKey, now]
+        )
     }
 
     public func messages(account id: AccountID, folder folderID: String, limit: Int = 50) throws -> [StoredMessage] {

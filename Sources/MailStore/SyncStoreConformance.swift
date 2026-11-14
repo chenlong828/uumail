@@ -31,4 +31,10 @@ extension MailStore: SyncStore {
     public func resetCollection(_ account: AccountID, folder: String) throws {
         try resetCollection(account: account, folder: folder)
     }
+
+    @discardableResult
+    public func markRead(_ account: AccountID, folder: String, serverID: String) throws -> Bool { try markRead(account: account, folder: folder, serverID: serverID) }
+
+    public func commitMarkRead(_ account: AccountID, folder: String, serverID: String, delta: MessageDelta) throws { try commitMarkRead(account: account, folder: folder, serverID: serverID, delta: delta) }
+    public func commitDelete(_ account: AccountID, folder: String, serverID: String, delta: MessageDelta) throws { try commitDelete(account: account, folder: folder, serverID: serverID, delta: delta) }
 }
