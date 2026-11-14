@@ -22,6 +22,65 @@ struct UnsupportedWriteGateway: MailWriteGateway {
     }
 }
 
+
+/// Async gate for tests that need to observe the in-flight window before a write returns.
+actor WriteGate {
+    private var isOpen = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private(set) var waitCount = 0
+
+    func wait() async {
+        waitCount += 1
+        if isOpen { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func open() {
+        isOpen = true
+        for waiter in waiters { waiter.resume() }
+        waiters.removeAll()
+    }
+
+    func waitUntilWaiting() async {
+        for _ in 0..<10_000 {
+            if waitCount > 0 { return }
+            await Task.yield()
+        }
+    }
+}
+
+actor PresentationRecordingWriteGateway: MailWriteGateway {
+    enum Call: Equatable {
+        case markRead(collectionID: String, serverID: String, key: String)
+        case delete(collectionID: String, serverID: String, key: String)
+    }
+
+    private(set) var calls: [Call] = []
+    private var delta: MessageDelta
+    private var failure: MailError?
+    private var gate: WriteGate?
+
+    init(delta: MessageDelta) { self.delta = delta }
+
+    func setFailure(_ failure: MailError?) { self.failure = failure }
+    func setGate(_ gate: WriteGate?) { self.gate = gate }
+
+    func markRead(collectionID: String, serverID: String, syncKey: String) async throws -> MessageDelta {
+        try await respond(.markRead(collectionID: collectionID, serverID: serverID, key: syncKey))
+    }
+
+    func delete(collectionID: String, serverID: String, syncKey: String) async throws -> MessageDelta {
+        try await respond(.delete(collectionID: collectionID, serverID: serverID, key: syncKey))
+    }
+
+    private func respond(_ call: Call) async throws -> MessageDelta {
+        calls.append(call)
+        await gate?.wait()
+        if let failure { throw failure }
+        return delta
+    }
+}
+
 final class PresentationFakeGateway: MailGateway, @unchecked Sendable {
     nonisolated(unsafe) var folderListing: FolderListing
     nonisolated(unsafe) var deltas: [String: MessageDelta]
@@ -30,6 +89,7 @@ final class PresentationFakeGateway: MailGateway, @unchecked Sendable {
     nonisolated(unsafe) var provisionError: MailError?
     nonisolated(unsafe) var folderError: MailError?
     nonisolated(unsafe) var attachmentData = Data()
+    nonisolated(unsafe) var bodyDelay: Duration?
     nonisolated(unsafe) private(set) var bodyCalls = 0
     nonisolated(unsafe) private(set) var sendCalls = 0
 
@@ -64,6 +124,9 @@ final class PresentationFakeGateway: MailGateway, @unchecked Sendable {
 
     func fetchBody(collectionID: String, serverID: String) async throws -> FetchedBody {
         bodyCalls += 1
+        if let bodyDelay {
+            try await Task.sleep(for: bodyDelay)
+        }
         guard let bodyResult else { throw MailError.unsupported }
         return try bodyResult.get()
     }
@@ -138,7 +201,8 @@ func presentationMessage(
     recipients: String? = nil,
     cc: String? = nil,
     preview: String? = nil,
-    folderID: String = "13"
+    folderID: String = "13",
+    isRead: Bool = true
 ) -> Message {
     Message(
         serverID: serverID,
@@ -146,7 +210,7 @@ func presentationMessage(
         sender: sender,
         recipients: recipients,
         receivedRaw: nil,
-        isRead: true,
+        isRead: isRead,
         bodyPreview: preview,
         folderID: folderID,
         cc: cc
@@ -179,7 +243,9 @@ func makeMailboxFixture(
     folders: [Folder] = [presentationInbox],
     messages: [String: [Message]] = [:],
     notifier: PresentationFakeNotifier = PresentationFakeNotifier(),
-    clock: PresentationFixedClock = PresentationFixedClock()
+    clock: PresentationFixedClock = PresentationFixedClock(),
+    write: any MailWriteGateway = UnsupportedWriteGateway(),
+    dwellSleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
 ) throws -> MailboxFixture {
     let store = try MailStore.inMemory()
     let account = try store.createAccount(
@@ -197,7 +263,10 @@ func makeMailboxFixture(
         )
     }
 
-    let engine = SyncEngine(gateway: gateway, store: store, account: account, writeGateway: UnsupportedWriteGateway(), sleeper: { _ in })
+    let engine = SyncEngine(
+        gateway: gateway, store: store, account: account,
+        writeGateway: write, sleeper: { _ in }
+    )
     let syncScene = SyncScene(engine: engine, notifier: notifier, clock: clock)
     let outbox = Outbox(store: store, gateway: gateway, clock: clock)
     let readScene = ReadScene(
@@ -212,7 +281,8 @@ func makeMailboxFixture(
         read: readScene,
         sync: syncScene,
         compose: composeScene,
-        account: account
+        account: account,
+        dwellSleep: dwellSleep
     )
     return MailboxFixture(
         store: store,

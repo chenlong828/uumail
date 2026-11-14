@@ -15,16 +15,23 @@ public final class MailboxViewModel {
     public private(set) var bodyNotice: BodyNotice?
     public private(set) var attachments: [Attachment] = []
     public private(set) var sync = SyncPresentation()
-    public private(set) var selection = Selection()
+    public internal(set) var selection = Selection()
+    /// Composite identity for the selected row. Search results span folders, where the
+    /// server id alone is not unique (R23); the list and selection use this key.
+    public internal(set) var selectedListKey: String?
 
     private let read: ReadScene
     private let syncScene: SyncScene
-    private let composeScene: ComposeScene
-    private let account: AccountID
+    let composeScene: ComposeScene
+    let account: AccountID
     /// Wakes the composition's delivery pump after an enqueue. Composition owns the loop;
     /// the view model only forwards the signal.
-    private let onEnqueued: (@MainActor () -> Void)?
+    let onEnqueued: (@MainActor () -> Void)?
 
+    @ObservationIgnored let dwell: MailboxDwell
+    let deletion: MailboxDeletion
+    @ObservationIgnored private var isApplicationActive = true
+    @ObservationIgnored var isDeleteInFlight = false
     private var autoRefreshTask: Task<Void, Never>?
     private var bodyTask: Task<Void, Never>?
     private var openingRef: MessageRef?
@@ -35,32 +42,58 @@ public final class MailboxViewModel {
         sync: SyncScene,
         compose: ComposeScene,
         account: AccountID,
-        onEnqueued: (@MainActor () -> Void)? = nil
+        onEnqueued: (@MainActor () -> Void)? = nil,
+        dwellSleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
     ) {
         self.read = read
         self.syncScene = sync
         self.composeScene = compose
         self.account = account
         self.onEnqueued = onEnqueued
+        self.dwell = MailboxDwell(read: read, sleep: dwellSleep)
+        self.deletion = MailboxDeletion(read: read)
+        dwell.onMarked = { [weak self] _ in
+            guard let self else { return }
+            try? self.reloadCurrentList(autoSelect: false)
+            self.refreshDwell()
+        }
     }
 
     // MARK: - Derived state
 
+    /// Composite row identity; `serverID` is only unique inside one folder.
+    public static func listKey(for message: Message) -> String {
+        "\(message.folderID ?? "")\u{1F}\(message.serverID)"
+    }
+
+    /// The rows currently on screen: the local list minus the deletion hide set.
+    public var visibleMessages: [Message] {
+        messages.filter { message in
+            guard let ref = ref(for: message) else { return true }
+            return !deletion.hidden.contains(ref)
+        }
+    }
+
+    public var deleteErrorText: String? { deletion.errorText }
+
     public var selectedMessage: Message? {
+        if let key = selectedListKey,
+           let message = messages.first(where: { Self.listKey(for: $0) == key }) {
+            return message
+        }
+        // Compatibility for callers/tests that only set the public `selection.messageID`.
         guard let id = selection.messageID else { return nil }
         return messages.first { $0.serverID == id }
     }
 
-    private var selectedRef: MessageRef? {
+    var selectedRef: MessageRef? {
         guard let message = selectedMessage else { return nil }
-        guard let folder = message.folderID ?? selection.folderID else { return nil }
-        return MessageRef(folderID: folder, serverID: message.serverID)
+        return ref(for: message)
     }
 
-    /// The body HTML a reply/forward may quote: never a sync preview.
-    private var quotableHTML: String? {
-        guard bodyNotice == nil, case .loaded(let html, _) = body else { return nil }
-        return html
+    func ref(for message: Message) -> MessageRef? {
+        guard let folder = message.folderID ?? selection.folderID else { return nil }
+        return MessageRef(folderID: folder, serverID: message.serverID)
     }
 
     // MARK: - Refresh
@@ -100,13 +133,14 @@ public final class MailboxViewModel {
     /// Paints cached folders and messages without touching the network.
     public func loadCached() {
         try? reloadFolders()
-        try? reloadMessages(autoSelect: true)
+        try? reloadCurrentList(autoSelect: true)
+        refreshDwell()
     }
 
     private func apply(_ outcome: RefreshOutcome) {
         do {
             try reloadFolders()
-            try reloadMessages(autoSelect: true)
+            try reloadCurrentList(autoSelect: true)
         } catch {
             sync.phase = .failed(ErrorText.text(for: error))
             return
@@ -119,6 +153,7 @@ public final class MailboxViewModel {
         } else {
             sync.phase = .idle
         }
+        refreshDwell()
     }
 
     // MARK: - Selection
@@ -126,20 +161,41 @@ public final class MailboxViewModel {
     public func select(folderID: String) {
         guard selection.folderID != folderID else { return }
         selection.folderID = folderID
+        selection.searchQuery = ""
         selection.messageID = nil
+        selectedListKey = nil
         clearBody()
         do {
-            try reloadMessages(autoSelect: false)
+            try reloadCurrentList(autoSelect: false)
         } catch {
             messages = []
             sync.phase = .failed(ErrorText.text(for: error))
         }
+        refreshDwell()
     }
 
     public func select(messageID: String) {
-        guard selection.messageID != messageID else { return }
-        selection.messageID = messageID
+        guard let message = messages.first(where: { $0.serverID == messageID }) else { return }
+        select(listKey: Self.listKey(for: message))
+    }
+
+    /// View-facing selection by composite identity.
+    public func select(listKey: String) {
+        guard let message = messages.first(where: { Self.listKey(for: $0) == listKey }),
+              let ref = ref(for: message),
+              !deletion.hidden.contains(ref)
+        else { return }
+        guard selectedListKey != listKey else { return }
+        selectedListKey = listKey
+        selection.messageID = message.serverID
+        refreshDwell()
         Task { await self.openSelected() }
+    }
+
+    /// Foreground/background forwarding from the view. The view model owns the timer rule.
+    public func setApplicationActive(_ active: Bool) {
+        isApplicationActive = active
+        refreshDwell()
     }
 
     // MARK: - Body
@@ -178,8 +234,7 @@ public final class MailboxViewModel {
             return
         }
 
-        let message = messages.first { $0.serverID == ref.serverID }
-        if let preview = Self.previewHTML(for: message?.bodyPreview) {
+        if let preview = Self.previewHTML(for: selectedMessage?.bodyPreview) {
             body = .loaded(html: preview, truncated: false)
             bodyNotice = .fetchingFullBody
         } else {
@@ -201,8 +256,12 @@ public final class MailboxViewModel {
         }
     }
 
+    func startBodyLoad() {
+        Task { await self.openSelected() }
+    }
+
     private func apply(_ event: BodyEvent, for ref: MessageRef) {
-        guard selection.messageID == ref.serverID else { return }
+        guard selectedRef == ref else { return }
         switch event {
         case .cached(let html):
             body = .loaded(html: html, truncated: false)
@@ -225,7 +284,7 @@ public final class MailboxViewModel {
         }
     }
 
-    private func clearBody() {
+    func clearBody() {
         bodyTask?.cancel()
         bodyTask = nil
         openingRef = nil
@@ -244,25 +303,18 @@ public final class MailboxViewModel {
 
     // MARK: - Search
 
-    /// Local FTS search; an empty query restores the selected folder's list.
+    /// Local FTS search; an empty query restores the selected folder's list. Search mode
+    /// never feeds the dwell timer, whether entering or staying in results.
     public func search(_ query: String) async {
-        selection.searchQuery = query
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty {
-            do {
-                try reloadMessages(autoSelect: true)
-            } catch {
-                messages = []
-                sync.phase = .failed(ErrorText.text(for: error))
-            }
-            return
-        }
+        selection.searchQuery = trimmed
         do {
-            messages = try read.search(trimmed, limit: 100)
+            try reloadCurrentList(autoSelect: trimmed.isEmpty)
         } catch {
             messages = []
             sync.phase = .failed(ErrorText.text(for: error))
         }
+        refreshDwell()
     }
 
     // MARK: - Attachments
@@ -273,44 +325,15 @@ public final class MailboxViewModel {
         return try? await read.downloadAttachment(attachment, in: ref)
     }
 
-    // MARK: - Compose
+    // MARK: - Dwell
 
-    public func composeNew() -> ComposeViewModel {
-        ComposeViewModel(mode: .new, scene: composeScene, account: account, onEnqueued: onEnqueued)
-    }
-
-    public func composeReply() -> ComposeViewModel? {
-        guard let message = selectedMessage else { return nil }
-        return ComposeViewModel(
-            replyTo: message,
-            bodyHTML: quotableHTML,
-            scene: composeScene,
-            account: account,
-            onEnqueued: onEnqueued
-        )
-    }
-
-    /// Reply-all editor: the seed call is the only place addresses are computed.
-    public func composeReplyAll() -> ComposeViewModel? {
-        guard let message = selectedMessage else { return nil }
-        return ComposeViewModel(
-            replyingAllTo: message,
-            bodyHTML: quotableHTML,
-            scene: composeScene,
-            account: account,
-            onEnqueued: onEnqueued
-        )
-    }
-
-    public func composeForward() -> ComposeViewModel? {
-        guard let message = selectedMessage else { return nil }
-        return ComposeViewModel(
-            forwarding: message,
-            bodyHTML: quotableHTML,
-            scene: composeScene,
-            account: account,
-            onEnqueued: onEnqueued
-        )
+    func refreshDwell() {
+        guard let message = selectedMessage, let ref = ref(for: message) else {
+            dwell.cancel()
+            return
+        }
+        let inSearch = !selection.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        dwell.update(target: ref, isUnread: !message.isRead, isActive: isApplicationActive && !inSearch)
     }
 
     // MARK: - Local reads
@@ -323,23 +346,55 @@ public final class MailboxViewModel {
         selection.folderID = folders.first(where: \.isInbox)?.serverID ?? folders.first?.serverID
     }
 
-    private func reloadMessages(autoSelect: Bool) throws {
-        guard let folder = selection.folderID else {
-            messages = []
-            selection.messageID = nil
-            clearBody()
-            return
-        }
-        messages = try read.messages(folderID: folder, limit: 200)
-        if let selected = selection.messageID, messages.contains(where: { $0.serverID == selected }) {
-            return
-        }
-        if autoSelect, let first = messages.first {
-            selection.messageID = first.serverID
-            Task { await self.openSelected() }
+    func reloadCurrentList(autoSelect: Bool) throws {
+        let query = selection.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        if query.isEmpty {
+            guard let folder = selection.folderID else {
+                messages = []
+                clearSelection()
+                return
+            }
+            messages = try read.messages(folderID: folder, limit: 200)
         } else {
-            selection.messageID = nil
-            clearBody()
+            messages = try read.search(query, limit: 100)
         }
+
+        if let key = selectedListKey,
+           let message = messages.first(where: { Self.listKey(for: $0) == key }),
+           !isHidden(message) {
+            return
+        }
+        if let id = selection.messageID,
+           let message = messages.first(where: { $0.serverID == id }),
+           !isHidden(message) {
+            selectedListKey = Self.listKey(for: message)
+            return
+        }
+        if autoSelect, let first = visibleMessages.first {
+            select(first, open: true)
+        } else {
+            clearSelection()
+        }
+    }
+
+    private func select(_ message: Message, open: Bool) {
+        selectedListKey = Self.listKey(for: message)
+        selection.messageID = message.serverID
+        refreshDwell()
+        if open {
+            startBodyLoad()
+        }
+    }
+
+    private func clearSelection() {
+        selection.messageID = nil
+        selectedListKey = nil
+        clearBody()
+        dwell.cancel()
+    }
+
+    func isHidden(_ message: Message) -> Bool {
+        guard let ref = ref(for: message) else { return false }
+        return deletion.hidden.contains(ref)
     }
 }
