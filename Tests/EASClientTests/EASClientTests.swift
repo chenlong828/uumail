@@ -380,6 +380,84 @@ struct EASSyncTests {
             }
         }
     }
+
+    @Test("a read marker is one minimal Change/Read=1 command")
+    func markReadRequestBody() async throws {
+        let stub = StubTransport(responses: [
+            EASHTTPResponse(status: 200, headers: [:], body: syncResponse(
+                status: "1", syncKey: "44", adds: []
+            ))
+        ])
+        let client = EASClient(configuration: makeConfiguration(), transport: stub, policyKey: "1")
+        let result = try await client.sync(
+            collectionID: "13", syncKey: "42", change: .read(serverID: "123")
+        )
+
+        #expect(result.syncKey == "44")
+        let request = try #require(await stub.recorded.first?.request)
+        let document = try WBXMLCodec.standard().decode(try #require(request.body))
+        let collection = try #require(document.path("Sync", "Collections", "Collection"))
+        #expect(collection.children.map(\.name) == ["SyncKey", "CollectionId", "Commands"])
+        #expect(collection.child("SyncKey")?.stringValue() == "42")
+        #expect(collection.child("CollectionId")?.stringValue() == "13")
+        #expect(collection.child("WindowSize") == nil)
+        #expect(collection.child("Options") == nil)
+        let change = try #require(collection.path("Commands", "Change"))
+        #expect(change.child("ServerId")?.stringValue() == "123")
+        #expect(change.path("ApplicationData", "Read")?.stringValue() == "1")
+    }
+
+    @Test("a delete is one minimal Delete/ServerId command")
+    func deleteRequestBody() async throws {
+        let stub = StubTransport(responses: [
+            EASHTTPResponse(status: 200, headers: [:], body: syncResponse(
+                status: "1", syncKey: "45", adds: []
+            ))
+        ])
+        let client = EASClient(configuration: makeConfiguration(), transport: stub, policyKey: "1")
+        _ = try await client.sync(collectionID: "13", syncKey: "44", change: .delete(serverID: "123"))
+
+        let request = try #require(await stub.recorded.first?.request)
+        let document = try WBXMLCodec.standard().decode(try #require(request.body))
+        let collection = try #require(document.path("Sync", "Collections", "Collection"))
+        #expect(collection.children.map(\.name) == ["SyncKey", "CollectionId", "Commands"])
+        #expect(collection.child("WindowSize") == nil)
+        #expect(collection.child("Options") == nil)
+        let delete = try #require(collection.path("Commands", "Delete"))
+        #expect(delete.child("ServerId")?.stringValue() == "123")
+    }
+
+    @Test("a write 401 is deviceNotRegistered, a read 401 stays authFailed")
+    func writeAuthFailure() async {
+        let writeStub = StubTransport(responses: [
+            EASHTTPResponse(status: 401, headers: [:], body: Data())
+        ])
+        let writeClient = EASClient(configuration: makeConfiguration(), transport: writeStub, policyKey: "1")
+        await #expect(throws: EASError.deviceNotRegistered) {
+            _ = try await writeClient.sync(collectionID: "13", syncKey: "42", change: .read(serverID: "1"))
+        }
+
+        let readStub = StubTransport(responses: [
+            EASHTTPResponse(status: 401, headers: [:], body: Data())
+        ])
+        let readClient = EASClient(configuration: makeConfiguration(), transport: readStub, policyKey: "1")
+        await #expect(throws: EASError.authFailed) {
+            _ = try await readClient.sync(collectionID: "13", syncKey: "42")
+        }
+    }
+
+    @Test("a stale key on a write is syncKeyInvalid")
+    func writeInvalidKey() async {
+        let stub = StubTransport(responses: [
+            EASHTTPResponse(status: 200, headers: [:], body: syncResponse(
+                status: "4", syncKey: "0", adds: []
+            ))
+        ])
+        let client = EASClient(configuration: makeConfiguration(), transport: stub, policyKey: "1")
+        await #expect(throws: EASError.syncKeyInvalid) {
+            _ = try await client.sync(collectionID: "13", syncKey: "42", change: .delete(serverID: "1"))
+        }
+    }
 }
 
 @Suite("EASClient body fetch")

@@ -144,6 +144,13 @@ public struct SyncResult: Equatable, Sendable {
     public var moreAvailable: Bool
 }
 
+/// One client-side mailbox mutation carried by a Sync command. The client sends exactly
+/// one of these per request; responses still use the normal `SyncResult` shape.
+public enum EASSyncChange: Equatable, Sendable {
+    case read(serverID: String)
+    case delete(serverID: String)
+}
+
 public struct PingResult: Equatable, Sendable {
     public var hasChanges: Bool
     public var status: Int
@@ -347,30 +354,56 @@ public actor EASClient {
         syncKey: String = "0",
         window: Int = 25,
         filterType: Int = 5,
-        bodyPreviewCharacters: Int = 500
+        bodyPreviewCharacters: Int = 500,
+        change: EASSyncChange? = nil
     ) async throws -> SyncResult {
         if policyKey == nil {
             try await provision()
         }
-        // FilterType: 0 = all, 1..7 = 1d/3d/1w/2w/1m/3m/6m. Default is one month.
-        var options: [WBXMLElement] = [.text("FilterType", String(filterType))]
-        if bodyPreviewCharacters > 0 {
-            options.append(.children("BodyPreference", [
-                .text("Type", "1"),
-                .text("TruncationSize", String(bodyPreviewCharacters)),
+        let body: Data
+        if let change {
+            // One minimal write body: no WindowSize/Options/BodyPreference. A write
+            // command is the only thing this request may carry.
+            var commands: WBXMLElement
+            switch change {
+            case .read(let serverID):
+                commands = .children("Change", [
+                    .text("ServerId", serverID),
+                    .children("ApplicationData", [.text("Read", "1")]),
+                ])
+            case .delete(let serverID):
+                commands = .children("Delete", [.text("ServerId", serverID)])
+            }
+            body = try codec.encode(.children("Sync", [
+                .children("Collections", [
+                    .children("Collection", [
+                        .text("SyncKey", syncKey),
+                        .text("CollectionId", collectionID),
+                        .children("Commands", [commands]),
+                    ]),
+                ]),
+            ]))
+        } else {
+            // FilterType: 0 = all, 1..7 = 1d/3d/1w/2w/1m/3m/6m. Default is one month.
+            var options: [WBXMLElement] = [.text("FilterType", String(filterType))]
+            if bodyPreviewCharacters > 0 {
+                options.append(.children("BodyPreference", [
+                    .text("Type", "1"),
+                    .text("TruncationSize", String(bodyPreviewCharacters)),
+                ]))
+            }
+            body = try codec.encode(.children("Sync", [
+                .children("Collections", [
+                    .children("Collection", [
+                        .text("SyncKey", syncKey),
+                        .text("CollectionId", collectionID),
+                        .text("WindowSize", String(window)),
+                        .children("Options", options),
+                    ]),
+                ]),
             ]))
         }
-        let body = try codec.encode(.children("Sync", [
-            .children("Collections", [
-                .children("Collection", [
-                    .text("SyncKey", syncKey),
-                    .text("CollectionId", collectionID),
-                    .text("WindowSize", String(window)),
-                    .children("Options", options),
-                ]),
-            ]),
-        ]))
-        let response = try await call("Sync", body: body)
+        let response = try await call("Sync", body: body, isWrite: change != nil)
         let document = try decode(response)
 
         guard let syncNode = document.child("Sync"),
@@ -642,7 +675,8 @@ public actor EASClient {
         body: Data,
         policyKey overrideKey: String? = nil,
         extraParameters: [String: String] = [:],
-        treatEmptyBodyAsSuccess: Bool = false
+        treatEmptyBodyAsSuccess: Bool = false,
+        isWrite: Bool = false
     ) async throws -> EASHTTPResponse {
         var components = URLComponents(url: configuration.endpoint, resolvingAgainstBaseURL: false)!
         var items = [
@@ -665,7 +699,8 @@ public actor EASClient {
             response,
             elapsed: elapsed,
             command: command,
-            treatEmptyBodyAsSuccess: treatEmptyBodyAsSuccess
+            treatEmptyBodyAsSuccess: treatEmptyBodyAsSuccess,
+            isWrite: isWrite
         )
         return response
     }
@@ -719,7 +754,8 @@ public actor EASClient {
         _ response: EASHTTPResponse,
         elapsed: TimeInterval,
         command: String,
-        treatEmptyBodyAsSuccess: Bool = false
+        treatEmptyBodyAsSuccess: Bool = false,
+        isWrite: Bool = false
     ) throws {
         switch response.status {
         case 200:
@@ -732,6 +768,11 @@ public actor EASClient {
             }
             return
         case 401:
+            // The gateway answers a rejected *write* with the device-not-registered
+            // signal (spec §设计增量: 写 401 → deviceNotRegistered); reads keep authFailed.
+            if isWrite {
+                throw EASError.deviceNotRegistered
+            }
             throw EASError.authFailed
         case 444:
             throw EASError.gatewayRejected
