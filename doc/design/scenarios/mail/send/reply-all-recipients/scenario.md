@@ -2,7 +2,7 @@
 layer: design
 module: mail
 scope: project:uumail
-status: designed
+status: verified
 updated: 2026-11-14
 flow: mail/send
 scenario: SCN-0007
@@ -54,11 +54,11 @@ scenario: SCN-0007
 
 ## 测试
 
-| ID | 类型 | 方案 | 可执行 ID（拟） |
+| ID | 类型 | 方案 | 可执行 ID（已验证） |
 |---|---|---|---|
 | `T-SCN-0007-01` | 正 | 原邮件 `From="张三" <z@corp.test>`、`To="a@corp.test; b@corp.test"`、`Cc="c@corp.test; z@corp.test"`；账号 `me@corp.test`。全部回复 → `To == "z@corp.test; a@corp.test; b@corp.test"`，`Cc == "c@corp.test"`（`z@` 已在 To，从 Cc 去掉），主题 `Re:`，正文含引用。 | `ScenesTests/ComposeSceneTests.replyAllFillsSenderAndOriginalRecipients` |
 | `T-SCN-0007-02` | 正 | 同一封邮件全部回复并发送 → outbox 行 `to/cc` 与种子一致；MIME 带 `Cc:` 且地址与 outbox 行一致；投递只一次。 | `PresentationTests/ComposeViewModelTests.replyAllSendCarriesCcIntoOutbox` + 既有 `OutboxTests/OutboxDeliveryTests.deliversOnce`（以 `c@d.e` 断言 `Cc:` 进 MIME） |
-| `T-SCN-0007-03` | 正 | 构造 pre-v9 库：已同步消息无 `cc`，有正文与附件缓存；v9 迁移后消息集合 `sync_key == "0"`、`folders` key 不变、`cc == nil` 可读；按既有 key 0 bootstrap 路径重拉（`SyncEngineTests.bootstrap` 已覆盖两请求语义）；store 层用 `applySyncBatch` 写入同一消息 + Cc → 本地 `Message.cc` 可读，正文/附件仍在；全部回复带出 Cc。 | `MailStoreTests/MigrationTests.preV9MessageGetsCcAfterBackfill` + 既有 `SyncEngineTests/SyncEngineTests.bootstrap` + `ScenesTests/ComposeSceneTests.replyAllUsesBackfilledCc` |
+| `T-SCN-0007-03` | 正 | 构造 pre-v9 库：已同步消息无 `cc`，有正文与附件缓存；v9 迁移后消息集合 `sync_key == "0"`、`folders` key 不变、`cc == nil` 可读；按既有 key 0 bootstrap 路径重拉（`SyncEngineTests.bootstrap` 已覆盖两请求语义）；store 层用 `applySyncBatch` 写入同一消息 + Cc → 本地 `Message.cc` 可读，正文/附件仍在；全部回复带出 Cc。 | `MailStoreTests/MigrationTests.v9MessageCcMigration` + 既有 `SyncEngineTests/SyncEngineTests.bootstrap` + `ScenesTests/ComposeSceneTests.replyAllUsesBackfilledCc` |
 | `T-SCN-0007-04` | 反 | 头缺失/畸形：无 `From`、`To` 为空、`Cc` 只有自己、重复地址、引号内逗号、裸通讯组名/只有显示名。断言：不崩溃、不编造、不重复、不含自己；`To` 为空时 `canSend == false`；手填后可发送。 | `ScenesTests/ComposeSceneTests.replyAllSkipsMalformedAndSelf` + `PresentationTests/ComposeViewModelTests.replyAllEmptyToCannotSend` |
 
 支撑测试（不属于 3+1 断言，但组件出口要求）：
@@ -72,6 +72,17 @@ scenario: SCN-0007
 
 ## 状态
 
-`designed`（2026-11-14，T-1114-01）。入口、运行序、不可变引用、3 正 1 反测试方案已齐；四元素无 `missing`。测试尚未执行，`verified` 留待 T-1114-09。
+`verified`（2026-11-14，T-1114-09）。
 
-实现：部分开始（2026-11-14）。`T-1114-02`（Sync 信封 `Cc` 采集）、`T-1114-03`（`CMP-DOMAIN#Message.cc`、`#AddressList`）、`T-1114-04`（`CMP-EASADAPTER` 的 `Cc` 映射）、`T-1114-05`（`CMP-STORE` schema v9 `cc` 读写与回填）、`T-1114-06`（`CMP-SCN-COMPOSE#replyAllSeed` 合并 To/Cc、去重、排除自己、Cc 减 To）、`T-1114-07`（`CMP-PRES#ComposeViewModel` 的 `Mode.replyAll`/预填、`#MailboxViewModel.composeReplyAll` 选中邮件接线）与 `T-1114-08`（`CMP-APP#MailboxView` 工具栏「全部回复」、无选中禁用、动作只调视图模型）已落地；`T-1114-09` 验证待启动，真机冒烟未跑。设计拍板与候选见 `task-spaces/20261114-103223/design.md`。`Cc` 网关可达性已由 `T-1114-02` 证明；`SCN-0007` 保持 `designed`，3 正 1 反与 `verified` 留待 `T-1114-09`。
+验证证据（`./Scripts/swiftw test`，2026-11-14）：
+
+| 测试 | 断言 | 结果 |
+|---|---|---|
+| `T-SCN-0007-01` `ScenesTests/ComposeSceneTests.replyAllFillsSenderAndOriginalRecipients` | `To` = 原发件人 + 原收件人、保序；`Cc` 去重且减去已在 `To` 者；主题/引用不变 | 通过 |
+| `T-SCN-0007-02` `PresentationTests/ComposeViewModelTests.replyAllSendCarriesCcIntoOutbox` + `OutboxTests/OutboxTests.deliversOnce` | outbox 行 `to/cc` 与种子一致；MIME 带 `Cc:`；`ClientId` 幂等、只投递一次 | 通过 |
+| `T-SCN-0007-03` `MailStoreTests/MigrationTests.v9MessageCcMigration` + `SyncEngineTests.bootstrap` + `ScenesTests/ComposeSceneTests.replyAllUsesBackfilledCc` | pre-v9 库 `cc == nil`、正文/附件保留、消息 `sync_key` 置 `"0"`、folders key 不变；回填写入同一消息的 Cc；全部回复带出该 Cc | 通过 |
+| `T-SCN-0007-04` `ScenesTests/ComposeSceneTests.replyAllSkipsMalformedAndSelf` + `PresentationTests/ComposeViewModelTests.replyAllEmptyToCannotSend` | 畸形/重复/自己/无 `From`/空 `To` 不崩溃、不编造；空 `To` 时 `canSend == false`，手填后可发送 | 通过 |
+
+支撑测试：`ComposeSceneTests` 10 例（含「账号地址读取失败不排除任何地址」）、`ComposeViewModelTests` 8 例、`MailboxViewModelTests` 16 例（5 suites）、`MigrationTests` 2 例、`EASClientTests` 27 例（6 suites）、`EASAdapterTests` 6 例、`MailDomainTests` 10 例、`Outbox` 相关 30 例（4 suites）、`OutboxPumpTests` 3 例；全量 **182 tests / 38 suites** 绿，架构门 4/4 PASS。`SCN-0006` 回归：发送入队、离线恢复、泵投递、单次投递与 MIME `Cc:` 用例均未退化；`SCN-0006` 自身仍为 `designed`，其未验项不变。
+
+实现沿革：`designed`（2026-11-14，T-1114-01）；`T-1114-02`（Sync 信封 `Cc` 采集）、`T-1114-03`（`Message.cc`、`AddressList`）、`T-1114-04`（适配层映射）、`T-1114-05`（schema v9 回填）、`T-1114-06`（`replyAllSeed`）、`T-1114-07`（视图模型）、`T-1114-08`（工具栏）已落地。未执行项：真机 UI 点击冒烟（实际点「全部回复」→ 编辑 → 发送）未在本环境运行，属发布前人工冒烟；按钮动作与禁用条件由 `MailboxViewModelTests` 2 例接线承担。

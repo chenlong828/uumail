@@ -59,6 +59,6 @@ component: CMP-APP
 - `MailboxView` 工具栏在「回复」与「转发」之间加「全部回复」按钮；`viewModel.selectedMessage == nil` 时 disabled，动作只调 `viewModel.composeReplyAll()`。
 - 视图不读 `Message` 字段、不拼地址、不判断 `Cc` 是否为空；所有地址规则在 `ComposeScene`/`AddressList`。
 - `ComposeView` 已有「抄送」输入框，不需要新增控件或绑定逻辑。
-- 验证：编译 + `MailboxViewModelTests` 接线；真机冒烟（选带 Cc 多人邮件 → 全部回复 → To/Cc 正确 → 发送 → outbox 与 MIME 带 Cc；选自己的邮件 → 自己不出现在任何一栏）留待 T-1114-09。
+- 验证：编译 + `MailboxViewModelTests` 接线；真机冒烟（选带 Cc 多人邮件 → 全部回复 → To/Cc 正确 → 发送 → outbox 与 MIME 带 Cc；选自己的邮件 → 自己不出现在任何一栏）未在本环境执行，登记为发布前人工项（T-1114-09 已验自动化 3 正 1 反）。
 
-**实现（2026-11-14）**：`MailboxView` 工具栏在「回复」「转发」之间加「全部回复」（`arrowshape.turn.up.left.2`），无选中邮件时 disabled，按钮动作只调 `MailboxViewModel.composeReplyAll()`；视图未新增 `Message` 字段读取或地址拼接。`./Scripts/swiftw build` 通过；全量 181 tests / 38 suites 与架构 4 门全绿。真机冒烟留 `T-1114-09`。
+**实现（2026-11-14）**：`MailboxView` 工具栏在「回复」「转发」之间加「全部回复」（`arrowshape.turn.up.left.2`），无选中邮件时 disabled，按钮动作只调 `MailboxViewModel.composeReplyAll()`；视图未新增 `Message` 字段读取或地址拼接。`./Scripts/swiftw build` 通过；全量 182 tests / 38 suites 与架构 4 门全绿。按钮渲染与点击的真机冒烟未执行，登记为发布前人工项。

@@ -133,6 +133,41 @@ struct ComposeSceneTests {
         #expect(draft.body == "\n\n--- 原邮件 ---\n第一行\n第二行")
     }
 
+    @Test("replyAll reads the Cc written by the post-migration backfill")
+    func replyAllUsesBackfilledCc() throws {
+        let (scene, store, account, _) = try makeScene(accountAddress: "me@corp.test")
+        try store.applyFolderSnapshot(
+            account: account,
+            folders: [Folder(serverID: "13", parentID: nil, displayName: "收件箱", type: 2)],
+            syncKey: "folders-key"
+        )
+        try store.applySyncBatch(
+            account: account,
+            folder: "13",
+            added: [
+                MailMessage(
+                    serverID: "101",
+                    subject: "旧邮件",
+                    sender: "z@corp.test",
+                    recipients: "a@corp.test",
+                    receivedRaw: "2026-11-08T05:11:18.000Z",
+                    cc: "c@corp.test"
+                )
+            ],
+            changed: [],
+            removedServerIDs: [],
+            syncKey: "1"
+        )
+
+        let stored = try #require(try store.messages(account: account, folder: "13").first)
+        #expect(stored.cc == "c@corp.test")
+
+        let draft = scene.replyAllSeed(to: stored, bodyHTML: nil, account: account)
+
+        #expect(draft.to == "z@corp.test; a@corp.test")
+        #expect(draft.cc == "c@corp.test")
+    }
+
     @Test("replyAll skips malformed headers, duplicates and the account's own address")
     func replyAllSkipsMalformedAndSelf() throws {
         let (scene, _, account, _) = try makeScene(accountAddress: "me@corp.test")

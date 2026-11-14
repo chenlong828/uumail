@@ -363,7 +363,7 @@ CommandLineComposition（127 行）
 
 ### 7.1 当前验证面
 
-- `./Scripts/swiftw test` → **181 tests / 38 suites**（2026-11-14，T-1114-07 后复测）。
+- `./Scripts/swiftw test` → **182 tests / 38 suites**（2026-11-14，T-1114-09 后复测）。
 - 测试 target：`MailDomainTests`、`MailStoreTests`、`SyncEngineTests`、`OutboxTests`、`EASClientTests`、`EASAdapterTests`、`ScenesTests`、`PresentationTests`、`CompositionTests`。
 - `bash Scripts/check-architecture.sh` → 4 门：per-target import 白名单、场景互调、`AppComposition` ≤200 行、`Composition` 业务 switch。4 门全过。
 - schema 迁移：`MailStoreTests/MigrationTests` 的 pre-v8 与 pre-v9 fixture。

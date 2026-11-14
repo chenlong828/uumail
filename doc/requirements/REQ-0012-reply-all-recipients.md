@@ -2,7 +2,7 @@
 layer: requirements
 module: mail
 scope: project:uumail
-status: accepted
+status: delivered
 updated: 2026-11-14
 ---
 
@@ -30,7 +30,7 @@ updated: 2026-11-14
   - 实现前必须确认本网关的 Sync 信封实际返回 `Cc`；若不返回，停止并按本卡重议，不得静默退化为只填 `To`。
   - 兼容性：`Message` 只增可选字段，数据库只加可空列；旧库前滚必须有迁移测试。
 - **影响场景**：
-  - `SCN-0007`（已建，`designed`；验收：全部回复的收件人/抄送预填）
+  - `SCN-0007`（已建，`verified`；验收：全部回复的收件人/抄送预填）
   - `SCN-0006`（回归：发送链路与 `Cc` 进 MIME；本卡不在其上新增断言）
 - **澄清记录**：
   - 2026-11-14 本次为单轮需求分析，无人答问；以下结论按现有代码与标准客户端语义收敛，若与预期不符在 T-1114-01 开工前改卡。
@@ -38,5 +38,6 @@ updated: 2026-11-14
   - 2026-11-14 范围裁决：不改单回复现状；通讯组不展开；历史邮件必须一次回填，不做逐封按需抓取。
   - 2026-11-14 设计拍板（T-1114-01）：历史回填 = schema v9 把非 `folders` 的 message `sync_key` 置 `"0"`，下次同步重拉最近窗口（≤5×25 封），保留 messages/body/attachments；不逐封抓头。地址解析 = `MailDomain.AddressList` 纯值类型；To/Cc 去重、排除自己、保序、Cc 减 To。`CMP-STORE` 拆 `Migrations.swift`，组件预算 900 行不调（实测 852 + v9 增量约 35）。细节与候选见 `task-spaces/20261114-103223/design.md`、`doc/design/scenarios/mail/send/reply-all-recipients/scenario.md`。
   - 2026-11-14 设计门：`Cc` 是否由网关 Sync 信封返回仍未证；T-1114-02 未证前不实现降级。P1 核心 schema/契约需人确认后才开 change。
-- **状态**：accepted（2026-11-14 范围与语义确认；设计已拍板，见 `SCN-0007` 与 task-space `design.md`；`Cc` 网关可达性与 P1 人工确认是实现门）
-- **验收归属**：`SCN-0007` 的 3 正 1 反全绿并转 `verified`；`SCN-0006` 发送回归不退化。
+  - 2026-11-14 验收（T-1114-09）：`SCN-0007` 的 3 正 1 反在组件级全绿；补上场景卡点名的 `ComposeSceneTests.replyAllUsesBackfilledCc`，闭合「回填 Cc → 全部回复带出」缺口。全量 182 tests / 38 suites、架构 4 门通过；真机 UI 点击冒烟未在本环境执行，登记为发布前人工项。
+- **状态**：delivered（2026-11-14，T-1114-09）。`SCN-0007` 3 正 1 反全绿并转 `verified`；`SCN-0006` 发送回归无退化。
+- **验收归属**：`SCN-0007` 的 3 正 1 反全绿并转 `verified`（2026-11-14）；`SCN-0006` 发送回归不退化。
