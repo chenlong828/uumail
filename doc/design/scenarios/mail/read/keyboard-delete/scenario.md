@@ -48,7 +48,7 @@ scenario: SCN-0009
 
 - 列表排序（`received_raw DESC, server_id DESC`）、软删过滤（`deleted_at IS NULL`）、搜索 FTS 与正文/附件缓存语义不变。
 - 删除只软删 `messages`，不物理删 `messages`/`message_bodies`/`attachments`；附件保留策略不变。
-- 服务器侧按 EAS 客户端删除语义（移到「已删除邮件」）；不显式带 `DeletesAsMoves`，T-1114-12 探针确认不是永久删除；若网关默认永久删除，停下补参数或重议 REQ-0014。
+- 服务器侧按 EAS 客户端删除语义（移到「已删除邮件」）；不显式带 `DeletesAsMoves`。R16 真机样本（2026-11-14）已确认：删除后收件箱不再返回该 `ServerId`，同一封出现在 `Type=4`「已删除邮件」中（新 `ServerId`），不是永久删除。
 - 同一账号同一集合同时只有一个 `Sync` 在飞；写结果与 `SyncKey` 同事务；失败不推进 key、不半删。
 - `MailGateway` 读签名、`Outbox`、发送、通知、同步窗口与「列表查询不扫正文」不变。
 - 不做多选；`List(selection:)` 仍是单选中；不做撤销、永久删除、确认框、离线队列。
@@ -66,7 +66,7 @@ scenario: SCN-0009
 支撑测试（不属于 3+1 断言，但组件出口要求）：
 
 - `MailStoreTests`：`commitDelete` 软删 + key 同事务、回滚不推进 key、重复软删幂等、正文/附件表不动。
-- `EASClientTests`：`Delete/ServerId` golden 请求、新 key、`Status=3/4`、写 401 → `deviceNotRegistered`、删除 not-found 样本（T-1114-12 取证后补）。
+- `EASClientTests`：`Delete/ServerId` golden 请求、新 key、`Status=3/4`、写 401 → `deviceNotRegistered`、删除 not-found 样本（R16 已取证：重复删除同一 `ServerId` 返回 `Collection/Status=1` + 新 key，无逐条状态，视为成功 no-op；见 `task-spaces/20261114-232232/evidence/r16-real-gateway.txt`）。
 - `EASAdapterTests`：`MailWriteGateway.delete` 的 delta/错误映射。
 - `SyncEngineTests`：写命令与 `syncOnce` 的门串行（删除等待一次 Sync，不被分页拖住）；同一 key 不被两个写推进。
 - `MailboxViewModelTests`：等待期间同步返回被删邮件不闪回；切换文件夹/搜索不跨列表恢复；连按只发一次。
@@ -74,6 +74,6 @@ scenario: SCN-0009
 
 ## 状态
 
-`designed`（2026-11-14，T-1114-10）。四元素齐；3 正 1 反均给出拟执行 ID。**未实现**：`MailWriteGateway.delete`、`SyncEngine.deleteMessage`、`ReadScene.deleteMessage`、`MailboxDeletion`、列表 Delete/Backspace 绑定均不存在于代码。
+`designed`（2026-11-14，T-1114-10）。四元素齐；3 正 1 反均给出可执行 ID。**已实现**（2026-11-14，T-1114-11…18/21）：`MailWriteGateway.delete`、`SyncEngine.deleteMessage`、`ReadScene.deleteMessage`、`MailboxDeletion`、列表 Delete/Backspace 绑定均已落地；全量 239 tests / 44 suites 绿。**未标 `verified`**：验证节点 T-1114-20 尚未运行/未评审。
 
-实现前门：P1 人工确认（非可选写端口/SyncStore/组合根，无 schema）与 R16（T-1114-12 先证网关接受 `Sync` 的 `Delete` 并返回新 key）；焦点/按键命中另由 T-1114-18 的最小 UI 探针先证。R16 被拒则停止并按 `REQ-0014` 重议，不静默退化为只改本地。验证归属：`T-SCN-0009-01..04` 全绿并转 `verified` 前，`REQ-0014` 不得 `delivered`。
+实现前门均已关闭：P1 frozen 记录 `doc/history/decisions/2026-11-14-mail-write-path.md` 已归档；R16 真机已证 `Delete/ServerId` 被接受、返回新 key 并把邮件移入「已删除邮件」（2026-11-14）；焦点/按键探针覆盖列表、搜索框、正文、撰写页、配置页（证据见 `task-spaces/20261114-232232/evidence/ui-delete-probe-focus.txt`）。验证归属：`T-SCN-0009-01..04` 全绿并转 `verified` 前，`REQ-0014` 不得 `delivered`。

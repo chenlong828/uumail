@@ -219,7 +219,7 @@ public protocol MailWriteGateway: Sendable {
 ```
 
 - 成功当且仅当 `Sync/Collection/Status=1` 且返回非空新 key；`Status=3/4` → `syncKeyInvalid`；Sync 写 401 → `deviceNotRegistered`（`SendMail` 既有 401 → `authFailed` 不改）；其余按既有 `MailError` 目录。
-- 返回 `MessageDelta`：写响应里若携带其他服务器变更，必须由 `commit*` 与本地效果、新 key 同事务应用；`moreAvailable == true` 由 `SyncEngine` 拒绝提交，等 R16 样本再设计 drain。
+- 返回 `MessageDelta`：写响应里携带的服务器变更、整页 delta 与 `MoreAvailable` 由 `commit*` 与本地效果、新 key 同事务应用；剩余页由下一轮增量同步消费。**2026-11-14 R16 真机**：写响应正常携带 25/100 条 `Add` 与 `Collection/MoreAvailable`，原「`moreAvailable == true` 拒绝提交」会让所有真实写失败，已改为提交；重复删除同一 `ServerId` 返回 `Status=1` + 新 key（not-found 成功 no-op），删除进入「已删除邮件」。
 - 唯一生产实现仍是 `EASAdapter`（同时遵循 `MailGateway` 与 `MailWriteGateway`）；组合根用 `GatewayEndpoints{read, write}` 注入，**`write` 非可选**。
 - 写能力全链路非可选：`GatewayEndpoints.write`、`SyncEngine.init(writeGateway:)`、`ReadScene.init(writeEngine:)` 均无 `nil`/默认值；只读测试用测试 target 的 `UnsupportedWriteGateway`，生产 target 不提供该替身。装配顺序：T-1114-21 先装配端点，T-1114-15/16 再分别注入 `SyncEngine`/`ReadScene`；T-1114-15/16 各含 `CMP-ROOT` 仅装配例外。
 
@@ -297,7 +297,7 @@ public actor Outbox {
 
 ### 3.7 `Presentation`
 
-`MailboxViewModel`、`ComposeViewModel`、`AccountSetupViewModel`；`BodyPresentation{none/loading/loaded(html,truncated)/failed(text)}`、`BodyNotice`、`SyncPresentation`、`Selection`；`ErrorText` 是唯一的 `MailError → 中文` 映射，`DisplayFormat` 收拢发件人与日期格式化。只依赖 `Scenes` + `MailDomain`。T-1114-10 设计新增 `MailboxDwell`（10 秒计时）与 `MailboxDeletion`（隐藏/单飞/错误），并给 `MailboxViewModel` 增 `setApplicationActive/deleteSelected/visibleMessages/deleteErrorText`；`MailboxViewModel` 主文件保持 ≤400 行。
+`MailboxViewModel`、`ComposeViewModel`、`AccountSetupViewModel`；`BodyPresentation{none/loading/loaded(html,truncated)/failed(text)}`、`BodyNotice`、`SyncPresentation`、`Selection`；`ErrorText` 是唯一的 `MailError → 中文` 映射，`DisplayFormat` 收拢发件人与日期格式化。只依赖 `Scenes` + `MailDomain`。T-1114-10 设计新增 `MailboxDwell`（10 秒计时）与 `MailboxDeletion`（隐藏/单飞/错误），并给 `MailboxViewModel` 增 `setApplicationActive/deleteSelected/visibleMessages/deleteErrorText`；`MailboxViewModel` 主文件 298 行（目标 ≤380；Body/Compose/Delete 已拆到 extension 文件）。
 
 ## 4. 冷热路径
 
@@ -388,7 +388,7 @@ CommandLineComposition（127 行）
 
 ### 7.1 当前验证面
 
-- `./Scripts/swiftw test` → **228 tests / 44 suites**（2026-11-14，W-M3-03 实现后复测）。
+- `./Scripts/swiftw test` → **239 tests / 44 suites**（2026-11-14，W-M3-03 回退重跑后复测）。
 - 测试 target：`MailDomainTests`、`MailStoreTests`、`SyncEngineTests`、`OutboxTests`、`EASClientTests`、`EASAdapterTests`、`ScenesTests`、`PresentationTests`、`CompositionTests`。
 - `bash Scripts/check-architecture.sh` → 4 门：per-target import 白名单、场景互调、`AppComposition` ≤200 行、`Composition` 业务 switch。4 门全过。
 - schema 迁移：`MailStoreTests/MigrationTests` 的 pre-v8 与 pre-v9 fixture。
@@ -473,7 +473,7 @@ D10 的决策记录：`history/decisions/2026-11-13-fetched-body-contract.md`。
 4. **PolicyKey 不持久化**：只存在 `EASClient` 实例内，每个新进程首命令前重新 Provision；旧场景卡「PolicyKey 入 Keychain」已按代码更正。
 5. **`SyncEngine.start/stop/stateStream` 未实现**：维持 `syncOnce/currentState`，节奏归 `SyncScene`。
 6. **附件场景未完整**：25MB 上限、断点续传、`AttachmentName` 回退、真机下载/打开未做。
-7. **阅读场景**：已读回写/键盘删除已设计（2026-11-14，T-1114-10，见 §3.1/§5 与 `SCN-0008`/`SCN-0009`），实现已由 T-1114-11…T-1114-18 与 T-1114-21 落地（2026-11-14），待 T-1114-19/20 与 R16 真机样本；sanitizer 自动化断言、1 万封 P95 未做。
+7. **阅读场景**：已读回写/键盘删除已设计（2026-11-14，T-1114-10，见 §3.1/§5 与 `SCN-0008`/`SCN-0009`），实现已由 T-1114-11…T-1114-18 与 T-1114-21 落地（2026-11-14），R16 真机与焦点/前台探针已补齐，待 T-1114-19/20 验证；sanitizer 自动化断言、1 万封 P95 未做。
 8. **失败件保留上限（24h / 100 条，T11）无清理实现**：outbox 行会保留到成功、取消或手动重试。
 9. **`backup/pre-autosquash` 分支保留**，不删。
 
@@ -483,6 +483,7 @@ D10 的决策记录：`history/decisions/2026-11-13-fetched-body-contract.md`。
 
 - 规格冻结：2026-11-13，整体结论通过，D1–D9 逐条确认；D10 于 2026-11-13 追加。
 - 结构收口：2026-11-14，T-1110-10 把规格并入本文与组件规格，工序目录归档。
-- **2026-11-14 待确认 P1（T-1114-10，第 2 轮）**：新增 `MailWriteGateway`、`SyncStore` 三个写方法、`SyncEngine` 写方法 + FIFO 门 + **非可选** `writeGateway`、`ReadScene` **非可选**写引擎、`GatewayEndpoints`（`write` 非可选）；场景扇出预算 1–2→1–3（仅 `ReadScene`，替代方案为窄 `SyncWriting` 端口）；T-1114-15/16 各含 `CMP-ROOT` 仅装配例外。不新增 schema；确认后开 T-1114-11，确认前只写文档与测试草案。
-- **2026-11-14 实现节点执行记录**：本批 T-1114-11…18/21 已按已评审设计实现并提交，但 `doc/history/decisions/2026-11-14-mail-write-path.md` 的 frozen 人工确认记录仍未创建；实现节点没有伪造该记录。**建议收尾前补人工确认**；R16 真机/录制网关写命令接受性仍未取证。
+- **2026-11-14 待确认 P1（T-1114-10，第 2 轮）**：新增 `MailWriteGateway`、`SyncStore` 三个写方法、`SyncEngine` 写方法 + FIFO 门 + **非可选** `writeGateway`、`ReadScene` **非可选**写引擎、`GatewayEndpoints`（`write` 非可选）；场景扇出预算 1–2→1–3（仅 `ReadScene`，替代方案为窄 `SyncWriting` 端口）；T-1114-15/16 各含 `CMP-ROOT` 仅装配例外。不新增 schema。
+- **2026-11-14 P1 frozen 记录**：`doc/history/decisions/2026-11-14-mail-write-path.md` 已归档（确认来源与范围见该记录）；实现 T-1114-11…18/21 的契约与装配按记录落地。
+- **2026-11-14 R16 真机与写响应修订**：写命令被接受并返回新 key；写响应携带整页 delta + `Collection/MoreAvailable`，改为与 key 同事务提交（不再拒绝）；not-found 为成功 no-op；删除进入「已删除邮件」。前台信号实测后由 `scenePhase` 改为 `NSApplication` 通知。
 - 后续契约变更走新决策记录（`history/decisions/`），并同步改对应组件规格与 pinning test。

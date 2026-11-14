@@ -24,7 +24,7 @@ component: CMP-SCN-READ
 - 变化轴：读取策略（远端兜底搜索、附件预览）。
 - 公开契约：`CMP-SCN-READ#folders`、`#messages`、`#search`、`#attachments`、`#bodyIfCached`、`#open`、`#downloadAttachment`；T-1114-10 设计新增 `#markReadLocally`、`#writeBackMarkRead`、`#deleteMessage`（2026-11-14 已实现）
 - 入口：`Sources/Scenes/ReadScene.swift#ReadScene`、`#MessageRef`、`#BodyEvent`
-- 依赖：`MailStore`、`MailDomain`（`MailGateway`、`AttachmentFiles`）、`SyncEngine`（写路径；T-1114-10 设计，2026-11-14 已实现）。扇出 3 + 端口；T-1114-10 把场景扇出预算由 1–2 上调至 1–3，仅因 `ReadScene` 新增 `SyncEngine` 直接依赖，P1 待确认（替代方案：窄 `SyncWriting` 端口，保持扇出 2）。
+- 依赖：`MailStore`、`MailDomain`（`MailGateway`、`AttachmentFiles`）、`SyncEngine`（写路径；T-1114-10 设计，2026-11-14 已实现）。扇出 3 + 端口；T-1114-10 把场景扇出预算由 1–2 上调至 1–3，仅因 `ReadScene` 新增 `SyncEngine` 直接依赖，P1 已确认（2026-11-14 决策记录；替代方案窄 `SyncWriting` 端口保持扇出 2 仍为被否决项）。
 - 冷热：读热、补拉/附件冷。
 - 尺寸预算：≤800 行；当前随 `Scenes` 共 691 行。
 - 单独运行：`./Scripts/swiftw test --filter ScenesTests`
@@ -93,7 +93,7 @@ component: CMP-SCN-READ
   ```
 
   - **替换旧 init，不加重载、不给默认值**：不保留无 `writeEngine` 的构造，避免生产组合根落到只读构造后“可编译但写不出去”。代价是 T-1114-16 必须同一 change 机械更新 `AppComposition`/`CommandLineComposition`，登记为 `CMP-ROOT（仅装配）` 例外。
-  - 直接依赖具体 `SyncEngine` 而非另抽 `SyncWriting` 端口：`SyncEngine` 是集合 `SyncKey` 与 FIFO 门的唯一 owner，窄端口只是同形转发；`Scenes` target 本就依赖 `SyncEngine`。测试用真实引擎 + fake gateway（读/写）/store，测试面仍是两个写方法。若 P1 不接受扇出 1–3，再切到窄端口方案。
+  - 直接依赖具体 `SyncEngine` 而非另抽 `SyncWriting` 端口：`SyncEngine` 是集合 `SyncKey` 与 FIFO 门的唯一 owner，窄端口只是同形转发；`Scenes` target 本就依赖 `SyncEngine`。测试用真实引擎 + fake gateway（读/写）/store，测试面仍是两个写方法。P1 已接受扇出 1–3（2026-11-14 决策记录）；窄端口方案保留为被否决记录。
 
 - 新增三个方法，计时与临时隐藏都不在本组件：
 

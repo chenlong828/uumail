@@ -43,7 +43,7 @@ scenario: SCN-0008
 - 回写时 `SyncKey` 失步（`Status=3/4`）→ 只算回写失败；下一次刷新按既有规则重建，不用已读回写触发重建。
 - 计时到点前邮件被删/被移走/列表重载导致选中消失 → 取消，不报错。
 - 应用在计时期间失活 → 取消；回前台重新计满，不累计。
-- 回写响应 `moreAvailable == true` → 视为协议异常，`SyncEngine` 抛 `unsupported`；不提交 delta/key；本地已读保持；T-1114-12 样本再决定是否 drain。
+- 回写响应携带整页 delta 与 `MoreAvailable`（R16 真机样本）：这是正常分页信号，`SyncEngine` 把 delta + 本地已读 + 新 key 同事务提交，剩余页由下一轮增量同步消费；不视为协议异常、不回滚本地已读。
 
 ## 不可变引用
 
@@ -73,6 +73,6 @@ scenario: SCN-0008
 
 ## 状态
 
-`designed`（2026-11-14，T-1114-10）。四元素齐；3 正 1 反均给出拟执行 ID。**未实现**：`MailWriteGateway`、`SyncEngine.markRead`、`ReadScene.markReadLocally/writeBackMarkRead`、`MailboxDwell` 均不存在于代码。
+`designed`（2026-11-14，T-1114-10）。四元素齐；3 正 1 反均给出可执行 ID。**已实现**（2026-11-14，T-1114-11…18/21）：`MailWriteGateway`、`SyncEngine.markRead`、`ReadScene.markReadLocally/writeBackMarkRead`、`MailboxDwell` 均已落地；全量 239 tests / 44 suites 绿。**未标 `verified`**：验证节点 T-1114-19 尚未运行/未评审。
 
-实现前门：P1 人工确认（非可选写端口/SyncStore/组合根，无 schema）与 R16（T-1114-12 先证网关接受 `Sync` 的 `Change/Read=1` 并返回新 key）。R16 被拒则停止并按 `REQ-0013` 重议，不静默退化为只改本地。验证归属：`T-SCN-0008-01..04` 全绿并转 `verified` 前，`REQ-0013` 不得 `delivered`。
+实现前门均已关闭：P1 frozen 记录 `doc/history/decisions/2026-11-14-mail-write-path.md` 已归档；R16 真机已证 `Change/Read=1` 被接受并返回新 key（2026-11-14，证据见 `task-spaces/20261114-232232/evidence/r16-real-gateway.txt`）。前台/失活信号按真实窗口探针改用 `NSApplication` 通知（`scenePhase` 在 macOS 上不随应用失活变化）。验证归属：`T-SCN-0008-01..04` 全绿并转 `verified` 前，`REQ-0013` 不得 `delivered`。

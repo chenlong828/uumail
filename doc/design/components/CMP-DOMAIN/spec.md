@@ -159,4 +159,4 @@ component: CMP-DOMAIN
 - 兼容性：`MailGateway` 7 个方法不变；`Message`/`Draft`/`Outbox` 值类型不变；`MailDomain` 仍只依赖 Foundation、无 I/O。尺寸预计 +15 行（515 → 约 530），远低于 800 行目标。
 - 契约测试：`MailDomainTests` 只做编译期端口遵循；`EASAdapterTests`/`SyncEngineTests`/`MailStoreTests` 覆盖行为。
 
-**实现（2026-11-14）**：`Ports.swift` 的 `MailWriteGateway` 两方法已落地；`SyncStore` 增三方法，`MailStore` 实现并由 `SyncStoreConformance` 转发。`MailDomainTests` 的测试替身只覆盖端口形状；`MailWriteGateway` 未进入生产 target 的 nil/默认退化路径。全量 228 tests / 44 suites 绿。
+**实现（2026-11-14）**：`Ports.swift` 的 `MailWriteGateway` 两方法已落地；`SyncStore` 增三方法，`MailStore` 实现并由 `SyncStoreConformance` 转发。`MailDomainTests` 的测试替身只覆盖端口形状；`MailWriteGateway` 未进入生产 target 的 nil/默认退化路径。全量 239 tests / 44 suites 绿（2026-11-14 回退重跑复测）。
