@@ -2,8 +2,8 @@
 layer: design
 module: mail
 scope: project:uumail
-status: designed
-updated: 2026-11-14
+status: verified
+updated: 2026-11-15
 flow: mail/read
 scenario: SCN-0009
 ---
@@ -74,6 +74,8 @@ scenario: SCN-0009
 
 ## 状态
 
-`designed`（2026-11-14，T-1114-10）。四元素齐；3 正 1 反均给出可执行 ID。**已实现**（2026-11-14，T-1114-11…18/21）：`MailWriteGateway.delete`、`SyncEngine.deleteMessage`、`ReadScene.deleteMessage`、`MailboxDeletion`、列表 Delete/Backspace 绑定均已落地；全量 239 tests / 44 suites 绿。**未标 `verified`**：验证节点 T-1114-20 尚未运行/未评审。
+`verified`（2026-11-15，T-1114-20）。四元素齐；3 正 1 反均给出可执行 ID。**已实现**（2026-11-14，T-1114-11…18/21）：`MailWriteGateway.delete`、`SyncEngine.deleteMessage`、`ReadScene.deleteMessage`、`MailboxDeletion`、列表 Delete/Backspace 绑定均已落地；全量 239 tests / 44 suites 绿。
 
-实现前门均已关闭：P1 frozen 记录 `doc/history/decisions/2026-11-14-mail-write-path.md` 已归档；R16 真机已证 `Delete/ServerId` 被接受、返回新 key 并把邮件移入「已删除邮件」（2026-11-14）；焦点/按键探针覆盖列表、搜索框、正文、撰写页、配置页（证据见 `task-spaces/20261114-232232/evidence/ui-delete-probe-focus.txt`）。验证归属：`T-SCN-0009-01..04` 全绿并转 `verified` 前，`REQ-0014` 不得 `delivered`。
+验证证据（`task-spaces/20261114-232232/test.md`，2026-11-15）：`T-SCN-0009-01..04` 逐条执行通过（4/4，16 次定向执行，0 失败），原始输出见 `task-spaces/20261114-232232/evidence/verify-0009-01.txt`…`-04.txt`；依赖场景 `SCN-0003`/`SCN-0004` 回归无退化，全量 239 tests / 44 suites 连续两次通过、架构 4 门通过（`evidence/verify-full-1.txt`、`verify-full-2.txt`、`verify-architecture.txt`）。
+
+实现前门均已关闭：P1 frozen 记录 `doc/history/decisions/2026-11-14-mail-write-path.md` 已归档；R16 真机已证 `Delete/ServerId` 被接受、返回新 key 并把邮件移入「已删除邮件」（2026-11-14）；焦点/按键探针覆盖列表、搜索框、正文、撰写页、配置页（证据见 `task-spaces/20261114-232232/evidence/ui-delete-probe-focus.txt`）。验证归属：`T-SCN-0009-01..04` 全绿并转 `verified` 后，`REQ-0014` 转 `delivered`（2026-11-15 已满足）。

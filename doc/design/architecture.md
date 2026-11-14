@@ -2,7 +2,7 @@
 layer: design
 module: global
 status: current
-updated: 2026-11-14
+updated: 2026-11-15
 ---
 
 # uumail 架构规格
@@ -28,8 +28,8 @@ macOS 原生邮件客户端，只支持 EAS（Exchange ActiveSync），以「一
 | 账号接入 | `AccountSetupScene` | 用户填表点连接 | 账号 `ready` + 文件夹树 + 凭据入 Keychain | 顺序固定（probe→provision→文件夹→建号→快照→ready→凭据）；失败不留半成品 | accounts、folders、sync_state、Keychain | 分类错误，停在配置页 | 首次/换机 | 冷 | 已实现；真机全链未跑 |
 | 文件夹与收件箱同步 | `SyncScene` | 启动、每 5 分钟、手动刷新 | 本地出现新文件夹与新邮件 | 单飞；批次与 key 同事务；失败保旧数据 | folders、messages、sync_state | 状态栏错误，后台退避 | 每 5 分钟 | 冷 | 已实现 |
 | 浏览与阅读 | `ReadScene` | 选文件夹、选邮件 | 列表与正文 | 读路径不触网；缓存优先；缺正文先占位后补拉 | messages、message_bodies | 占位 + 重试入口 | 高频 | 热 | 已实现；P95 未复测 |
-| 列表停留自动已读 | `ReadScene` + `MailboxDwell` | 选中未读、前台连续 10 秒 | 本地已读、蓝点消失、后台回写 | 本地先行；写回与同步共享 key 串行；失败不回滚、不提示 | messages、sync_state | 静默保留本地已读 | 中 | 热（本地）+ 冷（回写） | 已实现（T-1114-11…18，2026-11-14），待 T-1114-19/20 验证 |
-| 键盘删除 | `ReadScene` + `MailboxViewModel` | 列表聚焦 Delete/Backspace | 行消失、服务器删除、本地软删 | 服务器确认后原子软删；失败恢复并提示；单飞 | messages、sync_state | 恢复行/选中 + 中文错误 | 中 | 热（隐藏）+ 冷（写） | 已实现（T-1114-11…18，2026-11-14），待 T-1114-19/20 验证 |
+| 列表停留自动已读 | `ReadScene` + `MailboxDwell` | 选中未读、前台连续 10 秒 | 本地已读、蓝点消失、后台回写 | 本地先行；写回与同步共享 key 串行；失败不回滚、不提示 | messages、sync_state | 静默保留本地已读 | 中 | 热（本地）+ 冷（回写） | 已实现（T-1114-11…18，2026-11-14）；已验证（T-1114-19，2026-11-15） |
+| 键盘删除 | `ReadScene` + `MailboxViewModel` | 列表聚焦 Delete/Backspace | 行消失、服务器删除、本地软删 | 服务器确认后原子软删；失败恢复并提示；单飞 | messages、sync_state | 恢复行/选中 + 中文错误 | 中 | 热（隐藏）+ 冷（写） | 已实现（T-1114-11…18，2026-11-14）；已验证（T-1114-20，2026-11-15） |
 | 附件 | `ReadScene` | 点附件 | 本地文件并打开 | 同一附件单飞；缓存 2 GB 最旧优先 | attachments、附件文件 | 提示失败可重试 | 中 | 冷 | 部分：无 25MB 上限、续传、名称回退 |
 | 本地搜索 | `ReadScene` | 输入关键字 | 结果列表 | 本地优先；<3 字符走 LIKE | messages、fts | 空结果/错误提示 | 中 | 热 | 已实现 |
 | 撰写/回复/转发 | `ComposeScene` | 新建/回复/转发 | 草稿或入队 | 引用规则；发送只入队 | outbox | 入队失败提示 | 中 | 热（入队） | 已实现 |
@@ -473,7 +473,7 @@ D10 的决策记录：`history/decisions/2026-11-13-fetched-body-contract.md`。
 4. **PolicyKey 不持久化**：只存在 `EASClient` 实例内，每个新进程首命令前重新 Provision；旧场景卡「PolicyKey 入 Keychain」已按代码更正。
 5. **`SyncEngine.start/stop/stateStream` 未实现**：维持 `syncOnce/currentState`，节奏归 `SyncScene`。
 6. **附件场景未完整**：25MB 上限、断点续传、`AttachmentName` 回退、真机下载/打开未做。
-7. **阅读场景**：已读回写/键盘删除已设计（2026-11-14，T-1114-10，见 §3.1/§5 与 `SCN-0008`/`SCN-0009`），实现已由 T-1114-11…T-1114-18 与 T-1114-21 落地（2026-11-14），R16 真机与焦点/前台探针已补齐，待 T-1114-19/20 验证；sanitizer 自动化断言、1 万封 P95 未做。
+7. **阅读场景**：已读回写/键盘删除已设计（2026-11-14，T-1114-10，见 §3.1/§5 与 `SCN-0008`/`SCN-0009`），实现已由 T-1114-11…T-1114-18 与 T-1114-21 落地（2026-11-14），R16 真机与焦点/前台探针已补齐；2026-11-15 T-1114-19/20 验证通过（`task-spaces/20261114-232232/test.md`）；sanitizer 自动化断言、1 万封 P95 未做。
 8. **失败件保留上限（24h / 100 条，T11）无清理实现**：outbox 行会保留到成功、取消或手动重试。
 9. **`backup/pre-autosquash` 分支保留**，不删。
 

@@ -2,8 +2,8 @@
 layer: design
 module: mail
 scope: project:uumail
-status: designed
-updated: 2026-11-14
+status: verified
+updated: 2026-11-15
 flow: mail/read
 scenario: SCN-0008
 ---
@@ -73,6 +73,8 @@ scenario: SCN-0008
 
 ## 状态
 
-`designed`（2026-11-14，T-1114-10）。四元素齐；3 正 1 反均给出可执行 ID。**已实现**（2026-11-14，T-1114-11…18/21）：`MailWriteGateway`、`SyncEngine.markRead`、`ReadScene.markReadLocally/writeBackMarkRead`、`MailboxDwell` 均已落地；全量 239 tests / 44 suites 绿。**未标 `verified`**：验证节点 T-1114-19 尚未运行/未评审。
+`verified`（2026-11-15，T-1114-19）。四元素齐；3 正 1 反均给出可执行 ID。**已实现**（2026-11-14，T-1114-11…18/21）：`MailWriteGateway`、`SyncEngine.markRead`、`ReadScene.markReadLocally/writeBackMarkRead`、`MailboxDwell` 均已落地；全量 239 tests / 44 suites 绿。
 
-实现前门均已关闭：P1 frozen 记录 `doc/history/decisions/2026-11-14-mail-write-path.md` 已归档；R16 真机已证 `Change/Read=1` 被接受并返回新 key（2026-11-14，证据见 `task-spaces/20261114-232232/evidence/r16-real-gateway.txt`）。前台/失活信号按真实窗口探针改用 `NSApplication` 通知（`scenePhase` 在 macOS 上不随应用失活变化）。验证归属：`T-SCN-0008-01..04` 全绿并转 `verified` 前，`REQ-0013` 不得 `delivered`。
+验证证据（`task-spaces/20261114-232232/test.md`，2026-11-15）：`T-SCN-0008-01..04` 逐条执行通过（4/4，19 次定向执行，0 失败），原始输出见 `task-spaces/20261114-232232/evidence/verify-0008-01.txt`…`-04.txt`；依赖场景 `SCN-0003`/`SCN-0004` 回归无退化，全量 239 tests / 44 suites 连续两次通过、架构 4 门通过（`evidence/verify-full-1.txt`、`verify-full-2.txt`、`verify-architecture.txt`）。
+
+实现前门均已关闭：P1 frozen 记录 `doc/history/decisions/2026-11-14-mail-write-path.md` 已归档；R16 真机已证 `Change/Read=1` 被接受并返回新 key（2026-11-14，证据见 `task-spaces/20261114-232232/evidence/r16-real-gateway.txt`）。前台/失活信号按真实窗口探针改用 `NSApplication` 通知（`scenePhase` 在 macOS 上不随应用失活变化）。验证归属：`T-SCN-0008-01..04` 全绿并转 `verified` 后，`REQ-0013` 转 `delivered`（2026-11-15 已满足）。

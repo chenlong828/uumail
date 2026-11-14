@@ -2,8 +2,8 @@
 layer: requirements
 module: mail
 scope: project:uumail
-status: accepted
-updated: 2026-11-14
+status: delivered
+updated: 2026-11-15
 ---
 
 # REQ-0014 列表键盘删除
@@ -27,7 +27,7 @@ updated: 2026-11-14
   - 失败恢复原排序位置与选中；错误只显示在状态栏，不弹模态；同一时刻只允许一个删除在飞，连按不重复发网络。
   - 核心 `MailGateway`/`SyncStore` 契约或 schema 变更属 P1，需人工确认后才开 change；不新增 target/组件。
 - **影响场景**：
-  - `SCN-0009`（已建，`designed`，`design/scenarios/mail/read/keyboard-delete/scenario.md`）：新增「列表聚焦 + Delete/Backspace → 行消失、服务器删除成功、下次同步不复活、选中推进」断言；新增「服务器删除失败 → 行与选中恢复并提示」断言；新增「无选中/焦点不在列表 → 不删除」断言。这是本卡唯一验收证据。
+  - `SCN-0009`（已建，`verified`，`design/scenarios/mail/read/keyboard-delete/scenario.md`）：新增「列表聚焦 + Delete/Backspace → 行消失、服务器删除成功、下次同步不复活、选中推进」断言；新增「服务器删除失败 → 行与选中恢复并提示」断言；新增「无选中/焦点不在列表 → 不删除」断言。这是本卡唯一验收证据。
   - `SCN-0004`（已建，`designed`）：回归删除后正文不残留上一封、相邻邮件可正常打开；本卡不新增断言。
   - `SCN-0003`（已建，`designed`）：回归删除成功后下一次增量同步不重新加入该邮件；本卡不新增断言。
 - **澄清记录**：
@@ -38,5 +38,5 @@ updated: 2026-11-14
     - 选择推进 = 下一封优先，末条则上一封，空列表清正文与空态。
   - 2026-11-14 与 `REQ-0011`（离线可用，`draft`）的关系：删除不纳入离线意图队列；离线删除按失败处理。若要求离线可删，需先解决 `plan/open-questions.md` Q2 的 `PendingOps` 与表结构，另立工序。
   - 2026-11-14 第 2 次需求分析复核（run `20261114-232232`）：诉求原文与卡内场景叙述、非目标、约束一致，范围不变；沿用 `REQ-0014` 与 `SCN-0009`（已 `designed`，挂 `mail/read`），不新建编号、不新增价值流、不扩大范围。设计评审已 pass，P1 人工确认与 R16 网关写命令仍为实现前门。
-- **状态**：accepted（2026-11-14 需求分析；2026-11-14 第 2 次复核：影响场景已识别且 `SCN-0009` 已建为 `designed`，P1 门未过，未交付）
-- **验收归属**：`SCN-0009` 的 3 正 1 反全绿并转 `verified`；`SCN-0003`/`SCN-0004` 回归不退化；卡内约束逐条无违反。`SCN-0009` 未 `verified` 前本卡不得 `delivered`。
+- **状态**：delivered（2026-11-15，T-1114-20）。`SCN-0009` 的 3 正 1 反全绿并转 `verified`（`task-spaces/20261114-232232/test.md`），`SCN-0003`/`SCN-0004` 回归无退化；全量 239 tests / 44 suites 连续两次、架构 4 门通过，卡内约束逐条无违反。
+- **验收归属**：`SCN-0009` 的 3 正 1 反全绿并转 `verified`（2026-11-15）；`SCN-0003`/`SCN-0004` 回归不退化；卡内约束逐条无违反。
