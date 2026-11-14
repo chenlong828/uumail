@@ -23,7 +23,7 @@ component: CMP-EAS
 - 入口：`Sources/EASClient/EASClient.swift#EASClient`、`WBXML.swift#WBXML`、`URLSessionTransport.swift#URLSessionTransport`
 - 依赖：Foundation（URLSession）、WBXML 编解码、传输层。扇出 0 本仓 target。
 - 冷热：冷；独立 URLSession、连接数受限。
-- 尺寸预算：≤1500 行；当前 1183 行（含 WBXML 与传输）。
+- 尺寸预算：≤1500 行；当前 **1227 行**（含 WBXML 与传输；2026-11-14 实测）。
 - 单独运行：`./Scripts/swiftw test --filter EASClientTests`；协议探活另有命令行入口，见 playbook §7。
 - 删除测试：删掉后 `EASAdapter` 要自己拼 HTTP 与 WBXML，版本降级复制两份 → 复杂度集中，是真边界。
 
@@ -147,6 +147,6 @@ component: CMP-EAS
 - 错误：写命令 HTTP 401 → `EASError.deviceNotRegistered`（playbook §6）；读 401 仍 `authFailed`；`SendMail` 既有 401 → `authFailed` 不改（pinned test）。`Status=3/4` → `syncKeyInvalid`；缺失 `SyncKey`/坏 body → `malformedResponse`。
 - 前置门（R16，T-1114-12）：**已通过（2026-11-14 真机）**。一条 `Change/Read=1` 与一条 `Delete` 均被接受并返回新 key；响应携带整页 delta 与 `MoreAvailable`；删除进入「已删除邮件」；重复删除同 `ServerId` 为 `Status=1`。证据与探针见任务证据目录。
 - 测试：`EASClientTests` 补两条 golden 请求字节、写响应新 key、写 401、读 401 不回归、`Status=3/4`、缺失 key；既有 27 例不回归。
-- 尺寸：`EASClient` 当前 759 行、组件 1183 行；预计 +50～60，仍低于 1500。
+- 尺寸：实现后 `EASClient` 803 行、组件 1227 行（预算 1500）。
 
 **实现（2026-11-14）**：`EASClient.sync(change:)` 支持 `.read`（`Change/ApplicationData/Read=1`）与 `.delete`（`Delete/ServerId`），写请求只带 `SyncKey/CollectionId/Commands`；写 401 → `deviceNotRegistered`，读 401 仍 `authFailed`。`EASClientTests` 32 例绿，含两条 golden 请求体、写 key、写 401/3/4、`Collection` 内与顶层 `MoreAvailable`。**R16 已取证（2026-11-14 真机）**：两命令均被接受并返回新 key；`MoreAvailable` 在写响应中是正常分页；not-found 为成功 no-op；删除进入「已删除邮件」。证据见 `task-spaces/20261114-232232/evidence/r16-real-gateway.txt`。

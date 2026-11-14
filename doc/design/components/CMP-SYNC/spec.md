@@ -107,7 +107,7 @@ component: CMP-SYNC
 - 写响应 delta 交给 `commit*` 时，store 会排除目标 `serverID` 的 `added/changed`（partial echo 不用 nil 覆盖目标信封），只应用 `removedServerIDs` 与其他消息；目标本地效果由写路径决定。
 - 实例约束：**一个账号一个 `SyncEngine`**，`SyncScene` 与 `ReadScene` 共用；不得在组合根或场景内 new 第二个实例，否则两把门各自为政、同一 key 互顶（R19）。
 - 整轮单飞仍由 `SyncScene` 保证；本门只保证「单次 Sync（读或写）与写命令」互斥，不承诺两个并发 `syncOnce` 循环的语义。调用方不得并发调用 `syncOnce`；若未来需要，另加整轮 `syncing` 标志，不在本批猜。
-- 尺寸：当前 152 行；预计 +60～70（门 ~25、两个写方法 ~35、每轮重读 key ~5），约 212～222 行，仍低于 400。
+- 尺寸：实现后 **286 行**（门 + 两个写方法 + 每轮重读 key + reset 内重建），预算 400。
 - 测试：`SyncEngineTests` 补「写命令与 `syncOnce` 门串行」「写成功后 key 恰好推进一次」「网关失败不推进 key/不落本地」「两个写命令串行且不重复推进 key（同目标去重由 `MailboxDeletion`/VM 保证，不在引擎层断言）」「`Status=3/4` 的 reset 与写命令互斥：排队写等整个 reset+rebuild，之后从重建后的 key 发；重建期间 fetch 顺序为 stale key → 0 → 新 key」「写响应携带整页 delta 与 `MoreAvailable` 时照常提交」「等待中的写被取消后不发网络」；只读用例用测试 target 的 `UnsupportedWriteGateway` 构造引擎；既有用例不回归。
 
 **实现（2026-11-14）**：`SyncEngine` 增非可选 `writeGateway`、FIFO 门、`markRead`/`deleteMessage`；`syncRound` 在门内重读 key，`Status=3/4` 的 reset+bootstrap+重建页同一次门持有内完成；写响应 `MoreAvailable` 不再拒绝提交。`SyncEngineTests` 17 例绿，含写/同步双向串行、key 只推进一次、失败不提交、写响应整页 delta 提交、reset 与排队写互斥（fetch 顺序 `5 → 0 → 200`、写使用重建后的 key）、取消不发网络。
