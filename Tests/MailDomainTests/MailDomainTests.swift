@@ -115,3 +115,38 @@ struct MailDomainValueTests {
         #expect(roundTrip == configuration)
     }
 }
+
+/// Compile-time contract for T-1114-11: the narrow write port has no EAS types and
+/// returns a domain `MessageDelta`. This mock lives only in the test target.
+private struct RecordingWriteGateway: MailWriteGateway {
+    let delta: MessageDelta
+
+    func markRead(collectionID: String, serverID: String, syncKey: String) async throws -> MessageDelta {
+        delta
+    }
+
+    func delete(collectionID: String, serverID: String, syncKey: String) async throws -> MessageDelta {
+        delta
+    }
+}
+
+@Suite("MailWriteGateway contract")
+struct MailWriteGatewayTests {
+    @Test("the narrow write port returns the server delta unchanged")
+    func conformsToWritePort() async throws {
+        let delta = MessageDelta(
+            added: [Message(serverID: "1")],
+            changed: [Message(serverID: "2", isRead: true)],
+            removedServerIDs: ["3"],
+            syncKey: "9",
+            moreAvailable: false
+        )
+        let gateway = RecordingWriteGateway(delta: delta)
+
+        let read = try await gateway.markRead(collectionID: "13", serverID: "2", syncKey: "8")
+        let deleted = try await gateway.delete(collectionID: "13", serverID: "2", syncKey: "8")
+
+        #expect(read == delta)
+        #expect(deleted == delta)
+    }
+}

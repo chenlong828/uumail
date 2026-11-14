@@ -12,6 +12,14 @@ public protocol MailGateway: Sendable {
     func send(mime: Data, clientID: String) async throws
 }
 
+/// Narrow write port for one-message mailbox mutations. Kept apart from `MailGateway`
+/// so read-only fakes and the read contract stay untouched. Every call sends exactly one
+/// EAS Sync write command and returns the server's delta plus the next collection key.
+public protocol MailWriteGateway: Sendable {
+    func markRead(collectionID: String, serverID: String, syncKey: String) async throws -> MessageDelta
+    func delete(collectionID: String, serverID: String, syncKey: String) async throws -> MessageDelta
+}
+
 /// Store port for the sync engine. Local database work is synchronous; `MailStore`
 /// conforms directly (the adapter disappears in this refactor).
 public protocol SyncStore: Sendable {
