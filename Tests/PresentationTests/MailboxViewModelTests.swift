@@ -294,6 +294,18 @@ struct ErrorTextTests {
 
 // MARK: - Dwell
 
+
+/// Polls a MainActor predicate; positive assertions use this instead of a fixed sleep so
+/// a loaded machine cannot turn "has not fired yet" into a false failure.
+@MainActor
+func waitFor(_ condition: @escaping () throws -> Bool, attempts: Int = 300) async throws -> Bool {
+    for _ in 0..<attempts {
+        if try condition() { return true }
+        try await Task.sleep(for: .milliseconds(10))
+    }
+    return try condition()
+}
+
 @Suite("MailboxViewModel dwell")
 @MainActor
 struct MailboxDwellTests {
@@ -314,26 +326,48 @@ struct MailboxDwellTests {
         let fixture = try fixture(messages: [presentationMessage("1", isRead: false)], sleepMilliseconds: 20)
         fixture.viewModel.loadCached()
 
-        try await Task.sleep(for: .milliseconds(80))
-
-        #expect(try fixture.store.messages(account: fixture.account, folder: "13").first?.isRead == true)
+        let marked = try await waitFor {
+            try fixture.store.messages(account: fixture.account, folder: "13").first?.isRead == true
+        }
+        #expect(marked)
         #expect(fixture.viewModel.deleteErrorText == nil)
     }
 
     @Test("T-SCN-0008-02: switching selection cancels the old clock and starts a new one")
     func dwellCancelsOnSelectionChangeAndRestarts() async throws {
-        let fixture = try fixture(
-            messages: [presentationMessage("1", isRead: false), presentationMessage("2", isRead: false)],
-            sleepMilliseconds: 80
+        let sleeper = DwellSleeper()
+        let fixture = try makeMailboxFixture(
+            messages: ["13": [presentationMessage("1", isRead: false), presentationMessage("2", isRead: false)]],
+            dwellSleep: { duration in try await sleeper.sleep(duration) }
         )
         fixture.viewModel.loadCached()
-        try await Task.sleep(for: .milliseconds(25))
-        fixture.viewModel.select(messageID: "2")
-        try await Task.sleep(for: .milliseconds(30))
+        for _ in 0..<200 {
+            if await sleeper.count == 1 { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(await sleeper.count == 1, "the first clock must be running")
 
-        #expect(try fixture.store.messages(account: fixture.account, folder: "13").first { $0.serverID == "1" }?.isRead == false)
-        try await Task.sleep(for: .milliseconds(80))
-        #expect(try fixture.store.messages(account: fixture.account, folder: "13").first { $0.serverID == "2" }?.isRead == true)
+        // loadCached auto-selects the first row (serverID "2"); switching to "1" must
+        // cancel that clock and start a new one for the other unread row.
+        fixture.viewModel.select(messageID: "1")
+        for _ in 0..<200 {
+            let count = await sleeper.count
+            let cancelled = await sleeper.cancelled
+            let pending = await sleeper.pending
+            if count == 2 && cancelled == 1 && pending == 1 { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(await sleeper.cancelled == 1, "switching selection must cancel the first clock")
+        #expect(await sleeper.count == 2, "the second clock must start")
+        #expect(try fixture.store.messages(account: fixture.account, folder: "13").first { $0.serverID == "2" }?.isRead == false)
+
+        await sleeper.release()
+        try await Task.sleep(for: .milliseconds(20))
+        let marked = try await waitFor {
+            try fixture.store.messages(account: fixture.account, folder: "13").first { $0.serverID == "1" }?.isRead == true
+        }
+        #expect(marked)
+        #expect(try fixture.store.messages(account: fixture.account, folder: "13").first { $0.serverID == "2" }?.isRead == false)
     }
 
     @Test("T-SCN-0008-02: background pauses and returning to the foreground restarts a full dwell")
@@ -346,8 +380,10 @@ struct MailboxDwellTests {
         #expect(try fixture.store.messages(account: fixture.account, folder: "13").first?.isRead == false)
 
         fixture.viewModel.setApplicationActive(true)
-        try await Task.sleep(for: .milliseconds(100))
-        #expect(try fixture.store.messages(account: fixture.account, folder: "13").first?.isRead == true)
+        let marked = try await waitFor {
+            try fixture.store.messages(account: fixture.account, folder: "13").first?.isRead == true
+        }
+        #expect(marked)
     }
 
     @Test("T-SCN-0008-02: a plain sync reload does not reset a running clock")
@@ -406,9 +442,10 @@ struct MailboxDwellTests {
             sleepMilliseconds: 20
         )
         fixture.viewModel.loadCached()
-        try await Task.sleep(for: .milliseconds(80))
-
-        #expect(try fixture.store.messages(account: fixture.account, folder: "13").first?.isRead == true)
+        let marked = try await waitFor {
+            try fixture.store.messages(account: fixture.account, folder: "13").first?.isRead == true
+        }
+        #expect(marked)
         #expect(fixture.viewModel.deleteErrorText == nil)
         #expect(fixture.viewModel.sync.phase == .idle)
     }
@@ -530,8 +567,10 @@ struct MailboxDwellTests {
                 "less than ten seconds after re-activation must not mark it read")
         #expect(await write.calls.isEmpty)
 
-        try await Task.sleep(for: .milliseconds(220))
-        #expect(try fixture.store.messages(account: fixture.account, folder: "13").first?.isRead == true)
+        let marked = try await waitFor {
+            try fixture.store.messages(account: fixture.account, folder: "13").first?.isRead == true
+        }
+        #expect(marked)
     }
 
     @Test("T-SCN-0008-03: a Read=0 echo in the write response cannot flip the local read")
@@ -866,27 +905,35 @@ struct MailboxDeleteTests {
 actor DwellSleeper {
     private(set) var count = 0
     private(set) var cancelled = 0
-    private var waiter: CheckedContinuation<Void, Error>?
+    /// Continuations actually parked; `count` alone is set before the await, so tests
+    /// that release the waiter must wait for this to be > 0.
+    private(set) var pending = 0
+    private var waiters: [UUID: CheckedContinuation<Void, Error>] = [:]
 
     func sleep(_ duration: Duration) async throws {
         count += 1
+        let id = UUID()
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                waiter = continuation
+                pending += 1
+                waiters[id] = continuation
             }
         } onCancel: {
-            Task { await self.cancel() }
+            Task { await self.cancel(id) }
         }
     }
 
     func release() {
-        waiter?.resume()
-        waiter = nil
+        let parked = waiters
+        waiters.removeAll()
+        pending = 0
+        for (_, continuation) in parked { continuation.resume() }
     }
 
-    private func cancel() {
+    private func cancel(_ id: UUID) {
+        guard let continuation = waiters.removeValue(forKey: id) else { return }
         cancelled += 1
-        waiter?.resume(throwing: CancellationError())
-        waiter = nil
+        pending -= 1
+        continuation.resume(throwing: CancellationError())
     }
 }
