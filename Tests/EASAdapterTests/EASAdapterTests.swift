@@ -52,6 +52,36 @@ private func bodyResponse(text: String, type: String = "2", truncated: Bool = fa
     ]))
 }
 
+/// Replays a real Sync envelope; the fields the adapter maps come from
+/// `ApplicationData`, not from domain values.
+private func syncResponse(added: [EASMessage], changed: [EASMessage] = []) -> Data {
+    func command(_ kind: String, _ message: EASMessage) -> WBXMLElement {
+        var fields: [WBXMLElement] = []
+        if let subject = message.subject { fields.append(.text("Subject", subject)) }
+        if let from = message.from { fields.append(.text("From", from)) }
+        if let to = message.to { fields.append(.text("To", to)) }
+        if let cc = message.cc { fields.append(.text("Cc", cc)) }
+        if let date = message.dateReceived { fields.append(.text("DateReceived", date)) }
+        if let read = message.isRead { fields.append(.text("Read", read ? "1" : "0")) }
+        return .children(kind, [
+            .text("ServerId", message.serverID),
+            .children("ApplicationData", fields),
+        ])
+    }
+
+    let commands = added.map { command("Add", $0) } + changed.map { command("Change", $0) }
+    return try! WBXMLCodec.standard().encode(.children("Sync", [
+        .children("Collections", [
+            .children("Collection", [
+                .text("SyncKey", "43"),
+                .text("CollectionId", "13"),
+                .text("Status", "1"),
+                .children("Commands", commands),
+            ]),
+        ]),
+    ]))
+}
+
 @Suite("EASAdapter gateway")
 struct EASAdapterTests {
     @Test("HTML bodies keep their payload and flags")
@@ -90,6 +120,56 @@ struct EASAdapterTests {
         #expect(!body.isHTML)
         #expect(body.text == "line1\nline2")
         #expect(!body.isTruncated)
+    }
+
+    @Test("Sync envelopes carry Cc into the domain message")
+    func mapsCcFromSyncEnvelopes() async throws {
+        let stub = StubTransport(responses: [
+            EASHTTPResponse(status: 200, headers: [:], body: syncResponse(
+                added: [
+                    EASMessage(
+                        serverID: "123",
+                        subject: "Hello",
+                        from: "a@b.c",
+                        to: "me@x.y",
+                        cc: "c@x.y; d@x.z"
+                    )
+                ],
+                changed: [EASMessage(serverID: "124", cc: "e@x.y")]
+            ))
+        ])
+        let adapter = EASAdapter(client: EASClient(configuration: configuration(), transport: stub, policyKey: "1"))
+
+        let delta = try await adapter.fetchMessages(
+            collectionID: "13", syncKey: "42", window: 25, filterType: 0
+        )
+
+        let added = try #require(delta.added.first)
+        #expect(added.cc == "c@x.y; d@x.z")
+        #expect(added.recipients == "me@x.y")
+        let changed = try #require(delta.changed.first)
+        #expect(changed.cc == "e@x.y")
+    }
+
+    @Test("messages without Cc keep a nil domain cc")
+    func absentCcStaysNil() async throws {
+        let stub = StubTransport(responses: [
+            EASHTTPResponse(status: 200, headers: [:], body: syncResponse(
+                added: [
+                    EASMessage(serverID: "1"),
+                    EASMessage(serverID: "2", cc: "   "),
+                ]
+            ))
+        ])
+        let adapter = EASAdapter(client: EASClient(configuration: configuration(), transport: stub, policyKey: "1"))
+
+        let delta = try await adapter.fetchMessages(
+            collectionID: "13", syncKey: "42", window: 25, filterType: 0
+        )
+
+        #expect(delta.added.count == 2)
+        #expect(delta.added[0].cc == nil)
+        #expect(delta.added[1].cc == nil, "the protocol layer normalizes blank Cc to nil")
     }
 
     @Test("401 becomes authFailed in the domain catalog")

@@ -23,7 +23,7 @@ component: CMP-EASADAPTER
 - 入口：`Sources/EASAdapter/EASAdapter.swift#EASAdapter`、`#map`
 - 依赖：`MailDomain`、`EASClient`。扇出 2。
 - 冷热：冷。
-- 尺寸预算：目标 ≤300 行；当前 133 行。
+- 尺寸预算：目标 ≤300 行；当前 134 行。
 - 单独运行：`./Scripts/swiftw test --filter EASAdapterTests`
 - 删除测试：删掉后场景与同步各写一遍错误映射与类型转换 → 错误语义不一致，是真边界。
 
@@ -48,7 +48,7 @@ component: CMP-EASADAPTER
 - 超时 / 取消：由 `EASClient` 的传输层设置；本层不加超时。
 - 一致性 / 可见性：单请求语义。
 - 兼容性 / 废弃：实现的是 `MailGateway` v2；v1 的 `EASGateway` 已删除。
-- 契约测试：`EASAdapterTests` 4 例（HTML 正文保留 payload/flags、服务端截断可见、纯文本标记、401→authFailed）；其余映射由 `EASClientTests` 的错误表覆盖协议侧。
+- 契约测试：`EASAdapterTests` 6 例（HTML 正文保留 payload/flags、服务端截断可见、纯文本标记、401→authFailed；`fetchMessages` 的 `Cc` 映射、缺失/空白 `Cc` 保持 `nil`）；其余映射由 `EASClientTests` 的错误表覆盖协议侧。
 
 ## 实现进度（2026-11-14）
 
@@ -58,6 +58,7 @@ component: CMP-EASADAPTER
 | `fetchBody` → `FetchedBody`（D10） | ✅ | `EASAdapterTests` 3 例 |
 | `fetchAttachment` / `send` | ✅ | `EASClientTests` 协议回放；`OutboxTests` 经 fake gateway |
 | 唯一错误映射 | ✅ `EASAdapter.map` | `EASAdapterTests`「401 becomes authFailed in the domain catalog」 |
+| `fetchMessages` → `Message.cc`（T-1114-04） | ✅ `EASAdapter.message(_:)` | `EASAdapterTests` 2 例：Add/Change 映射、缺失/空白为 `nil` |
 
 ## 验证计划
 
@@ -73,8 +74,8 @@ component: CMP-EASADAPTER
 - 只依赖 `MailDomain` 与 `EASClient`；不 import `MailStore`/`Scenes`/`Presentation`。
 - 契约里不出现 `EASClient` 类型；构造只发生在组合根（`GatewayFactory`）。
 
-## 设计增量：Cc 映射（T-1114-04，待实现）
+## 设计增量：Cc 映射（T-1114-04，已实现 2026-11-14）
 
-- `EASAdapter.message(_:)` 增加 `cc: message.cc`；`EASMessage.cc` 为空时传 `nil`。
+- `EASAdapter.message(_:)` 已把 `EASMessage.cc` 传给 domain `Message.cc`；`EASMessage.cc` 为空时保持 `nil`（`EASClient` 已把空白归一为 `nil`）。
 - 不在本层拆分地址、去重或排除自己；这些统一在 `ComposeScene` 调用 `MailDomain.AddressList` 时做。本层只做 EAS → 领域值映射。
-- 测试：`fetchMessages` 回放一条含 `Cc` 的 Sync 响应，断言 domain `Message.cc`；既有 HTML/纯文本/截断与 401 映射测试不回归。
+- 测试：`EASAdapterTests` 2 例。一次 Sync 回放同时含 `Add` 与 `Change`，断言 domain `Message.cc` 分别取到 `c@x.y; d@x.z` 与 `e@x.y`；缺失与空白 `Cc` 断言 `nil`。既有 HTML/纯文本/截断与 401 映射 4 例不回归。

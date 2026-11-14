@@ -16,9 +16,9 @@ macOS 原生邮件客户端，只走 Exchange ActiveSync（以「一台已登记
 
 ## 入口
 
-- **现在能回答什么**：能不能用 EAS 收信发信？能，见 playbook 的能力矩阵。现在是什么结构？9 个库 target + 2 个可执行，四条业务流各一个场景类，发信入队后由 `Outbox` 冷投递。测试与门禁？`./Scripts/swiftw test` 167 tests / 37 suites 全绿，`bash Scripts/check-architecture.sh` 4 门全过。首版做什么？单账号、最小策略握手、本机联系人、不做 OAuth（2026-11-09 确认）。
+- **现在能回答什么**：能不能用 EAS 收信发信？能，见 playbook 的能力矩阵。现在是什么结构？9 个库 target + 2 个可执行，四条业务流各一个场景类，发信入队后由 `Outbox` 冷投递。测试与门禁？`./Scripts/swiftw test` 169 tests / 37 suites 全绿，`bash Scripts/check-architecture.sh` 4 门全过。首版做什么？单账号、最小策略握手、本机联系人、不做 OAuth（2026-11-09 确认）。
 - **还不能回答什么**：真机 `uumailctl diagnose/sync/send` 与 App live bootstrap 未在收口会话验证；7 张场景卡仍是 `designed`（逐项原因见各卡）；附件 25MB/续传/名称回退、已读回写、Sent 镜像、outbox UI 角标、全部回复的收件人/抄送预填（REQ-0012，SCN-0007 已 `designed`）未实现；`PendingOps` 时机、本地保留策略（Q1）、App/CLI 双跑租约（Q3）、单账号替换（Q4）未定。MoveItems 未验证。
-- **下一步**：先做真机冒烟（诊断、同步、发送、App 启动一次真实 bootstrap），再补 outbox 待发/失败角标；之后按 `plan/roadmap.md` 把 M1/M2/M3 场景卡逐项转 `verified`，全部回复预填按 W-M2-03 推进（`SCN-0007` 已 `designed`；`T-1114-02`、`T-1114-03` 已完成，其余 change 待 P1 确认）。结构变更走工作区 `task-spaces/<run>/` 工序与决策记录。
+- **下一步**：先做真机冒烟（诊断、同步、发送、App 启动一次真实 bootstrap），再补 outbox 待发/失败角标；之后按 `plan/roadmap.md` 把 M1/M2/M3 场景卡逐项转 `verified`，全部回复预填按 W-M2-03 推进（`SCN-0007` 已 `designed`；`T-1114-02`、`T-1114-03`、`T-1114-04` 已完成，其余 change 待 P1 确认）。结构变更走工作区 `task-spaces/<run>/` 工序与决策记录。
 
 ## 目录约定
 
