@@ -7,12 +7,14 @@ import Testing
 
 actor StubTransport: EASHTTPTransport {
     private var responses: [EASHTTPResponse]
+    private(set) var recorded: [EASHTTPRequest] = []
 
     init(responses: [EASHTTPResponse]) {
         self.responses = responses
     }
 
     func send(_ request: EASHTTPRequest) async throws -> EASHTTPResponse {
+        recorded.append(request)
         guard !responses.isEmpty else {
             throw EASError.transient(reason: "stub exhausted")
         }
@@ -181,6 +183,95 @@ struct EASAdapterTests {
 
         await #expect(throws: MailError.authFailed) {
             _ = try await adapter.probe()
+        }
+    }
+
+    @Test("markRead passes the write delta through without trimming it")
+    func markReadPassesDeltaThrough() async throws {
+        let stub = StubTransport(responses: [
+            EASHTTPResponse(status: 200, headers: [:], body: syncResponse(
+                added: [EASMessage(serverID: "9", subject: "new")],
+                changed: [EASMessage(serverID: "123", isRead: true)]
+            ))
+        ])
+        let adapter = EASAdapter(client: EASClient(configuration: configuration(), transport: stub, policyKey: "1"))
+
+        let delta = try await adapter.markRead(collectionID: "13", serverID: "123", syncKey: "42")
+
+        #expect(delta.syncKey == "43")
+        #expect(delta.added.map(\.serverID) == ["9"])
+        #expect(delta.changed.map(\.serverID) == ["123"])
+        #expect(delta.changed.first?.isRead == true)
+
+        let request = try #require(await stub.recorded.first)
+        let document = try WBXMLCodec.standard().decode(try #require(request.body))
+        #expect(document.path("Sync", "Collections", "Collection", "Commands", "Change", "ServerId")?.stringValue() == "123")
+    }
+
+    @Test("delete passes removed ids through and maps a write 401")
+    func deletePassesDeltaAndMaps401() async throws {
+        let codec = try! WBXMLCodec.standard()
+        let deleteResponse = try! codec.encode(.children("Sync", [
+            .children("Collections", [
+                .children("Collection", [
+                    .text("SyncKey", "43"),
+                    .text("CollectionId", "13"),
+                    .text("Status", "1"),
+                    .children("Commands", [
+                        .children("Delete", [.text("ServerId", "123")]),
+                    ]),
+                ]),
+            ]),
+        ]))
+        let stub = StubTransport(responses: [
+            EASHTTPResponse(status: 200, headers: [:], body: deleteResponse)
+        ])
+        let adapter = EASAdapter(client: EASClient(configuration: configuration(), transport: stub, policyKey: "1"))
+
+        let delta = try await adapter.delete(collectionID: "13", serverID: "123", syncKey: "42")
+        #expect(delta.removedServerIDs == ["123"])
+        #expect(delta.syncKey == "43")
+
+        let unauthorized = StubTransport(responses: [
+            EASHTTPResponse(status: 401, headers: [:], body: Data())
+        ])
+        let rejected = EASAdapter(client: EASClient(configuration: configuration(), transport: unauthorized, policyKey: "1"))
+        await #expect(throws: MailError.deviceNotRegistered) {
+            _ = try await rejected.delete(collectionID: "13", serverID: "123", syncKey: "42")
+        }
+    }
+
+    @Test("write failures map to the domain catalog")
+    func mapsWriteFailures() async {
+        let staleKey = try! WBXMLCodec.standard().encode(.children("Sync", [
+            .children("Collections", [
+                .children("Collection", [
+                    .text("SyncKey", "0"), .text("CollectionId", "13"), .text("Status", "3"),
+                ]),
+            ]),
+        ]))
+        let stale = StubTransport(responses: [
+            EASHTTPResponse(status: 200, headers: [:], body: staleKey)
+        ])
+        let staleAdapter = EASAdapter(client: EASClient(configuration: configuration(), transport: stale, policyKey: "1"))
+        await #expect(throws: MailError.syncKeyInvalid) {
+            _ = try await staleAdapter.markRead(collectionID: "13", serverID: "1", syncKey: "42")
+        }
+
+        let throttled = StubTransport(responses: [
+            EASHTTPResponse(status: 503, headers: ["retry-after": "30"], body: Data())
+        ])
+        let throttledAdapter = EASAdapter(client: EASClient(configuration: configuration(), transport: throttled, policyKey: "1"))
+        await #expect(throws: MailError.throttled(seconds: 30)) {
+            _ = try await throttledAdapter.delete(collectionID: "13", serverID: "1", syncKey: "42")
+        }
+
+        let offline = StubTransport(responses: [
+            EASHTTPResponse(status: 500, headers: [:], body: Data())
+        ])
+        let offlineAdapter = EASAdapter(client: EASClient(configuration: configuration(), transport: offline, policyKey: "1"))
+        await #expect(throws: MailError.offline) {
+            _ = try await offlineAdapter.markRead(collectionID: "13", serverID: "1", syncKey: "42")
         }
     }
 }

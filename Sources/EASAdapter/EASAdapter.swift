@@ -4,7 +4,7 @@ import MailDomain
 
 /// Adapts the EAS client to the domain gateway port. This is the anti-corruption
 /// point: EAS status codes become `MailError` here and nowhere else.
-public struct EASAdapter: MailGateway {
+public struct EASAdapter: MailGateway, MailWriteGateway {
     public let client: EASClient
     public init(client: EASClient) { self.client = client }
 
@@ -54,16 +54,49 @@ public struct EASAdapter: MailGateway {
             let result = try await client.sync(
                 collectionID: collectionID, syncKey: syncKey, window: window, filterType: filterType
             )
-            return MessageDelta(
-                added: result.added.map(Self.message),
-                changed: result.changed.map(Self.message),
-                removedServerIDs: result.removedServerIDs,
-                syncKey: result.syncKey,
-                moreAvailable: result.moreAvailable
-            )
+            return Self.delta(result)
         } catch {
             throw Self.map(error)
         }
+    }
+
+    // MARK: - Write port
+
+    public func markRead(collectionID: String, serverID: String, syncKey: String) async throws -> MessageDelta {
+        do {
+            let result = try await client.sync(
+                collectionID: collectionID,
+                syncKey: syncKey,
+                change: .read(serverID: serverID)
+            )
+            return Self.delta(result)
+        } catch {
+            throw Self.map(error)
+        }
+    }
+
+    public func delete(collectionID: String, serverID: String, syncKey: String) async throws -> MessageDelta {
+        do {
+            let result = try await client.sync(
+                collectionID: collectionID,
+                syncKey: syncKey,
+                change: .delete(serverID: serverID)
+            )
+            return Self.delta(result)
+        } catch {
+            throw Self.map(error)
+        }
+    }
+
+    /// Read and write responses share one shape; both keep every field the server sent.
+    private static func delta(_ result: SyncResult) -> MessageDelta {
+        MessageDelta(
+            added: result.added.map(Self.message),
+            changed: result.changed.map(Self.message),
+            removedServerIDs: result.removedServerIDs,
+            syncKey: result.syncKey,
+            moreAvailable: result.moreAvailable
+        )
     }
 
     /// Keeps the gateway's own flags: `EASClient` already retries a truncated body
