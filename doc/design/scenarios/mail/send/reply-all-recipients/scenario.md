@@ -74,4 +74,4 @@ scenario: SCN-0007
 
 `designed`（2026-11-14，T-1114-01）。入口、运行序、不可变引用、3 正 1 反测试方案已齐；四元素无 `missing`。测试尚未执行，`verified` 留待 T-1114-09。
 
-实现：部分开始（2026-11-14）。`T-1114-02`（Sync 信封 `Cc` 采集）、`T-1114-03`（`CMP-DOMAIN#Message.cc`、`#AddressList`）、`T-1114-04`（`CMP-EASADAPTER` 的 `Cc` 映射）与 `T-1114-05`（`CMP-STORE` schema v9 `cc` 读写与回填）已落地；`T-1114-06..08` 未开始，其余 change 仍待 P1 实现门确认。设计拍板与候选见 `task-spaces/20261114-103223/design.md`。`Cc` 网关可达性已由 `T-1114-02` 证明；`SCN-0007` 保持 `designed`，3 正 1 反与 `verified` 留待 `T-1114-09`。
+实现：部分开始（2026-11-14）。`T-1114-02`（Sync 信封 `Cc` 采集）、`T-1114-03`（`CMP-DOMAIN#Message.cc`、`#AddressList`）、`T-1114-04`（`CMP-EASADAPTER` 的 `Cc` 映射）、`T-1114-05`（`CMP-STORE` schema v9 `cc` 读写与回填）与 `T-1114-06`（`CMP-SCN-COMPOSE#replyAllSeed` 合并 To/Cc、去重、排除自己、Cc 减 To）已落地；`T-1114-07..08` 未开始，其余 change 仍待 P1 实现门确认。设计拍板与候选见 `task-spaces/20261114-103223/design.md`。`Cc` 网关可达性已由 `T-1114-02` 证明；`SCN-0007` 保持 `designed`，3 正 1 反与 `verified` 留待 `T-1114-09`。

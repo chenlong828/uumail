@@ -26,7 +26,7 @@ component: CMP-SCN-ACCOUNT
 - 入口：`Sources/Scenes/AccountSetupScene.swift#AccountSetupScene`、`#AccountInput`、`#ConnectedAccount`
 - 依赖：`MailDomain`（`MailGateway`、`CredentialStore`、`MailError`）、`MailStore`。扇出 2。
 - 冷热：冷（用户等待一次）。
-- 尺寸预算：≤800 行；当前随 `Scenes` 共 666 行。
+- 尺寸预算：≤800 行；当前随 `Scenes` 共 691 行。
 - 单独运行：`./Scripts/swiftw test --filter ScenesTests`
 - 删除测试：删掉后视图或 CLI 各自拼接入流程，失败回滚不一致 → 复杂度集中，是真边界。
 

@@ -28,6 +28,31 @@ public struct ComposeScene: Sendable {
         )
     }
 
+    /// Reply-all seed: the same subject and quote rules as `replySeed`, with the original
+    /// sender and recipients merged into `to` and the original Cc kept in `cc`. Addresses
+    /// are parsed and de-duplicated by `AddressList`, the current account is excluded, and
+    /// Cc drops anything already in To. A missing or unreadable account only disables
+    /// self-exclusion; it is not an error here.
+    public func replyAllSeed(to message: Message, bodyHTML: String?, account: AccountID) -> Draft {
+        let reply = replySeed(to: message, bodyHTML: bodyHTML)
+        let ownAddress: String?
+        do {
+            ownAddress = try store.account(account)?.address
+        } catch {
+            ownAddress = nil
+        }
+
+        let recipients = AddressList([message.sender, message.recipients]).removing(ownAddress)
+        let cc = AddressList(message.cc).removing(ownAddress).subtracting(recipients)
+
+        return Draft(
+            to: recipients.text,
+            cc: cc.isEmpty ? nil : cc.text,
+            subject: reply.subject,
+            body: reply.body
+        )
+    }
+
     /// Forward seed: `Fwd:` subject prefix and the `--- 转发邮件 ---` quoting marker.
     public func forwardSeed(from message: Message, bodyHTML: String?) -> Draft {
         let cleanSubject = Self.cleanSubject(message.subject)

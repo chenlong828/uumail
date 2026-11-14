@@ -8,10 +8,12 @@ import Testing
 
 @Suite("ComposeScene")
 struct ComposeSceneTests {
-    private func makeScene() throws -> (ComposeScene, MailStore, AccountID, FakeGateway) {
+    private func makeScene(
+        accountAddress: String = "jdoe@corp.test"
+    ) throws -> (ComposeScene, MailStore, AccountID, FakeGateway) {
         let store = try MailStore.inMemory()
         let account = try store.createAccount(
-            NewAccount(displayName: "jdoe", address: "jdoe@corp.test", host: "mail.corp.test")
+            NewAccount(displayName: "jdoe", address: accountAddress, host: "mail.corp.test")
         )
         let gateway = FakeGateway()
         let outbox = Outbox(store: store, gateway: gateway, clock: FixedClock())
@@ -106,6 +108,82 @@ struct ComposeSceneTests {
         #expect(noSubject.subject == "Re: (无主题)")
         #expect(noSubject.to.isEmpty)
         #expect(noSubject.body == "\n\n--- 原邮件 ---\n")
+    }
+
+    @Test("replyAll seeds the sender and original To/Cc, deduplicated and excluding the account")
+    func replyAllFillsSenderAndOriginalRecipients() throws {
+        let (scene, _, account, _) = try makeScene(accountAddress: "me@corp.test")
+        let message = Message(
+            serverID: "m1",
+            subject: "周报",
+            sender: "\"张三\" <z@corp.test>",
+            recipients: "a@corp.test; b@corp.test",
+            cc: "c@corp.test; z@corp.test"
+        )
+
+        let draft = scene.replyAllSeed(
+            to: message,
+            bodyHTML: "<p>第一行<br>第二行</p>",
+            account: account
+        )
+
+        #expect(draft.to == "z@corp.test; a@corp.test; b@corp.test")
+        #expect(draft.cc == "c@corp.test", "z@ is already in To and must not repeat in Cc")
+        #expect(draft.subject == "Re: 周报")
+        #expect(draft.body == "\n\n--- 原邮件 ---\n第一行\n第二行")
+    }
+
+    @Test("replyAll skips malformed headers, duplicates and the account's own address")
+    func replyAllSkipsMalformedAndSelf() throws {
+        let (scene, _, account, _) = try makeScene(accountAddress: "me@corp.test")
+        let messy = Message(
+            serverID: "m1",
+            subject: "周报",
+            sender: "\"Doe, John\" <j@corp.test>",
+            recipients: "\"Doe, Jane\" <k@corp.test>, A@CORP.TEST; a@corp.test; 张三; team; me@corp.test",
+            cc: "a@corp.test; ME@corp.test; team; c@corp.test"
+        )
+
+        let draft = scene.replyAllSeed(to: messy, bodyHTML: nil, account: account)
+
+        #expect(draft.to == "j@corp.test; k@corp.test; A@CORP.TEST")
+        #expect(draft.cc == "c@corp.test", "a@ is already in To, me@ is the account, team is not an address")
+
+        let empty = Message(
+            serverID: "m2",
+            sender: nil,
+            recipients: " ; ",
+            cc: "me@corp.test"
+        )
+        let emptyDraft = scene.replyAllSeed(to: empty, bodyHTML: nil, account: account)
+
+        #expect(emptyDraft.to.isEmpty)
+        #expect(emptyDraft.cc == nil)
+        #expect(emptyDraft.subject == "Re: (无主题)")
+        #expect(emptyDraft.body == "\n\n--- 原邮件 ---\n")
+    }
+
+    @Test("replyAll keeps every address when the stored account cannot be read")
+    func replyAllKeepsAddressesWithoutStoredAccount() throws {
+        let (scene, _, _, _) = try makeScene(accountAddress: "me@corp.test")
+        let message = Message(
+            serverID: "m1",
+            subject: "RE: 周报",
+            sender: "z@corp.test",
+            recipients: "a@corp.test",
+            cc: "me@corp.test"
+        )
+
+        let draft = scene.replyAllSeed(
+            to: message,
+            bodyHTML: "<div>原文</div>",
+            account: AccountID("missing-account")
+        )
+
+        #expect(draft.to == "z@corp.test; a@corp.test")
+        #expect(draft.cc == "me@corp.test", "without a readable account address nothing is excluded")
+        #expect(draft.subject == "RE: 周报", "the existing Re: prefix is not duplicated")
+        #expect(draft.body == "\n\n--- 原邮件 ---\n原文")
     }
 
     /// Seed rules need no mail data; this keeps those tests from sharing fixtures.

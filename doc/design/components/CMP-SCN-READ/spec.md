@@ -26,7 +26,7 @@ component: CMP-SCN-READ
 - 入口：`Sources/Scenes/ReadScene.swift#ReadScene`、`#MessageRef`、`#BodyEvent`
 - 依赖：`MailStore`、`MailDomain`（`MailGateway`、`AttachmentFiles`）。扇出 2 + 端口。
 - 冷热：读热、补拉/附件冷。
-- 尺寸预算：≤800 行；当前随 `Scenes` 共 666 行。
+- 尺寸预算：≤800 行；当前随 `Scenes` 共 691 行。
 - 单独运行：`./Scripts/swiftw test --filter ScenesTests`
 - 删除测试：删掉后视图与 VM 各自决定读库/拉网与落库 → 规则散落，是真边界。
 

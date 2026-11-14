@@ -269,7 +269,7 @@ public actor Outbox {
 | `AccountSetupScene` | `validate`、`connect` | `design/components/CMP-SCN-ACCOUNT/spec.md` |
 | `SyncScene`（actor） | `refresh`、`startAutoRefresh`、`stopAutoRefresh` | `design/components/CMP-SCN-SYNC/spec.md` |
 | `ReadScene` | `folders/messages/search/attachments/bodyIfCached/open/downloadAttachment` | `design/components/CMP-SCN-READ/spec.md` |
-| `ComposeScene` | `replySeed/forwardSeed/saveDraft/send/pending/retry/cancel`；计划新增 `replyAllSeed`（SCN-0007） | `design/components/CMP-SCN-COMPOSE/spec.md` |
+| `ComposeScene` | `replySeed/replyAllSeed/forwardSeed/saveDraft/send/pending/retry/cancel` | `design/components/CMP-SCN-COMPOSE/spec.md` |
 
 场景是值类型或 actor，不持有 `@Observable` UI 状态；场景之间不互相调用（门 2）。
 
@@ -363,7 +363,7 @@ CommandLineComposition（127 行）
 
 ### 7.1 当前验证面
 
-- `./Scripts/swiftw test` → **173 tests / 37 suites**（2026-11-14，T-1114-05 后复测）。
+- `./Scripts/swiftw test` → **176 tests / 37 suites**（2026-11-14，T-1114-06 后复测）。
 - 测试 target：`MailDomainTests`、`MailStoreTests`、`SyncEngineTests`、`OutboxTests`、`EASClientTests`、`EASAdapterTests`、`ScenesTests`、`PresentationTests`、`CompositionTests`。
 - `bash Scripts/check-architecture.sh` → 4 门：per-target import 白名单、场景互调、`AppComposition` ≤200 行、`Composition` 业务 switch。4 门全过。
 - schema 迁移：`MailStoreTests/MigrationTests` 的 pre-v8 与 pre-v9 fixture。

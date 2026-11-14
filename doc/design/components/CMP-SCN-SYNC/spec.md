@@ -23,7 +23,7 @@ component: CMP-SCN-SYNC
 - 入口：`Sources/Scenes/SyncScene.swift#SyncScene`、`#RefreshOutcome`
 - 依赖：`SyncEngine`、`MailDomain`（`Notifier`、`MailClock`）。扇出 2。
 - 冷热：冷；不与主线程共享。
-- 尺寸预算：≤500 行；当前随 `Scenes` 共 666 行。
+- 尺寸预算：≤500 行；当前随 `Scenes` 共 691 行。
 - 单独运行：`./Scripts/swiftw test --filter ScenesTests`
 - 删除测试：删掉后视图自己起轮询、自己判通知 → 节奏规则散落在 UI，是真边界。
 

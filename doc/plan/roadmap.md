@@ -33,7 +33,7 @@ updated: 2026-11-14
 | W-M1-04 正文渲染与附件下载 | M1 | W-M1-03 | CMP-STORE、CMP-EAS、AttachmentCache | 已实现；SCN-0004、SCN-0005 待 `verified`（附件真机未验） |
 | W-M2-01 Outbox 与发信 | M2 | W-M1-04 | CMP-OUT、CMP-EAS | 已完成（无过程记录，见下）：协议、队列、撰写界面；真机自测信投递成功 |
 | W-M2-02 回复/转发与草稿 | M2 | W-M2-01 | CMP-OUT、CMP-STORE | 已实现（无过程记录，见下）；回复/转发复用 `SCN-0006`，草稿无场景卡 |
-| W-M2-03 全部回复与抄送预填 | M2 | W-M2-02；REQ-0012 `accepted` | CMP-EAS、CMP-DOMAIN、CMP-EASADAPTER、CMP-STORE、CMP-SCN-COMPOSE、CMP-PRES、CMP-APP | 设计完成：`SCN-0007` `designed`（2026-11-14）；`T-1114-02` 已证网关返回 `Cc` 并落地解析；`T-1114-03` 已落 `Message.cc` 与 `AddressList`；`T-1114-04` 已落 `EASMessage.cc → Message.cc` 映射；`T-1114-05` 已落 schema v9 `cc` 读写、COALESCE 与回填；其余 change 待 P1 确认后启动；任务表见本文 §W-M2-03 任务表 |
+| W-M2-03 全部回复与抄送预填 | M2 | W-M2-02；REQ-0012 `accepted` | CMP-EAS、CMP-DOMAIN、CMP-EASADAPTER、CMP-STORE、CMP-SCN-COMPOSE、CMP-PRES、CMP-APP | 设计完成：`SCN-0007` `designed`（2026-11-14）；`T-1114-02` 已证网关返回 `Cc` 并落地解析；`T-1114-03` 已落 `Message.cc` 与 `AddressList`；`T-1114-04` 已落 `EASMessage.cc → Message.cc` 映射；`T-1114-05` 已落 schema v9 `cc` 读写、COALESCE 与回填；`T-1114-06` 已落 `replyAllSeed` 与地址去重/排除自己；`T-1114-07..09` 待 P1 确认后启动；任务表见本文 §W-M2-03 任务表 |
 | W-M3-01 Ping 与通知 | M3 | W-M2-01 | CMP-SYNC、通知策略 | Ping 实测不支持 → 轮询；通知已落地（无过程记录，无独立场景卡） |
 | W-M3-02 本地搜索 | M3 | W-M1-03 | CMP-STORE | 已实现（无过程记录，无独立场景卡）；FTS 不扫正文列 |
 | W-SCN-REFACTOR 场景收口与分层重构 | M1/M2/M3 结构前置 | W-DOC-01、M4 结论 | 全仓 | 已完成（`history/works/2026-11-10-scene-refactor/`）：4 场景、9 库 + 2 可执行、159 测试、4 架构门 |
@@ -73,7 +73,7 @@ updated: 2026-11-14
 | `T-1114-03` | `change` | `CMP-DOMAIN` | T-1114-01 | 已完成（2026-11-14） | `Message.cc` 可选字段 + `AddressList` 归一化 + 5 例值类型测试；`MailDomainTests` 8 例绿 |
 | `T-1114-04` | `change` | `CMP-EASADAPTER` | T-1114-02、T-1114-03 | 已完成（2026-11-14） | `EASMessage.cc → Message.cc` 映射 + 2 例 Cc 测试（Add/Change、缺失/空白）；`EASAdapterTests` 6 例绿 |
 | `T-1114-05` | `change` | `CMP-STORE` | T-1114-03 | 已完成（2026-11-14） | schema v9 `cc` 列、读写与 COALESCE、消息游标回填、pre-v9 迁移测试；173 测试全绿 |
-| `T-1114-06` | `change` | `CMP-SCN-COMPOSE` | T-1114-01、T-1114-03 | 待启动 | `replyAllSeed` + 地址解析/去重/排除自己 + 组件测试 |
+| `T-1114-06` | `change` | `CMP-SCN-COMPOSE` | T-1114-01、T-1114-03 | 已完成（2026-11-14） | `replyAllSeed` + 地址解析/去重/排除自己 + 3 例组件测试；176 测试全绿 |
 | `T-1114-07` | `change` | `CMP-PRES` | T-1114-06 | 待启动 | `Mode.replyAll`、`composeReplyAll`、视图模型测试 |
 | `T-1114-08` | `change` | `CMP-APP` | T-1114-07 | 待启动 | 工具栏「全部回复」按钮，视图不拼地址 |
 | `T-1114-09` | `verify` | SCN-0007 / REQ-0012 | 全部 | 待启动 | 3+1 绿、`SCN-0006` 回归、架构门过、`verified`/`delivered` |
