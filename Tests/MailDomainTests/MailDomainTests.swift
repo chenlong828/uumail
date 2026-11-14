@@ -18,6 +18,85 @@ struct MailDomainValueTests {
         #expect(message.folderID == nil)
         #expect(message.attachments.isEmpty)
         #expect(message.subject == nil)
+        #expect(message.cc == nil)
+    }
+
+    @Test("cc defaults to nil and takes part in message equality")
+    func messageCcEquality() {
+        let withoutCc = Message(serverID: "101", recipients: "a@corp.test")
+        #expect(withoutCc.cc == nil)
+
+        var withCc = withoutCc
+        withCc.cc = "c@corp.test"
+        #expect(withCc != withoutCc)
+
+        let constructed = Message(serverID: "101", recipients: "a@corp.test", cc: "c@corp.test")
+        #expect(withCc == constructed)
+    }
+
+    @Test("address lists split display-name envelopes into bare addresses")
+    func addressListNormalizesEnvelopes() {
+        let list = AddressList(
+            "\"张三\" <z@corp.test>; \"Doe, John\" <j@corp.test>, a@corp.test; b@corp.test"
+        )
+        #expect(list.addresses == ["z@corp.test", "j@corp.test", "a@corp.test", "b@corp.test"])
+        #expect(list.text == "z@corp.test; j@corp.test; a@corp.test; b@corp.test")
+        #expect(!list.isEmpty)
+
+        #expect(AddressList(nil).addresses.isEmpty)
+        #expect(AddressList(" ; , ").text == "")
+        #expect(AddressList([nil, "a@corp.test", ""]).addresses == ["a@corp.test"])
+    }
+
+    @Test("address lists skip bare display names and keep directory-shaped addresses")
+    func addressListKeepsAddressShapes() {
+        let list = AddressList(
+            "张三; team; /O=Corp/OU=Exchange/CN=Recipients/CN=z; CN=z; \"quoted@corp.test\"; Name <>"
+        )
+        #expect(list.addresses == ["/O=Corp/OU=Exchange/CN=Recipients/CN=z", "CN=z", "quoted@corp.test"])
+        #expect(AddressList("Team <team>").addresses == ["team"])
+        #expect(AddressList("Team <a@x;b@y>").addresses == ["a@x;b@y"])
+    }
+
+    @Test("address lists deduplicate case-insensitively and keep the first spelling")
+    func addressListDeduplicates() {
+        let list = AddressList("Z@Corp.Test; a@corp.test; z@corp.test; A@CORP.TEST")
+        #expect(list.addresses == ["Z@Corp.Test", "a@corp.test"])
+    }
+
+    @Test("address lists merge, remove, and subtract by case-insensitive address")
+    func addressListSetOperations() {
+        let list = AddressList("b@corp.test; A@corp.test")
+        let appended = list.appending(AddressList("a@CORP.test; c@corp.test"))
+        #expect(appended.addresses == ["b@corp.test", "A@corp.test", "c@corp.test"])
+
+        #expect(list.removing("a@corp.test").addresses == ["b@corp.test"])
+        #expect(list.removing(nil) == list)
+        #expect(AddressList("a@x; b@y; c@z").subtracting(AddressList("B@Y; z@z")).addresses == ["a@x", "c@z"])
+    }
+
+    @Test("set operations keep group-shaped addresses without re-parsing them")
+    func addressListSetOperationsKeepGroupShapedAddresses() {
+        let team = AddressList("Team <team>")
+        #expect(team.addresses == ["team"])
+
+        let appended = team.appending(AddressList("c@z"))
+        #expect(appended.addresses == ["team", "c@z"])
+
+        #expect(team.subtracting(AddressList("c@z")).addresses == ["team"])
+        #expect(team.removing("c@z").addresses == ["team"])
+    }
+
+    @Test("set operations keep separators inside angle brackets in one address")
+    func addressListSetOperationsKeepAngleInternalSeparators() {
+        let list = AddressList("Team <a@x;b@y>")
+        #expect(list.addresses == ["a@x;b@y"])
+
+        let appended = list.appending(AddressList("c@z"))
+        #expect(appended.addresses == ["a@x;b@y", "c@z"])
+
+        #expect(list.subtracting(AddressList("B@Y")).addresses == ["a@x;b@y"])
+        #expect(list.removing("c@z").addresses == ["a@x;b@y"])
     }
 
     @Test("an old keychain payload decodes with protocol defaults")

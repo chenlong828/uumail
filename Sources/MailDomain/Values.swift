@@ -72,6 +72,8 @@ public struct Message: Equatable, Sendable {
     public var subject: String?
     public var sender: String?
     public var recipients: String?
+    /// Carbon-copy envelope header; `nil` when the server did not send one.
+    public var cc: String?
     public var receivedRaw: String?
     public var isRead: Bool
     public var importance: Int?
@@ -89,7 +91,8 @@ public struct Message: Equatable, Sendable {
         importance: Int? = nil,
         bodyPreview: String? = nil,
         folderID: String? = nil,
-        attachments: [Attachment] = []
+        attachments: [Attachment] = [],
+        cc: String? = nil
     ) {
         self.serverID = serverID
         self.subject = subject
@@ -101,6 +104,7 @@ public struct Message: Equatable, Sendable {
         self.bodyPreview = bodyPreview
         self.folderID = folderID
         self.attachments = attachments
+        self.cc = cc
     }
 }
 

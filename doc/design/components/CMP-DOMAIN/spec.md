@@ -23,7 +23,7 @@ component: CMP-DOMAIN
 - 入口：`Sources/MailDomain/Values.swift#AccountID`、`Ports.swift#MailGateway`、`Errors.swift#MailError`、`Configuration.swift#ServerConfiguration`
 - 依赖：仅 Foundation。扇出 0。
 - 冷热：两侧共用；只做值传递。
-- 尺寸预算：目标 ≤800 行；当前 391 行；上限 120k token。
+- 尺寸预算：目标 ≤800 行；当前 515 行；上限 120k token。
 - 单独运行：`./Scripts/swiftw test --filter MailDomainTests`
 - 删除测试：删掉后 `Scenes`、`MailStore`、`SyncEngine`、`Outbox` 各自定义同名类型并互相转换 → 复杂度集中，是真边界。
 
@@ -84,11 +84,12 @@ component: CMP-DOMAIN
 
 | 契约 | 代码 | 测试 |
 |---|---|---|
-| 值类型与 `ServerConfiguration`（旧 Keychain 载荷带默认值解码） | ✅ `Values.swift`、`Configuration.swift` | `MailDomainTests` 3 例 |
+| 值类型与 `ServerConfiguration`（旧 Keychain 载荷带默认值解码） | ✅ `Values.swift`、`Configuration.swift` | `MailDomainTests` 10 例（含 SCN-0007 增量） |
 | `MailError` 9 个 case | ✅ `Errors.swift` | `EASAdapterTests` / `CompositionTests` 断言映射 |
 | `MailGateway` v2 + `FetchedBody` | ✅ `Ports.swift`、`Values.swift` | `EASAdapterTests` 4 例 |
 | `SyncStore` 同步端口，`MailStore` 直接遵循 | ✅ `Ports.swift`、`MailStore/SyncStoreConformance.swift` | `SyncEngineTests`、`MailStoreTests` |
 | 平台端口 | ✅ `Ports.swift` | `FileAttachmentFilesTests` 等 |
+| `Message.cc`（可选）与 `AddressList` 归一化 | ✅ `Values.swift`、`AddressList.swift` | `MailDomainTests` 7 例：cc 默认/相等、拆分、形态、去重、集合运算（含 `<team>` 与 `<>` 内 `;` 不二次解析） |
 
 ## 验证计划
 
@@ -104,7 +105,7 @@ component: CMP-DOMAIN
 - 只依赖 Foundation；不 import 任何本仓 target、GRDB、URLSession 包装。
 - 上层通过端口与值类型使用；实现只在组合根出现。
 
-## 设计增量：SCN-0007（T-1114-03，待实现）
+## 设计增量：SCN-0007（T-1114-03，2026-11-14 已实现）
 
 - `Message` 增 `cc: String?`，默认 `nil`，放在既有初始化参数尾部；`recipients` 仍是 To。只加可选字段，不改 `MailGateway`/`SyncStore` 签名。
 - 新增 `Sources/MailDomain/AddressList.swift` 的纯值类型（无 I/O）：
@@ -114,6 +115,7 @@ component: CMP-DOMAIN
       public private(set) var addresses: [String]
       public init(_ raw: String?)
       public init(_ raws: [String?])
+      init(normalized addresses: [String])  // internal: trusts already-normalized addresses
       public var isEmpty: Bool
       public var text: String
       public func appending(_ other: AddressList) -> AddressList
@@ -123,6 +125,8 @@ component: CMP-DOMAIN
   ```
 
 - 规则：顶层按 `;`/`,` 拆，引号内与 `<>` 内不拆；有 `<>` 取内部并保留（非空），否则去掉包裹引号后取整段；无 `<>` 时只保留含 `@`、以 `/` 开头、或含 `=` 且无空白的段；小写去重、保序，输出 `"; "` 连接。裸显示名/裸通讯组名跳过，不展开、不查 GAL；不实现 RFC 5322 完整解析（转义引号、组语法不特殊处理）。
+- 集合运算：`appending`/`removing`/`subtracting` 通过内部 `init(normalized:)` 接收已归一化地址，只做小写去重、不再拆分或形态过滤；避免 `Team <team>` 在二次解析时被丢、`Team <a@x;b@y>` 的 `;` 在二次解析时被拆成两址。
 - 兼容性：`AddressList` 是 `MailDomain` 内新增值类型，不是新组件/target；本模块仍只依赖 Foundation、无 I/O。
 - 定位不变：`AddressList` 是纯值类型上的归一化函数，不读写任何端口；`MailDomain` 仍是「值类型 + 端口 + 错误目录」，不引入业务状态或 I/O。
-- 测试：`MailDomainTests` 补 `Message.cc` 默认值/相等性与 `AddressList` 表驱动（引号、尖括号、重复、空输入、DN 形态）；`ComposeScene` 只调用，不复制规则。
+- 测试：`MailDomainTests` 补 `Message.cc` 默认值/相等性与 `AddressList` 表驱动（引号、尖括号、重复、空输入、DN 形态）；集合运算补 `<team>` 与 `<>` 内 `;` 的回归，锁住「已归一化地址不再解析」；`ComposeScene` 只调用，不复制规则。
+- 实现（2026-11-14）：`Values.swift#Message.cc` 默认 `nil`；`AddressList.swift` 按上述规则拆分归一化；集合运算走内部 `init(normalized:)`。`MailDomainTests` 10 例绿（新增 7 例：cc 默认/相等、拆分、形态、去重、集合运算、`<team>` 集合运算回归、`<>` 内 `;` 集合运算回归），全量 167 tests / 37 suites 绿。
