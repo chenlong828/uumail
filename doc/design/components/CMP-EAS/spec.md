@@ -149,4 +149,4 @@ component: CMP-EAS
 - 测试：`EASClientTests` 补两条 golden 请求字节、写响应新 key、写 401、读 401 不回归、`Status=3/4`、缺失 key；既有 27 例不回归。
 - 尺寸：`EASClient` 当前 759 行、组件 1183 行；预计 +50～60，仍低于 1500。
 
-**实现（2026-11-14）**：`EASClient.sync(change:)` 支持 `.read`（`Change/ApplicationData/Read=1`）与 `.delete`（`Delete/ServerId`），写请求只带 `SyncKey/CollectionId/Commands`；写 401 → `deviceNotRegistered`，读 401 仍 `authFailed`。`EASClientTests` 33 例绿，含两条 golden 请求体、写 key、写 401/3/4、`Collection` 内与顶层 `MoreAvailable`。**R16 已取证（2026-11-14 真机）**：两命令均被接受并返回新 key；`MoreAvailable` 在写响应中是正常分页；not-found 为成功 no-op；删除进入「已删除邮件」。证据见 `task-spaces/20261114-232232/evidence/r16-real-gateway.txt`。
+**实现（2026-11-14）**：`EASClient.sync(change:)` 支持 `.read`（`Change/ApplicationData/Read=1`）与 `.delete`（`Delete/ServerId`），写请求只带 `SyncKey/CollectionId/Commands`；写 401 → `deviceNotRegistered`，读 401 仍 `authFailed`。`EASClientTests` 32 例绿，含两条 golden 请求体、写 key、写 401/3/4、`Collection` 内与顶层 `MoreAvailable`。**R16 已取证（2026-11-14 真机）**：两命令均被接受并返回新 key；`MoreAvailable` 在写响应中是正常分页；not-found 为成功 no-op；删除进入「已删除邮件」。证据见 `task-spaces/20261114-232232/evidence/r16-real-gateway.txt`。
