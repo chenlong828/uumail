@@ -14,7 +14,7 @@ component: CMP-PRES
 - 单元：模块（薄视图模型 + 展示类型 + 文案/格式化）
 - 层 / 类型：L3；表现
 - 业务价值：把用户动作转成一次场景调用，把场景结果映射为可观察状态与中文文案；让视图退化成绑定。没有它，视图直接持有场景并写展示逻辑，状态机无法测试。
-- 负责 X：`MailboxViewModel`（文件夹/列表/正文/附件/同步/选择/搜索/自动刷新）、`ComposeViewModel`（新建/回复/转发、入队状态、草稿）、`AccountSetupViewModel`（validate/connect、忙碌态、错误）、展示类型（`BodyPresentation`、`BodyNotice`、`SyncPresentation`、`Selection`）、`ErrorText` 唯一文案表、`DisplayFormat`（发件人/日期）。
+- 负责 X：`MailboxViewModel`（文件夹/列表/正文/附件/同步/选择/搜索/自动刷新）、`ComposeViewModel`（新建/回复/全部回复/转发、入队状态、草稿）、`AccountSetupViewModel`（validate/connect、忙碌态、错误）、展示类型（`BodyPresentation`、`BodyNotice`、`SyncPresentation`、`Selection`）、`ErrorText` 唯一文案表、`DisplayFormat`（发件人/日期）。
 - 不负责 Y：业务规则、直接访问 `MailStore`/`MailGateway`/`Outbox`、轮询节奏（`SyncScene`）、缓存优先与补拉（`ReadScene`）。
 - 内部逻辑：
   - 每个动作只调一次场景方法；结果映射为状态，不重试、不判断业务分支。
@@ -27,7 +27,7 @@ component: CMP-PRES
 - 入口：`Sources/Presentation/MailboxViewModel.swift#MailboxViewModel`、`ComposeViewModel.swift#ComposeViewModel`、`AccountSetupViewModel.swift#AccountSetupViewModel`、`ErrorText.swift#ErrorText`、`PresentationTypes.swift#BodyPresentation`
 - 依赖：`Scenes`、`MailDomain`、Observation。扇出 1。
 - 冷热：热（主线程）。
-- 尺寸预算：单文件 ≤400 行；当前 `MailboxViewModel` 333、`ComposeViewModel` 172、`AccountSetupViewModel` 约 100；`Presentation` 共 722 行。
+- 尺寸预算：单文件 ≤400 行；当前 `MailboxViewModel` 345、`ComposeViewModel` 196、`AccountSetupViewModel` 约 100；`Presentation` 共 758 行。
 - 单独运行：`./Scripts/swiftw test --filter PresentationTests`
 - 删除测试：删掉后视图直接持有场景并写展示逻辑，测试无法覆盖状态机 → 复杂度集中，是真边界。
 
@@ -56,16 +56,18 @@ component: CMP-PRES
       public func download(_ attachment: Attachment) async -> URL?
       public func composeNew() -> ComposeViewModel
       public func composeReply() -> ComposeViewModel?
+      public func composeReplyAll() -> ComposeViewModel?
       public func composeForward() -> ComposeViewModel?
   }
 
   @MainActor @Observable public final class ComposeViewModel: Identifiable {
-      public enum Mode { case new, reply, forward }
+      public enum Mode { case new, reply, replyAll, forward }
       public enum Status { case editing, sending, queued, saved, failed(String) }
       public var to, cc, subject, body: String
       public private(set) var status: Status
       public var statusText: String?   // 「已加入发件箱」/「草稿已保存」/错误文案
       public var canSend: Bool
+      public convenience init(replyingAllTo message: Message, bodyHTML: String?, scene: ComposeScene, account: AccountID, onEnqueued: (@MainActor () -> Void)? = nil)
       public func send() async -> Bool
       public func saveDraft() -> Bool
   }
@@ -87,7 +89,7 @@ component: CMP-PRES
 - 超时 / 取消：`stopAutoRefresh` 取消消费 task；`openSelected` 切换邮件时取消上一封正文 task。
 - 一致性：动作返回后状态已更新；自动刷新的列表刷新来自本地库。
 - 兼容性：相对规格草案新增 `BodyNotice`（摘要回退与补拉提示）与 `onEnqueued`（组合根投递信号）；`BodyPresentation.loaded` 带 `truncated`。
-- 契约测试：`PresentationTests` 23 例（`MailboxViewModelTests` 14、`ComposeViewModelTests` 5、`AccountSetupViewModelTests` 4）。
+- 契约测试：`PresentationTests` 28 例（`MailboxViewModelTests` 16、`ComposeViewModelTests` 8、`AccountSetupViewModelTests` 4）。
 
 ## 实现进度（2026-11-14）
 
@@ -96,7 +98,7 @@ component: CMP-PRES
 | 文件夹/列表/选择/搜索 | ✅ | `MailboxViewModelTests` 选择、搜索、刷新用例 |
 | 正文缓存/补拉/失败/截断 | ✅ | 5 例正文状态机（含「预览不冒充正文」） |
 | 同步状态与中文文案 | ✅ | 「a failed sync ... shows the Chinese error text」「MailError maps to the single Chinese table」 |
-| 撰写/回复/转发/草稿/入队 | ✅ | `ComposeViewModelTests` 5 例 |
+| 撰写/回复/全部回复/转发/草稿/入队 | ✅ | `ComposeViewModelTests` 8 例（含全部回复预填、Cc 入 outbox、空 To 不可发） |
 | 配置页 validate/connect | ✅ | `AccountSetupViewModelTests` 4 例 |
 | 附件下载按钮 | ✅ | `download` 委托 `ReadScene`；无独立 VM 测试 |
 
@@ -114,7 +116,7 @@ component: CMP-PRES
 - 不 import `MailStore`/`SyncEngine`/`Outbox`/EAS/Composition；只经场景契约。
 - 不做业务判断：重试、退避、缓存优先、通知条件都在场景。
 
-## 设计增量：全部回复（T-1114-07，待实现）
+## 设计增量：全部回复（T-1114-07，已实现 2026-11-14）
 
 - `ComposeViewModel.Mode` 增 `case replyAll`；新增 convenience init：
 
@@ -131,3 +133,5 @@ component: CMP-PRES
 - `MailboxViewModel` 新增 `public func composeReplyAll() -> ComposeViewModel?`：取 `selectedMessage` 与 `quotableHTML`，只调一次 `scene.replyAllSeed`，把 `draft.to`/`draft.cc` 绑定到编辑器；不搬地址规则、不读 `Message` 字段做二次处理。
 - `canSend` 仍只判断 `to` 非空；全部回复把所有人排除后 `to` 为空，`canSend == false`，用户手填后可发。
 - 测试：`ComposeViewModelTests` 补「全部回复预填 To/Cc」与「空 To 时 `canSend == false`」；`MailboxViewModelTests` 补 `composeReplyAll` 的选中邮件接线。`Mode` 增加不改变既有 `new/reply/forward` 行为。
+
+**实现（2026-11-14）**：`ComposeViewModel.Mode` 增 `.replyAll`，新增 `init(replyingAllTo:bodyHTML:scene:account:onEnqueued:)`；`MailboxViewModel.composeReplyAll()` 只取 `selectedMessage`/`quotableHTML` 并调一次 `ComposeScene.replyAllSeed`，地址规则未上移到表现层。新增 5 例测试（`ComposeViewModelTests` 3、`MailboxViewModelTests` 2），`PresentationTests` 28 例绿。

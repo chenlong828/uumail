@@ -233,6 +233,50 @@ struct MailboxSearchTests {
     }
 }
 
+@Suite("MailboxViewModel compose")
+@MainActor
+struct MailboxComposeTests {
+    @Test("composeReplyAll seeds from the selected message, its stored Cc and the loaded body")
+    func composeReplyAllUsesSelection() async throws {
+        let fixture = try makeMailboxFixture(
+            messages: ["13": [
+                presentationMessage(
+                    "1",
+                    subject: "周报",
+                    sender: "\"张三\" <z@corp.test>",
+                    recipients: "a@corp.test",
+                    cc: "c@corp.test"
+                ),
+                presentationMessage("2", subject: "另一封", sender: "other@corp.test"),
+            ]]
+        )
+        try fixture.store.applyBody(
+            account: fixture.account,
+            folder: "13",
+            serverID: "1",
+            html: "<p>原文</p>"
+        )
+        fixture.viewModel.loadCached()
+        fixture.viewModel.select(messageID: "1")
+        await fixture.viewModel.openSelected()
+
+        let compose = fixture.viewModel.composeReplyAll()
+
+        #expect(compose?.mode == .replyAll)
+        #expect(compose?.to == "z@corp.test; a@corp.test")
+        #expect(compose?.cc == "c@corp.test")
+        #expect(compose?.subject == "Re: 周报")
+        #expect(compose?.body.contains("原文") == true)
+    }
+
+    @Test("composeReplyAll needs a selected message")
+    func composeReplyAllWithoutSelection() throws {
+        let fixture = try makeMailboxFixture()
+
+        #expect(fixture.viewModel.composeReplyAll() == nil)
+    }
+}
+
 @Suite("ErrorText")
 struct ErrorTextTests {
     @Test("MailError maps to the single Chinese table")

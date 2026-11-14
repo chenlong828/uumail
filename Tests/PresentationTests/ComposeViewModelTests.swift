@@ -108,4 +108,82 @@ struct ComposeViewModelTests {
         #expect(forward?.to.isEmpty == true)
         #expect(forward?.canSend == false)
     }
+
+    @Test("reply-all prefills To and Cc from the seed")
+    func replyAllPrefillsToAndCc() throws {
+        let fixture = try makeMailboxFixture()
+        let message = presentationMessage(
+            "1",
+            subject: "周报",
+            sender: "\"张三\" <z@corp.test>",
+            recipients: "a@corp.test; b@corp.test",
+            cc: "c@corp.test; b@corp.test"
+        )
+
+        let compose = ComposeViewModel(
+            replyingAllTo: message,
+            bodyHTML: "<p>hello</p>",
+            scene: fixture.composeScene,
+            account: fixture.account
+        )
+
+        #expect(compose.mode == .replyAll)
+        #expect(compose.to == "z@corp.test; a@corp.test; b@corp.test")
+        #expect(compose.cc == "c@corp.test", "b@ is already in To and must not repeat in Cc")
+        #expect(compose.subject == "Re: 周报")
+        #expect(compose.body.contains("hello"))
+    }
+
+    @Test("sending a reply-all carries To and Cc into the outbox row")
+    func replyAllSendCarriesCcIntoOutbox() async throws {
+        let fixture = try makeMailboxFixture()
+        let message = presentationMessage(
+            "1",
+            subject: "周报",
+            sender: "z@corp.test",
+            recipients: "a@corp.test",
+            cc: "c@corp.test"
+        )
+        let compose = ComposeViewModel(
+            replyingAllTo: message,
+            bodyHTML: nil,
+            scene: fixture.composeScene,
+            account: fixture.account
+        )
+
+        let sent = await compose.send()
+
+        #expect(sent)
+        #expect(compose.status == .queued)
+        let pending = try fixture.store.pendingOutbox(account: fixture.account)
+        #expect(pending.count == 1)
+        #expect(pending.first?.to == "z@corp.test; a@corp.test")
+        #expect(pending.first?.cc == "c@corp.test")
+        #expect(fixture.gateway.sendCalls == 0, "sending only enqueues; the outbox pump delivers")
+    }
+
+    @Test("reply-all with an empty To cannot send until the user fills it")
+    func replyAllEmptyToCannotSend() throws {
+        let fixture = try makeMailboxFixture()
+        let message = presentationMessage(
+            "1",
+            subject: "周报",
+            sender: "JDOE@corp.test",
+            recipients: "jdoe@corp.test",
+            cc: "jdoe@corp.test"
+        )
+        let compose = ComposeViewModel(
+            replyingAllTo: message,
+            bodyHTML: nil,
+            scene: fixture.composeScene,
+            account: fixture.account
+        )
+
+        #expect(compose.to.isEmpty, "the account's own address is never re-added")
+        #expect(compose.cc.isEmpty)
+        #expect(compose.canSend == false)
+
+        compose.to = "a@corp.test"
+        #expect(compose.canSend)
+    }
 }

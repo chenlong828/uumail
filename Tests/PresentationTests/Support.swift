@@ -125,6 +125,8 @@ func presentationMessage(
     _ serverID: String,
     subject: String = "A",
     sender: String? = "a@b.c",
+    recipients: String? = nil,
+    cc: String? = nil,
     preview: String? = nil,
     folderID: String = "13"
 ) -> Message {
@@ -132,10 +134,12 @@ func presentationMessage(
         serverID: serverID,
         subject: subject,
         sender: sender,
+        recipients: recipients,
         receivedRaw: nil,
         isRead: true,
         bodyPreview: preview,
-        folderID: folderID
+        folderID: folderID,
+        cc: cc
     )
 }
 

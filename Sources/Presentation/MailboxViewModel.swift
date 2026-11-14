@@ -290,6 +290,18 @@ public final class MailboxViewModel {
         )
     }
 
+    /// Reply-all editor: the seed call is the only place addresses are computed.
+    public func composeReplyAll() -> ComposeViewModel? {
+        guard let message = selectedMessage else { return nil }
+        return ComposeViewModel(
+            replyingAllTo: message,
+            bodyHTML: quotableHTML,
+            scene: composeScene,
+            account: account,
+            onEnqueued: onEnqueued
+        )
+    }
+
     public func composeForward() -> ComposeViewModel? {
         guard let message = selectedMessage else { return nil }
         return ComposeViewModel(

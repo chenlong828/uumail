@@ -3,14 +3,15 @@ import MailDomain
 import Observation
 import Scenes
 
-/// Compose state for new mail, reply and forward (spec §4.11). The editor text lives
-/// here; the scene owns the seeding/quoting rules and the outbox write.
+/// Compose state for new mail, reply, reply-all and forward (spec §4.11). The editor
+/// text lives here; the scene owns the seeding/quoting rules and the outbox write.
 @MainActor
 @Observable
 public final class ComposeViewModel: Identifiable {
     public enum Mode: Equatable, Sendable {
         case new
         case reply
+        case replyAll
         case forward
     }
 
@@ -70,6 +71,29 @@ public final class ComposeViewModel: Identifiable {
         let draft = scene.replySeed(to: message, bodyHTML: bodyHTML)
         self.init(
             mode: .reply,
+            to: draft.to,
+            cc: draft.cc ?? "",
+            subject: draft.subject,
+            body: draft.body,
+            inReplyTo: draft.inReplyTo,
+            scene: scene,
+            account: account,
+            onEnqueued: onEnqueued
+        )
+    }
+
+    /// Reply-all seed built by `ComposeScene`: sender and original recipients in To,
+    /// original Cc kept in Cc, de-duplicated and with the current account excluded.
+    public convenience init(
+        replyingAllTo message: Message,
+        bodyHTML: String?,
+        scene: ComposeScene,
+        account: AccountID,
+        onEnqueued: (@MainActor () -> Void)? = nil
+    ) {
+        let draft = scene.replyAllSeed(to: message, bodyHTML: bodyHTML, account: account)
+        self.init(
+            mode: .replyAll,
             to: draft.to,
             cc: draft.cc ?? "",
             subject: draft.subject,

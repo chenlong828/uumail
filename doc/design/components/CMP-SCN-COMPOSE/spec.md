@@ -56,7 +56,7 @@ component: CMP-SCN-COMPOSE
 - 超时 / 取消：入队无超时；取消/重试经 `Outbox` 的行级契约。
 - 一致性：`send` 返回时行已落库；`pending` 只读 outbox 行。
 - 兼容性：`replySeed/forwardSeed` 行为照搬旧 `ComposeModel`，未改引用规则。
-- 契约测试：`ScenesTests/ComposeSceneTests.swift` 9 例；`PresentationTests/ComposeViewModelTests.swift` 5 例。
+- 契约测试：`ScenesTests/ComposeSceneTests.swift` 9 例；`PresentationTests/ComposeViewModelTests.swift` 8 例。
 
 ## 实现进度（2026-11-14）
 
