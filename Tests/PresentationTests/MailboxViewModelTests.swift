@@ -1,9 +1,10 @@
 import Foundation
 import MailDomain
 import MailStore
+import Scenes
 import Testing
 
-import Presentation
+@testable import Presentation
 
 @Suite("MailboxViewModel sync")
 @MainActor
@@ -368,15 +369,6 @@ struct MailboxDwellTests {
         #expect(try fixture.store.messages(account: fixture.account, folder: "13").first?.isRead == true)
     }
 
-    @Test("T-SCN-0008-04: background does not mark the message read")
-    func dwellDoesNotRunInBackground() async throws {
-        let fixture = try fixture(messages: [presentationMessage("1", isRead: false)], sleepMilliseconds: 20)
-        fixture.viewModel.setApplicationActive(false)
-        fixture.viewModel.loadCached()
-        try await Task.sleep(for: .milliseconds(80))
-        #expect(try fixture.store.messages(account: fixture.account, folder: "13").first?.isRead == false)
-    }
-
     @Test("T-SCN-0008-03: an already-read row never writes again")
     func dwellMarkIsPersistentAndIdempotent() async throws {
         let write = PresentationRecordingWriteGateway(delta: MessageDelta(
@@ -420,6 +412,158 @@ struct MailboxDwellTests {
         #expect(fixture.viewModel.deleteErrorText == nil)
         #expect(fixture.viewModel.sync.phase == .idle)
     }
+
+    @Test("T-SCN-0008-02: switching folders cancels the running dwell")
+    func dwellCancelsOnFolderSwitch() async throws {
+        let write = PresentationRecordingWriteGateway(delta: MessageDelta(
+            added: [], changed: [], removedServerIDs: [], syncKey: "3", moreAvailable: false
+        ))
+        let fixture = try makeMailboxFixture(
+            folders: [presentationInbox, presentationDrafts],
+            messages: ["13": [presentationMessage("1", isRead: false)], "4": []],
+            write: write,
+            dwellSleep: { _ in try await Task.sleep(for: .milliseconds(150)) }
+        )
+        fixture.viewModel.loadCached()
+        try await Task.sleep(for: .milliseconds(40))
+        fixture.viewModel.select(folderID: "4")
+        try await Task.sleep(for: .milliseconds(220))
+
+        #expect(try fixture.store.messages(account: fixture.account, folder: "13").first?.isRead == false)
+        #expect(fixture.viewModel.selectedMessage == nil)
+        #expect(await write.calls.isEmpty)
+    }
+
+    @Test("T-SCN-0008-02: entering and staying in search mode never starts the clock")
+    func dwellDoesNotRunInSearchMode() async throws {
+        let write = PresentationRecordingWriteGateway(delta: MessageDelta(
+            added: [], changed: [], removedServerIDs: [], syncKey: "3", moreAvailable: false
+        ))
+        let fixture = try makeMailboxFixture(
+            messages: ["13": [presentationMessage("1", subject: "周报会议", isRead: false)]],
+            write: write,
+            dwellSleep: { _ in try await Task.sleep(for: .milliseconds(150)) }
+        )
+        fixture.viewModel.loadCached()
+        try await Task.sleep(for: .milliseconds(40))
+        await fixture.viewModel.search("周报")
+        try await Task.sleep(for: .milliseconds(220))
+
+        #expect(fixture.viewModel.selection.searchQuery == "周报")
+        #expect(try fixture.store.messages(account: fixture.account, folder: "13").first?.isRead == false)
+        #expect(await write.calls.isEmpty)
+
+        // Staying in search (a reload / second search) must not restart a clock either.
+        fixture.viewModel.loadCached()
+        await fixture.viewModel.search("周报")
+        try await Task.sleep(for: .milliseconds(220))
+        #expect(try fixture.store.messages(account: fixture.account, folder: "13").first?.isRead == false)
+        #expect(await write.calls.isEmpty)
+    }
+
+    @Test("T-SCN-0008-02: deleting the selected message cancels its dwell")
+    func dwellCancelsWhenSelectedMessageIsDeleted() async throws {
+        let sleeper = DwellSleeper()
+        let write = PresentationRecordingWriteGateway(delta: MessageDelta(
+            added: [], changed: [], removedServerIDs: ["1"], syncKey: "3", moreAvailable: false
+        ))
+        let fixture = try makeMailboxFixture(
+            messages: ["13": [presentationMessage("1", isRead: false)]],
+            write: write,
+            dwellSleep: { duration in try await sleeper.sleep(duration) }
+        )
+        fixture.viewModel.loadCached()
+        for _ in 0..<200 {
+            if await sleeper.count == 1 { break }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        #expect(await sleeper.count == 1, "the dwell clock must be running before the delete")
+
+        await fixture.viewModel.deleteSelected()
+        for _ in 0..<200 {
+            if await sleeper.cancelled == 1 { break }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+
+        #expect(await sleeper.cancelled == 1, "delete must cancel the selected row's clock")
+        #expect(await write.calls == [.delete(collectionID: "13", serverID: "1", key: "2")])
+    }
+
+    @Test("T-SCN-0008-04: background for a full dwell marks nothing read and sends no network")
+    func dwellDoesNotRunInBackground() async throws {
+        let write = PresentationRecordingWriteGateway(delta: MessageDelta(
+            added: [], changed: [], removedServerIDs: [], syncKey: "3", moreAvailable: false
+        ))
+        let fixture = try fixture(
+            messages: [presentationMessage("1", isRead: false)],
+            write: write,
+            sleepMilliseconds: 20
+        )
+        fixture.viewModel.setApplicationActive(false)
+        fixture.viewModel.loadCached()
+        try await Task.sleep(for: .milliseconds(120))
+
+        #expect(try fixture.store.messages(account: fixture.account, folder: "13").first?.isRead == false)
+        #expect(await write.calls.isEmpty)
+    }
+
+    @Test("T-SCN-0008-04: returning to the foreground requires a fresh full dwell")
+    func dwellForegroundRestartNeedsFullDwell() async throws {
+        let write = PresentationRecordingWriteGateway(delta: MessageDelta(
+            added: [], changed: [], removedServerIDs: [], syncKey: "3", moreAvailable: false
+        ))
+        let fixture = try fixture(
+            messages: [presentationMessage("1", isRead: false)],
+            write: write,
+            sleepMilliseconds: 200
+        )
+        fixture.viewModel.loadCached()
+        try await Task.sleep(for: .milliseconds(40))
+        fixture.viewModel.setApplicationActive(false)
+        try await Task.sleep(for: .milliseconds(260))
+        #expect(try fixture.store.messages(account: fixture.account, folder: "13").first?.isRead == false)
+        #expect(await write.calls.isEmpty)
+
+        fixture.viewModel.setApplicationActive(true)
+        try await Task.sleep(for: .milliseconds(80))
+        #expect(try fixture.store.messages(account: fixture.account, folder: "13").first?.isRead == false,
+                "less than ten seconds after re-activation must not mark it read")
+        #expect(await write.calls.isEmpty)
+
+        try await Task.sleep(for: .milliseconds(220))
+        #expect(try fixture.store.messages(account: fixture.account, folder: "13").first?.isRead == true)
+    }
+
+    @Test("T-SCN-0008-03: a Read=0 echo in the write response cannot flip the local read")
+    func dwellServerReadZeroEchoDoesNotFlipLocal() async throws {
+        let write = PresentationRecordingWriteGateway(delta: MessageDelta(
+            added: [],
+            changed: [
+                Message(serverID: "1", isRead: false, folderID: "13"),
+                Message(serverID: "2", subject: "邻居-更新", isRead: true, folderID: "13"),
+            ],
+            removedServerIDs: [],
+            syncKey: "3",
+            moreAvailable: false
+        ))
+        let fixture = try fixture(
+            messages: [presentationMessage("1", subject: "目标", isRead: false), presentationMessage("2", isRead: false)],
+            write: write,
+            sleepMilliseconds: 20
+        )
+        fixture.viewModel.loadCached()
+        fixture.viewModel.select(messageID: "1")
+        for _ in 0..<200 {
+            if await write.calls.count == 1 { break }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        try await Task.sleep(for: .milliseconds(40))
+
+        #expect(try fixture.store.messages(account: fixture.account, folder: "13").first { $0.serverID == "1" }?.isRead == true)
+        #expect(fixture.viewModel.visibleMessages.first { $0.serverID == "1" }?.isRead == true)
+        #expect(try fixture.store.messages(account: fixture.account, folder: "13").first { $0.serverID == "2" }?.subject == "邻居-更新")
+    }
+
 }
 
 // MARK: - Delete
@@ -487,6 +631,10 @@ struct MailboxDeleteTests {
         let keyBefore = fixture.viewModel.selectedListKey
 
         await fixture.viewModel.deleteSelected()
+        for _ in 0..<200 {
+            if fixture.viewModel.body == .loaded(html: "<p>第一封正文</p>", truncated: false) { break }
+            try await Task.sleep(for: .milliseconds(5))
+        }
 
         #expect(Set(fixture.viewModel.visibleMessages.map(\.serverID)) == ["1", "2"])
         #expect(fixture.viewModel.selectedListKey == keyBefore)
@@ -597,13 +745,127 @@ struct MailboxDeleteTests {
         await gate.open()
         await task.value
     }
-}
 
+    @Test("T-SCN-0009-01: deleting a non-last row opens the next message's body")
+    func deleteNonLastRowLoadsNextBody() async throws {
+        let write = PresentationRecordingWriteGateway(delta: deleteDelta(removed: ["2"]))
+        let fixture = try makeMailboxFixture(
+            messages: ["13": [
+                presentationMessage("1", subject: "第一封"),
+                presentationMessage("2", subject: "第二封"),
+            ]],
+            write: write
+        )
+        try fixture.store.applyBody(account: fixture.account, folder: "13", serverID: "1", html: "<p>第一封正文</p>")
+        try fixture.store.applyBody(account: fixture.account, folder: "13", serverID: "2", html: "<p>第二封正文</p>")
+        fixture.viewModel.loadCached()
+        for _ in 0..<200 {
+            if fixture.viewModel.body == .loaded(html: "<p>第二封正文</p>", truncated: false) { break }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        #expect(fixture.viewModel.selection.messageID == "2")
+
+        await fixture.viewModel.deleteSelected()
+        for _ in 0..<200 {
+            if fixture.viewModel.body == .loaded(html: "<p>第一封正文</p>", truncated: false) { break }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+
+        #expect(fixture.viewModel.selection.messageID == "1")
+        #expect(fixture.viewModel.body == .loaded(html: "<p>第一封正文</p>", truncated: false))
+        #expect(try fixture.store.messages(account: fixture.account, folder: "13").map(\.serverID) == ["1"])
+    }
+
+    @Test("T-SCN-0009-04: a failed delete restores the body and a retry then succeeds")
+    func deleteFailureThenRetrySucceeds() async throws {
+        let write = PresentationRecordingWriteGateway(delta: deleteDelta(removed: ["1"]))
+        await write.setFailure(.offline)
+        let fixture = try makeMailboxFixture(
+            messages: ["13": [
+                presentationMessage("1", subject: "第一封"),
+                presentationMessage("2", subject: "第二封"),
+            ]],
+            write: write
+        )
+        try fixture.store.applyBody(account: fixture.account, folder: "13", serverID: "1", html: "<p>第一封正文</p>")
+        try fixture.store.applyBody(account: fixture.account, folder: "13", serverID: "2", html: "<p>第二封正文</p>")
+        fixture.viewModel.loadCached()
+        fixture.viewModel.select(messageID: "1")
+        for _ in 0..<200 {
+            if fixture.viewModel.body == .loaded(html: "<p>第一封正文</p>", truncated: false) { break }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+
+        await fixture.viewModel.deleteSelected()
+        for _ in 0..<200 {
+            if fixture.viewModel.body == .loaded(html: "<p>第一封正文</p>", truncated: false) { break }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+
+        #expect(Set(fixture.viewModel.visibleMessages.map(\.serverID)) == ["1", "2"])
+        #expect(fixture.viewModel.selection.messageID == "1")
+        #expect(fixture.viewModel.body == .loaded(html: "<p>第一封正文</p>", truncated: false),
+                "the failed delete must reopen the original body")
+        #expect(fixture.viewModel.deleteErrorText?.contains("网络") == true)
+        #expect(try fixture.store.messages(account: fixture.account, folder: "13").count == 2)
+
+        await write.setFailure(nil)
+        await fixture.viewModel.deleteSelected()
+
+        #expect(fixture.viewModel.deleteErrorText == nil)
+        #expect(try fixture.store.messages(account: fixture.account, folder: "13").map(\.serverID) == ["2"])
+        #expect(await write.calls.count == 2, "the retry sends the delete again")
+    }
+
+    @Test("T-SCN-0009-03: a delete response with no removed id is still a successful not-found delete")
+    func deleteNotFoundDeltaStillCommits() async throws {
+        let write = PresentationRecordingWriteGateway(delta: MessageDelta(
+            added: [], changed: [], removedServerIDs: [], syncKey: "3", moreAvailable: false
+        ))
+        let fixture = try makeMailboxFixture(
+            messages: ["13": [presentationMessage("1"), presentationMessage("2")]],
+            write: write
+        )
+        fixture.viewModel.loadCached()
+        fixture.viewModel.select(messageID: "1")
+
+        await fixture.viewModel.deleteSelected()
+
+        #expect(fixture.viewModel.deleteErrorText == nil)
+        #expect(try fixture.store.messages(account: fixture.account, folder: "13").map(\.serverID) == ["2"])
+        #expect(try fixture.store.syncKey(account: fixture.account, collection: "13") == "3")
+    }
+
+    @Test("B5: a temporarily hidden row cannot be selected or opened")
+    func hiddenRowCannotBeSelectedOrOpened() async throws {
+        let fixture = try makeMailboxFixture(
+            messages: ["13": [presentationMessage("1"), presentationMessage("2")]]
+        )
+        fixture.viewModel.loadCached()
+        fixture.viewModel.select(messageID: "1")
+        let ref = MessageRef(folderID: "13", serverID: "1")
+
+        #expect(fixture.viewModel.deletion.begin(ref) == true)
+        #expect(fixture.viewModel.visibleMessages.map(\.serverID) == ["2"])
+        #expect(fixture.viewModel.selectedMessage == nil)
+        #expect(fixture.viewModel.selectedRef == nil)
+
+        // The compatibility path (`selection.messageID` only) is filtered too.
+        fixture.viewModel.selectedListKey = nil
+        fixture.viewModel.selection.messageID = "1"
+        #expect(fixture.viewModel.selectedMessage == nil)
+
+        fixture.viewModel.deletion.clearHidden(ref)
+        #expect(fixture.viewModel.selectedMessage?.serverID == "1")
+    }
+
+}
 
 /// A controllable sleeper that counts clock starts. A reload that incorrectly restarts the
 /// dwell would request a second sleep.
 actor DwellSleeper {
     private(set) var count = 0
+    private(set) var cancelled = 0
     private var waiter: CheckedContinuation<Void, Error>?
 
     func sleep(_ duration: Duration) async throws {
@@ -623,6 +885,7 @@ actor DwellSleeper {
     }
 
     private func cancel() {
+        cancelled += 1
         waiter?.resume(throwing: CancellationError())
         waiter = nil
     }
