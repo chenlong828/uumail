@@ -159,8 +159,19 @@ func makeSyncDeltas() -> [String: MessageDelta] {
     ]
 }
 
+/// Test-only write stand-in: composition assembly never exercises mailbox writes.
+struct UnsupportedWriteGateway: MailWriteGateway {
+    func markRead(collectionID: String, serverID: String, syncKey: String) async throws -> MessageDelta {
+        throw MailError.unsupported
+    }
+
+    func delete(collectionID: String, serverID: String, syncKey: String) async throws -> MessageDelta {
+        throw MailError.unsupported
+    }
+}
+
 func makeGatewayFactory(_ gateway: any MailGateway) -> GatewayFactory {
-    { _ in gateway }
+    { _ in GatewayEndpoints(read: gateway, write: UnsupportedWriteGateway()) }
 }
 
 func makeTemporaryDirectory() -> URL {

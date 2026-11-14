@@ -62,7 +62,8 @@ public struct CommandLineComposition {
         gatewayFactory: GatewayFactory? = nil
     ) async throws -> CommandLineComposition {
         let store = try MailStore(path: databasePath)
-        let gateway = (gatewayFactory ?? { PlatformGateway.make($0) })(configuration)
+        let endpoints = (gatewayFactory ?? { PlatformGateway.make($0) })(configuration)
+        let gateway = endpoints.read
 
         let account: AccountID
         if let existing = try store.accounts().first {

@@ -66,7 +66,7 @@ let package = Package(
         .testTarget(name: "EASAdapterTests", dependencies: ["EASAdapter", "EASClient", "MailDomain"]),
         .testTarget(
             name: "CompositionTests",
-            dependencies: ["Composition", "MailDomain", "MailStore", "Outbox", "Presentation"]
+            dependencies: ["Composition", "EASAdapter", "MailDomain", "MailStore", "Outbox", "Presentation"]
         ),
         .testTarget(
             name: "MailStoreTests",

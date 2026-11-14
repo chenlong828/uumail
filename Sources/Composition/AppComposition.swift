@@ -145,7 +145,8 @@ public final class AppComposition {
     /// Constructs one mailbox object graph. The pump is attached to the view model's
     /// enqueue hook so a send is delivered without waiting for the next tick.
     private func attachMailbox(configuration: ServerConfiguration, account: AccountID) {
-        let gateway = gatewayFactory(configuration)
+        let endpoints = gatewayFactory(configuration)
+        let gateway = endpoints.read
         let engine = SyncEngine(gateway: gateway, store: store, account: account)
         let outbox = Outbox(store: store, gateway: gateway, clock: SystemMailClock())
         let pump = OutboxPump(outbox: outbox, account: account)
@@ -171,7 +172,7 @@ public final class AppComposition {
         gatewayFactory: GatewayFactory
     ) -> AccountSetupScene {
         AccountSetupScene(
-            gateway: gatewayFactory(ConfigurationSource.serverConfiguration(from: input)),
+            gateway: gatewayFactory(ConfigurationSource.serverConfiguration(from: input)).read,
             store: store,
             credentials: credentials
         )

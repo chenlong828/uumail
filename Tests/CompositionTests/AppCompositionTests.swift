@@ -1,3 +1,4 @@
+import EASAdapter
 import Foundation
 import MailDomain
 import MailStore
@@ -131,6 +132,13 @@ struct AppCompositionTests {
         #expect(retriedProbeCalls == 1)
         #expect(retriedProvisionCalls == 0)
         composition.stop()
+    }
+
+    @Test("production endpoints expose the same EASAdapter on read and write")
+    func productionEndpointsUseAdapterForBothPorts() {
+        let endpoints = PlatformGateway.make(makeAssemblyConfiguration())
+        #expect(endpoints.read is EASAdapter)
+        #expect(endpoints.write is EASAdapter, "the write port is non-optional and production-backed")
     }
 
     @Test("without a stored configuration the app stays on the setup page and makes no call")
