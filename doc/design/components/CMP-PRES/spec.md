@@ -113,3 +113,21 @@ component: CMP-PRES
 
 - 不 import `MailStore`/`SyncEngine`/`Outbox`/EAS/Composition；只经场景契约。
 - 不做业务判断：重试、退避、缓存优先、通知条件都在场景。
+
+## 设计增量：全部回复（T-1114-07，待实现）
+
+- `ComposeViewModel.Mode` 增 `case replyAll`；新增 convenience init：
+
+  ```swift
+  public convenience init(
+      replyingAllTo message: Message,
+      bodyHTML: String?,
+      scene: ComposeScene,
+      account: AccountID,
+      onEnqueued: (@MainActor () -> Void)? = nil
+  )
+  ```
+
+- `MailboxViewModel` 新增 `public func composeReplyAll() -> ComposeViewModel?`：取 `selectedMessage` 与 `quotableHTML`，只调一次 `scene.replyAllSeed`，把 `draft.to`/`draft.cc` 绑定到编辑器；不搬地址规则、不读 `Message` 字段做二次处理。
+- `canSend` 仍只判断 `to` 非空；全部回复把所有人排除后 `to` 为空，`canSend == false`，用户手填后可发。
+- 测试：`ComposeViewModelTests` 补「全部回复预填 To/Cc」与「空 To 时 `canSend == false`」；`MailboxViewModelTests` 补 `composeReplyAll` 的选中邮件接线。`Mode` 增加不改变既有 `new/reply/forward` 行为。

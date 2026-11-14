@@ -103,3 +103,26 @@ component: CMP-DOMAIN
 
 - 只依赖 Foundation；不 import 任何本仓 target、GRDB、URLSession 包装。
 - 上层通过端口与值类型使用；实现只在组合根出现。
+
+## 设计增量：SCN-0007（T-1114-03，待实现）
+
+- `Message` 增 `cc: String?`，默认 `nil`，放在既有初始化参数尾部；`recipients` 仍是 To。只加可选字段，不改 `MailGateway`/`SyncStore` 签名。
+- 新增 `Sources/MailDomain/AddressList.swift` 的纯值类型（无 I/O）：
+
+  ```swift
+  public struct AddressList: Equatable, Sendable {
+      public private(set) var addresses: [String]
+      public init(_ raw: String?)
+      public init(_ raws: [String?])
+      public var isEmpty: Bool
+      public var text: String
+      public func appending(_ other: AddressList) -> AddressList
+      public func removing(_ address: String?) -> AddressList
+      public func subtracting(_ other: AddressList) -> AddressList
+  }
+  ```
+
+- 规则：顶层按 `;`/`,` 拆，引号内与 `<>` 内不拆；有 `<>` 取内部并保留（非空），否则去掉包裹引号后取整段；无 `<>` 时只保留含 `@`、以 `/` 开头、或含 `=` 且无空白的段；小写去重、保序，输出 `"; "` 连接。裸显示名/裸通讯组名跳过，不展开、不查 GAL；不实现 RFC 5322 完整解析（转义引号、组语法不特殊处理）。
+- 兼容性：`AddressList` 是 `MailDomain` 内新增值类型，不是新组件/target；本模块仍只依赖 Foundation、无 I/O。
+- 定位不变：`AddressList` 是纯值类型上的归一化函数，不读写任何端口；`MailDomain` 仍是「值类型 + 端口 + 错误目录」，不引入业务状态或 I/O。
+- 测试：`MailDomainTests` 补 `Message.cc` 默认值/相等性与 `AddressList` 表驱动（引号、尖括号、重复、空输入、DN 形态）；`ComposeScene` 只调用，不复制规则。

@@ -1,6 +1,7 @@
 ---
 layer: plan
 module: global
+scope: project:uumail
 status: current
 updated: 2026-11-14
 ---
@@ -8,8 +9,8 @@ updated: 2026-11-14
 # 路线图
 
 只记里程碑、工序与依赖。需求状态看 `requirements/`，设计真相看 `design/`。
-首版范围已于 2026-11-09 确认：REQ-0001…0007 `accepted`（`history/decisions/2026-11-09-scope-baseline.md`）。
-工序目录名在立项时按 `works/YYYY-MM-DD-<短名>/` 生成，下表用工序代号指代。
+首版范围已于 2026-11-09 确认：REQ-0001…0007 `accepted`（`history/decisions/2026-11-09-scope-baseline.md`）。2026-11-14 追加：REQ-0012「全部回复的收件人与抄送预填」`accepted`（W-M2-03，任务表见工作区 `task-spaces/20261114-103223/brief.md`）。
+工序目录名沿用历史 `works/YYYY-MM-DD-<短名>/`；2026-11-14 起新工序的任务表与过程记录放工作区 `task-spaces/<run>/`，`works/` 只保留历史。
 
 ## 里程碑
 
@@ -17,7 +18,7 @@ updated: 2026-11-14
 |---|---|---|---|
 | M0 协议探针 | 证明外网 EAS 通道可用，锁定线格式、设备身份与命令覆盖 | 命令行跑通 `OPTIONS → Provision → FolderSync → Sync → ItemOperations → SendMail`，实测状态码与能力矩阵成文 | 已完成（`history/works/2026-11-09-eas-probe/`） |
 | M1 只读客户端 | 账号接入、文件夹树、列表、正文、附件、离线缓存 | 五个只读场景（SCN-0001…0005）全部 `verified` | 进行中：账号、文件夹树、列表、正文已通；附件 02–04 未实现；场景卡待转 `verified` |
-| M2 发送与草稿 | Outbox、SendMail、回复/转发、草稿、Sent 镜像 | send-message 场景 `verified`；离线发送可在联网后只发一次 | 进行中：Outbox 入队/冷投递/重试已实现；Sent 镜像与撰写附件未做；场景卡待 `verified` |
+| M2 发送与草稿 | Outbox、SendMail、回复/转发、草稿、Sent 镜像、全部回复 | send-message 场景 `verified`；离线发送可在联网后只发一次 | 进行中：Outbox 入队/冷投递/重试已实现；Sent 镜像与撰写附件未做；全部回复设计完成（`SCN-0007` `designed`），实现待启动；场景卡待 `verified` |
 | M3 体验 | Ping、通知、本地搜索、错误恢复与空态 | 新邮件端到端 ≤ 60s 可见（Ping 或轮询）；搜索、通知场景 `verified` | 进行中：Ping 不支持 → 5 分钟轮询；搜索与通知已落地，场景卡待 `verified` |
 | M4 加固 | 策略、限流、安全、性能 | 限流退避、缓存上限、安全审计、5k 性能基线已落 | 已完成（`history/works/2026-11-09-m4-hardening/`） |
 
@@ -32,6 +33,7 @@ updated: 2026-11-14
 | W-M1-04 正文渲染与附件下载 | M1 | W-M1-03 | CMP-STORE、CMP-EAS、AttachmentCache | 已实现；SCN-0004、SCN-0005 待 `verified`（附件真机未验） |
 | W-M2-01 Outbox 与发信 | M2 | W-M1-04 | CMP-OUT、CMP-EAS | 已完成（无过程记录，见下）：协议、队列、撰写界面；真机自测信投递成功 |
 | W-M2-02 回复/转发与草稿 | M2 | W-M2-01 | CMP-OUT、CMP-STORE | 已实现（无过程记录，见下）；回复/转发复用 `SCN-0006`，草稿无场景卡 |
+| W-M2-03 全部回复与抄送预填 | M2 | W-M2-02；REQ-0012 `accepted` | CMP-EAS、CMP-DOMAIN、CMP-EASADAPTER、CMP-STORE、CMP-SCN-COMPOSE、CMP-PRES、CMP-APP | 设计完成：`SCN-0007` `designed`（2026-11-14）；实现待 P1 确认后启动；任务表 `task-spaces/20261114-103223/brief.md` |
 | W-M3-01 Ping 与通知 | M3 | W-M2-01 | CMP-SYNC、通知策略 | Ping 实测不支持 → 轮询；通知已落地（无过程记录，无独立场景卡） |
 | W-M3-02 本地搜索 | M3 | W-M1-03 | CMP-STORE | 已实现（无过程记录，无独立场景卡）；FTS 不扫正文列 |
 | W-SCN-REFACTOR 场景收口与分层重构 | M1/M2/M3 结构前置 | W-DOC-01、M4 结论 | 全仓 | 已完成（`history/works/2026-11-10-scene-refactor/`）：4 场景、9 库 + 2 可执行、159 测试、4 架构门 |

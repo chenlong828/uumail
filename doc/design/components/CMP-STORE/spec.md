@@ -23,7 +23,7 @@ component: CMP-STORE
 - 入口：`Sources/MailStore/MailStore.swift#MailStore`、`SyncStoreConformance.swift`（`MailStore: SyncStore`）
 - 依赖：`MailDomain`、GRDB。扇出 2。
 - 冷热：读热、写冷热混合；`DatabaseQueue` 单写。
-- 尺寸预算：目标 ≤900 行；当前 890 行（含迁移与 conformance）。
+- 尺寸预算：目标 ≤900 行；当前 852 行（`MailStore.swift` 818 + `SyncStoreConformance.swift` 34，`wc -l` 2026-11-14；此前记 890 为旧值）。
 - 单独运行：`./Scripts/swiftw test --filter MailStoreTests`
 - 删除测试：删掉后场景、同步、搜索各自拼 SQL 并各自维护 SyncKey → 复杂度分散，是真边界。
 
@@ -82,3 +82,20 @@ component: CMP-STORE
 ## 开放问题
 
 - 正文裁剪策略（时间窗口 vs 大小）见 `plan/open-questions.md` Q1；未定前不写清理契约。
+
+## 设计增量：schema v9（T-1114-05，待实现）
+
+- v9 只加可空列并重置消息集合游标：
+
+  ```sql
+  ALTER TABLE messages ADD COLUMN cc TEXT;
+  UPDATE sync_state SET sync_key = '0' WHERE collection <> 'folders';
+  ```
+
+  用 `UPDATE` 而非 `DELETE`，保留 `last_sync_at`；`folders` 的 key 不动。`SyncEngine` 已把 `"0"` 当首次同步处理，本组件不改同步引擎。
+- `applySyncBatch` 写入 `cc`；`recipients` 与 `cc` 的 UPDATE 用 `COALESCE(excluded..., messages...)`，避免 EAS `Change` 只带 `Read` 时清空已有 To/Cc。新增消息仍可写 `nil`。
+- `messages` 与 `searchLocal` 的 SELECT/映射补 `m.recipients`、`m.cc`；现状这两个读路径把已入库的 `recipients` 丢掉了，不补则全部回复只能看到发件人。
+- 历史回填：不调用 `resetCollection`（它会删 `messages` 与 `message_bodies`）；迁移后下一次同步按窗口重拉最近 ≤5×25=125 封并 upsert `cc`，正文/附件/附件缓存完全不动。更早邮件保持 `cc = nil`，不伪造；`folders` key 保留（不被回填改写；`SyncEngine` 的 FolderSync 仍按既有逻辑每次全量树）。
+- 预算与拆文件：组件总预算保持 900 行；把 v1–v9 迁移注册抽到 `Sources/MailStore/Migrations.swift`（`MailStoreMigrations.register(on:)`），`MailStore.swift` 约 700 行，组件总量约 887 行。T-1114-05 落地时以 `wc -l` 为准；若超 900，先停下并按流程把预算调到 1000，不静默超。
+- 迁移测试：pre-v9 fixture 必须含 `messages`、`message_bodies`、`attachments`、`sync_state`（现有 pre-v8 fixture 只建 accounts/outbox，不能直接复用）；断言 `cc` 空可读、正文/附件仍在、消息 key `"0"`、folders key 不变；再 `applySyncBatch` 同一条消息 + Cc 后 `cc` 可读。
+- 不新增组件/target；`MailStore` 仍是唯一写入口。

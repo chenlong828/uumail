@@ -111,3 +111,10 @@ component: CMP-EAS
 
 - 禁止：`EASClient` → `MailStore`/`SyncEngine`/`Scenes`；契约里出现 WBXML 元素名、HTTP 头、URLQuery（`EASAdapter` 转换后不泄漏）。
 - 允许：`EASAdapter` 构造并使用；`uumailctl` 诊断命令直连（D8 例外）；只有组合根构造具体类型。
+
+## 设计增量：Sync Cc（T-1114-02，待实现，先证后改）
+
+- `EASMessage` 增 `cc: String?`，放在初始化参数尾部、默认 `nil`；`parseMessage` 从 `ApplicationData/Cc` 读取，空字符串/纯空白归一为 `nil`。
+- 前置门：先用 fixture 或真机样本确认本网关 Sync 信封实际返回 `Cc`。返回则解析并补回放测试；不返回则**停止**，把证据与影响写回 brief/result，按 REQ-0012 重议，不实现「只填 To」的静默降级。
+- `EASClientTests.syncResponse` fixture 目前不输出 `To`/`Cc`，T-1114-02 必须先补字段：至少一条 Sync 回放同时含 `To` 与 `Cc`，并断言 `EASMessage.to`、`EASMessage.cc`。
+- 线格式 token 已具备（`Sources/EASClient/Resources/eas_tokens.json` page 23 `Cc`）；不在场景层拼 WBXML，不改错误映射与协议命令。

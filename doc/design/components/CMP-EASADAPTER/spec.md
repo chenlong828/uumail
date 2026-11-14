@@ -72,3 +72,9 @@ component: CMP-EASADAPTER
 
 - 只依赖 `MailDomain` 与 `EASClient`；不 import `MailStore`/`Scenes`/`Presentation`。
 - 契约里不出现 `EASClient` 类型；构造只发生在组合根（`GatewayFactory`）。
+
+## 设计增量：Cc 映射（T-1114-04，待实现）
+
+- `EASAdapter.message(_:)` 增加 `cc: message.cc`；`EASMessage.cc` 为空时传 `nil`。
+- 不在本层拆分地址、去重或排除自己；这些统一在 `ComposeScene` 调用 `MailDomain.AddressList` 时做。本层只做 EAS → 领域值映射。
+- 测试：`fetchMessages` 回放一条含 `Cc` 的 Sync 响应，断言 domain `Message.cc`；既有 HTML/纯文本/截断与 401 映射测试不回归。

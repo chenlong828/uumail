@@ -52,3 +52,10 @@ component: CMP-APP
 - 附件 25MB 上限、断点续传、`AttachmentName` 回退未实现；真机下载/打开未验。
 - 已读回写服务器未实现；正文 sanitizer 仍是 CSP + 关脚本的轻量实现。
 - 视图层已无 `service` 参数与模型构造（门 1 与 grep 验证），但这是构造性约束，不是行为测试。
+
+## 设计增量：全部回复按钮（T-1114-08，待实现）
+
+- `MailboxView` 工具栏在「回复」与「转发」之间加「全部回复」按钮；`viewModel.selectedMessage == nil` 时 disabled，动作只调 `viewModel.composeReplyAll()`。
+- 视图不读 `Message` 字段、不拼地址、不判断 `Cc` 是否为空；所有地址规则在 `ComposeScene`/`AddressList`。
+- `ComposeView` 已有「抄送」输入框，不需要新增控件或绑定逻辑。
+- 验证：编译 + `MailboxViewModelTests` 接线；真机冒烟（选带 Cc 多人邮件 → 全部回复 → To/Cc 正确 → 发送 → outbox 与 MIME 带 Cc；选自己的邮件 → 自己不出现在任何一栏）留待 T-1114-09。

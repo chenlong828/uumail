@@ -80,3 +80,20 @@ component: CMP-SCN-COMPOSE
 
 - 只依赖 `MailStore`、`Outbox`、`MailDomain`；不 import EAS/Composition。
 - MIME 与投递全部在 `Outbox`；本组件不构造 MIME。
+
+## 设计增量：replyAllSeed（T-1114-06，待实现）
+
+- 新增公开契约：
+
+  ```swift
+  public func replyAllSeed(
+      to message: Message,
+      bodyHTML: String?,
+      account: AccountID
+  ) -> Draft
+  ```
+
+- 行为：主题/引用直接复用 `replySeed`；`to` = 原发件人 + 原 `recipients`，`cc` = 原 `cc`；两栏都经 `MailDomain.AddressList` 去重、排除当前账号地址，`cc` 再减去已在 `to` 的地址。账号地址经 `store.account(account)` 读取；读取失败/缺失时不排除、不抛错、不崩溃。`Draft.cc` 为空写 `nil`。
+- 不变：`replySeed` 与 `forwardSeed` 的行为（单回复仍只填发件人、Cc 空；转发收件人为空）；`send`/`saveDraft` 的入队语义。
+- 尺寸：解析器放 `MailDomain`，本组件只增加一次调用与少量组装，不把 `Scenes` 继续撑大。
+- 测试：正常发件人+To+Cc、含自己与重复、引号内逗号/尖括号、空头与全自己；另加 `replyAllSeed` 经 `replySeed` 保持 `Re:` 与引用规则。

@@ -240,6 +240,7 @@ public protocol SyncStore: Sendable {
 | `saveDraft/enqueueOutbox/pendingOutbox` | 草稿不入队、发送意图入队 |
 
 - schema v8（`v8_outbox_v2`）：`outbox` 增加 `sending_since`、`next_attempt_at`；状态取值 `draft/queued/sending/failed_retryable/failed_permanent/canceled`（旧 `failed` → `failed_retryable`）。
+- 计划（SCN-0007，T-1114-05）：v9 只加可空 `cc` 列，并把非 `folders` 的 message `sync_key` 置 `"0"` 触发一次回填；保留正文/附件，不调用 `resetCollection`。未落地前仍以 v8 为准，细节见 `design/components/CMP-STORE/spec.md` 的设计增量。
 - 错误：`MailStoreError` 含 `folderNotFound/accountNotFound/invalidFolder/outboxNotClaimable/accountNotEmpty/database`。
 - 迁移测试：`Tests/MailStoreTests/MigrationTests.swift` 用 pre-v8 fixture 验证 `failed` 前滚与旧字段可读。
 
@@ -268,7 +269,7 @@ public actor Outbox {
 | `AccountSetupScene` | `validate`、`connect` | `design/components/CMP-SCN-ACCOUNT/spec.md` |
 | `SyncScene`（actor） | `refresh`、`startAutoRefresh`、`stopAutoRefresh` | `design/components/CMP-SCN-SYNC/spec.md` |
 | `ReadScene` | `folders/messages/search/attachments/bodyIfCached/open/downloadAttachment` | `design/components/CMP-SCN-READ/spec.md` |
-| `ComposeScene` | `replySeed/forwardSeed/saveDraft/send/pending/retry/cancel` | `design/components/CMP-SCN-COMPOSE/spec.md` |
+| `ComposeScene` | `replySeed/forwardSeed/saveDraft/send/pending/retry/cancel`；计划新增 `replyAllSeed`（SCN-0007） | `design/components/CMP-SCN-COMPOSE/spec.md` |
 
 场景是值类型或 actor，不持有 `@Observable` UI 状态；场景之间不互相调用（门 2）。
 
