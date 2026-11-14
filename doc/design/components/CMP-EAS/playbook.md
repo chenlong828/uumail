@@ -49,6 +49,7 @@ OPTIONS（裸 URL）
   → FolderSync(SyncKey=0) → 文件夹树 + 新 key
   → Sync(CollectionId=<收件箱>, SyncKey=0) → 只回新 key
   → Sync(同一 CollectionId, 新 key) → 返回 Add/Change/Delete 与邮件信封
+  → Sync(同一 CollectionId, 当前 key, Commands={Change/Read=1 | Delete}) → 新 key
   → ItemOperations / Fetch → 正文、附件
   → SendMail(Mime=opaque) → 200 + 0 字节 body 即成功
 ```
@@ -61,6 +62,7 @@ OPTIONS（裸 URL）
 - `SyncKey=0` 的首次 Sync 只返回新 key，必须用新 key 再 Sync 才拿到条目。
 - **分页靠「本轮新增数」判断，不能只信 `MoreAvailable`**（2026-11-09 实测）：服务器每轮最多回 `WindowSize` 条，`MoreAvailable` 常常不出现，但下一轮仍有 25 条。客户端应循环调用，直到某轮新增数少于窗口大小；`MoreAvailable` 只作为提前继续的附加信号。
 - `Sync` 请求体保持最小：`Sync/Collections/Collection/{SyncKey, CollectionId, WindowSize, Options}`。多出的顶层 `SyncKey`、`Class`、`GetChanges` 会让 Exchange 回 `Sync/Status=4`。
+- **写命令另走最小体**（2026-11-14 设计，尚未实测）：`Sync/Collections/Collection/{SyncKey, CollectionId, Commands}`，不带 `WindowSize`/`Options`/`BodyPreference`；`.read` 用 `Change + ApplicationData/Read=1`，`.delete` 用 `Delete + ServerId`。先按 R16 用录制/真机样本证网关接受并返回新 key；若写响应带其它 `Commands`/`MoreAvailable`，由 `SyncEngine` 拒绝提交并回到设计，不静默丢变更。删除默认按 EAS 的 move-to-deleted-items 语义（不显式带 `DeletesAsMoves`），探针需确认目标进入「已删除邮件」；若网关默认永久删除，停止并补 `DeletesAsMoves=1` 或重议需求。
 - `FolderSync` 每次按 `SyncKey=0` 取全量树；增量 key 只用于发现「树变了」。
 
 ## 4. 线格式（WBXML）要点
@@ -91,6 +93,7 @@ EAS 用 WBXML 1.3。以下四点按**实测字节**而非规范字面实现：
 | 联系人文件夹 | ⚠️ | 文件夹存在，Sync `Status=1` 但无条目（疑似为空） |
 | GAL 目录搜索 | ❌ | `Search` → `Store Status=2`；`Find` → 2；`ResolveRecipients` → 5 |
 | Ping 长轮询 | ❌ 不支持 | 三档心跳均立即 `Status=4`，见 §5.2；客户端改 5 分钟轮询 |
+| Sync 客户端写命令（Read/Delete） | ⚠️ 未验证（设计已定） | R16：T-1114-12 用录制/真机样本先证 `Change/Read=1` 与 `Delete` 被接受并返回新 key；MoveItems 仍不作备胎 |
 | MoveItems | ⚠️ 未验证 | M1 不依赖；移动先落本地意图 |
 
 首版取舍：**读 + 发 + 附件为主干；联系人只做本机通讯录 + 收件人历史；GAL 入口不暴露。**
@@ -119,7 +122,7 @@ EAS 用 WBXML 1.3。以下四点按**实测字节**而非规范字面实现：
 
 ## 6. 设备登记与失效处理
 
-- 网关以 `DeviceId` 为键登记，状态「未激活」时**静默丢弃**请求：读命令回 `200` 空 body，写命令回 `401`。客户端必须把这两种现象都映射为「设备未登记」而不是「网络问题」或「密码错误」。
+- 网关以 `DeviceId` 为键登记，状态「未激活」时**静默丢弃**请求：读命令回 `200` 空 body，写命令回 `401`。客户端必须把这两种现象都映射为「设备未登记」而不是「网络问题」或「密码错误」。本批新增的 Sync 写命令按「写 401 → `deviceNotRegistered`」实现；`SendMail` 的既有 401 → `authFailed` 为 pinned 行为，本批不改，如需统一另立任务。
 - **同一 DeviceId 疑似不能并发会话**：开发中 CLI 与应用同时用同一 ID 时，应用侧出现过 `deviceNotRegistered`，串行重试后恢复。未严格复现，按「同一设备 ID 同时只有一个客户端在跑」对待；排查时先关掉另一个客户端。
 - 设备 ID 来源：优先用一台**已报废、仍在网关登记为激活**的旧手机 ID；不要复用在用手机的 ID，否则两边同步游标互相顶掉，手机会被迫全量重同步。
 - 换机/清理后需要重新登记激活（公司侧通过短信指令查/删设备清单，具体指令问 IT）。

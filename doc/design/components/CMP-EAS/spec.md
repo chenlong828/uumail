@@ -35,11 +35,12 @@ component: CMP-EAS
 | `CMP-EAS#provision` | `Provision` | ✅ | 两步；PolicyKey 常驻 header，只在实例内存 |
 | `CMP-EAS#folderSync` | `FolderSync` | ✅ | 每次取全量树；增量 key 只用于监测变更 |
 | `CMP-EAS#sync` | `Sync` | ✅ | 请求体最小化；窗口 25 |
+| `CMP-EAS#syncWrite` | `Sync` + `Commands` | ✅ 已实现（T-1114-12，2026-11-14） | `Change/Read=1` 与 `Delete`；先证网关接受并返回新 key（R16） |
 | `CMP-EAS#fetchBody` | `ItemOperations`/`Fetch` | ✅ | 先取 20 万字符 HTML；`Truncated=1` 才免上限重取；返回 `FetchedBody{text,isHTML,isTruncated}` |
 | `CMP-EAS#fetchAttachment` | `ItemOperations` | ✅ | `FileReference` 直取，base64 解码 |
 | `CMP-EAS#send` | `SendMail` | ✅ | MIME 为 opaque 原始字节；返回 `200` + 0B 判成功 |
 | `CMP-EAS#ping` | `Ping` | ✅ 方法存在 / ❌ 网关不支持长轮询 | 三档心跳均 `Status=4`（playbook §5.2）；方法仅作复测 |
-| `CMP-EAS#moveItems` | `MoveItems` | ⬜ 未实现 | 移动/删除留 `PendingOps` 工序 |
+| `CMP-EAS#moveItems` | `MoveItems` | ⬜ 未实现 | 移动留 `PendingOps` 工序；本批删除走 Sync `Delete`，不用 `MoveItems` |
 | `CMP-EAS#search` | `Search`/`Find` | ❌ 不可用 | GAL `Store Status=2`；降级本地搜索 |
 
 实测环境与线格式见 `design/components/CMP-EAS/playbook.md`（同目录）。
@@ -56,7 +57,7 @@ component: CMP-EAS
       public func provision() async throws -> String
       public func currentPolicyKey() -> String?
       public func folderSync(syncKey: String = "0") async throws -> FolderSyncResult
-      public func sync(collectionID:syncKey:window:filterType:) async throws -> SyncResult
+      public func sync(collectionID:syncKey:window:filterType:bodyPreviewCharacters:change:) async throws -> SyncResult
       public func fetchBody(collectionID:serverID:truncationSize:) async throws -> FetchedBody
       public func fetchAttachment(fileReference:) async throws -> Data
       public func send(mime:clientID:) async throws -> String
@@ -69,8 +70,9 @@ component: CMP-EAS
 
   | 现象 | `EASError` | 可重试 |
   |---|---|---|
-  | HTTP 401 | `authFailed` | 否 |
-  | 写命令 401 / `200` 空 body | `deviceNotRegistered` | 否 |
+  | HTTP 401（读） | `authFailed` | 否 |
+  | Sync 写命令 401 | `deviceNotRegistered` | 否 |
+  | `SendMail` 401 | `authFailed` | 否（既有 pinned 行为，本批不改） |
   | HTTP 449 / 策略拒绝 | `policyRequired` | 否（先 Provision） |
   | Sync `Status=3/4` | `syncKeyInvalid` | 是（重建） |
   | HTTP 503 + `Retry-After` | `throttled` | 是 |
@@ -92,6 +94,7 @@ component: CMP-EAS
 | 编解码（NUL 字符串/opaque/code page） | ✅ `WBXML.swift` | golden 字节 + 回环 6 例 |
 | `options/provision/folderSync` | ✅ | stub 传输 + 真机 |
 | `sync`（信封、key、status 3/4、MoreAvailable） | ✅ | 4 例（含 `To`/`Cc` 回放与空白归一） |
+| Sync 写命令（`Change/Read=1`、`Delete`） | ✅ 已实现（T-1114-12，2026-11-14） | golden 请求 + 写 401/3/4 测试绿；R16 真机/录制网关接受性仍未取证 |
 | `fetchBody`（HTML/纯文本/截断重取） | ✅ | 3 例 |
 | `fetchAttachment` / `send` | ✅ | 1 例 + 3 例 |
 | `ping` | ✅ 方法 | 真机三档均 `Status=4` |
@@ -118,3 +121,31 @@ component: CMP-EAS
 - `EASMessage` 增 `cc: String?`，放在初始化参数尾部、默认 `nil`；`parseMessage` 从 `ApplicationData/Cc` 读取，去掉首尾空白，空字符串/纯空白归一为 `nil`。
 - `EASClientTests.syncResponse` fixture 已补 `To`/`Cc`：`parsesEnvelopes` 同时断言 `EASMessage.to`、`EASMessage.cc`；`blankCcIsNil` 钉住空白与缺失都归一为 `nil`。
 - 线格式 token 已具备（`Sources/EASClient/Resources/eas_tokens.json` 的 Email page 2 `Cc` token 23）；不在场景层拼 WBXML，不改错误映射与协议命令。
+
+## 设计增量：Sync 写命令（T-1114-10，2026-11-14 设计；T-1114-12 已实现）
+
+- 新增值类型与可选参数（读请求默认 `nil`，既有调用点不变）：
+
+  ```swift
+  public enum EASSyncChange: Equatable, Sendable {
+      case read(serverID: String)
+      case delete(serverID: String)
+  }
+  public func sync(collectionID: String, syncKey: String = "0", window: Int = 25,
+                   filterType: Int = 5, bodyPreviewCharacters: Int = 500,
+                   change: EASSyncChange? = nil) async throws -> SyncResult
+  ```
+
+- 写请求（`change != nil`）只发最小体：
+  `Sync/Collections/Collection/{SyncKey, CollectionId, Commands}`；不带 `WindowSize`、`Options`、`BodyPreference`。
+  - `.read`：`<Commands><Change><ServerId>…</ServerId><ApplicationData><Read>1</Read></ApplicationData></Change></Commands>`
+  - `.delete`：`<Commands><Delete><ServerId>…</ServerId></Delete></Commands>`
+  - 元素顺序与 token 页以 playbook §3/§4 与 golden fixture 为准；一次只发一条命令。
+  - 删除语义：不显式带 `DeletesAsMoves`，按 EAS 默认（移到「已删除邮件」）处理；T-1114-12 探针必须确认目标进入「已删除邮件」而非被永久删除。若网关默认是永久删除，停下并补 `DeletesAsMoves=1` 或重议 REQ-0014 的「不永久删除」约束。
+- 响应沿用现有解析：`Collection/Status=1`、`SyncKey` 必须存在；`Commands` 里的 `Add/Change/Delete` 照常解析；`MoreAvailable` 原样返回。写响应若返回其它变更，由上层 `commit*` 与本地效果同事务应用；`moreAvailable == true` 由 `SyncEngine` 拒绝提交，不在此层猜测。
+- 错误：写命令 HTTP 401 → `EASError.deviceNotRegistered`（playbook §6）；读 401 仍 `authFailed`；`SendMail` 既有 401 → `authFailed` 不改（pinned test）。`Status=3/4` → `syncKeyInvalid`；缺失 `SyncKey`/坏 body → `malformedResponse`。
+- 前置门（R16，T-1114-12）：先用录制网关或真机样本证一条 `Change/Read=1` 与一条 `Delete` 被接受并返回新 key；记录响应是否含其它命令/`MoreAvailable`/逐条状态。被拒则停止，按 `REQ-0013`/`REQ-0014` 重议，不用 `MoveItems` 作未验证备胎。
+- 测试：`EASClientTests` 补两条 golden 请求字节、写响应新 key、写 401、读 401 不回归、`Status=3/4`、缺失 key；既有 27 例不回归。
+- 尺寸：`EASClient` 当前 759 行、组件 1183 行；预计 +50～60，仍低于 1500。
+
+**实现（2026-11-14）**：`EASClient.sync(change:)` 支持 `.read`（`Change/ApplicationData/Read=1`）与 `.delete`（`Delete/ServerId`），写请求只带 `SyncKey/CollectionId/Commands`；写 401 → `deviceNotRegistered`，读 401 仍 `authFailed`。`EASClientTests` 31 例绿，含两条 golden 请求体、写 key、写 401/3/4。**R16 未取证**：本次没有可用真机/录制网关样本，不能声称网关已接受写命令；建议收尾前补真机探针。

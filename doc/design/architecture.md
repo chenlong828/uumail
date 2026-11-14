@@ -28,6 +28,8 @@ macOS 原生邮件客户端，只支持 EAS（Exchange ActiveSync），以「一
 | 账号接入 | `AccountSetupScene` | 用户填表点连接 | 账号 `ready` + 文件夹树 + 凭据入 Keychain | 顺序固定（probe→provision→文件夹→建号→快照→ready→凭据）；失败不留半成品 | accounts、folders、sync_state、Keychain | 分类错误，停在配置页 | 首次/换机 | 冷 | 已实现；真机全链未跑 |
 | 文件夹与收件箱同步 | `SyncScene` | 启动、每 5 分钟、手动刷新 | 本地出现新文件夹与新邮件 | 单飞；批次与 key 同事务；失败保旧数据 | folders、messages、sync_state | 状态栏错误，后台退避 | 每 5 分钟 | 冷 | 已实现 |
 | 浏览与阅读 | `ReadScene` | 选文件夹、选邮件 | 列表与正文 | 读路径不触网；缓存优先；缺正文先占位后补拉 | messages、message_bodies | 占位 + 重试入口 | 高频 | 热 | 已实现；P95 未复测 |
+| 列表停留自动已读 | `ReadScene` + `MailboxDwell` | 选中未读、前台连续 10 秒 | 本地已读、蓝点消失、后台回写 | 本地先行；写回与同步共享 key 串行；失败不回滚、不提示 | messages、sync_state | 静默保留本地已读 | 中 | 热（本地）+ 冷（回写） | 已实现（T-1114-11…18，2026-11-14），待 T-1114-19/20 验证 |
+| 键盘删除 | `ReadScene` + `MailboxViewModel` | 列表聚焦 Delete/Backspace | 行消失、服务器删除、本地软删 | 服务器确认后原子软删；失败恢复并提示；单飞 | messages、sync_state | 恢复行/选中 + 中文错误 | 中 | 热（隐藏）+ 冷（写） | 已实现（T-1114-11…18，2026-11-14），待 T-1114-19/20 验证 |
 | 附件 | `ReadScene` | 点附件 | 本地文件并打开 | 同一附件单飞；缓存 2 GB 最旧优先 | attachments、附件文件 | 提示失败可重试 | 中 | 冷 | 部分：无 25MB 上限、续传、名称回退 |
 | 本地搜索 | `ReadScene` | 输入关键字 | 结果列表 | 本地优先；<3 字符走 LIKE | messages、fts | 空结果/错误提示 | 中 | 热 | 已实现 |
 | 撰写/回复/转发 | `ComposeScene` | 新建/回复/转发 | 草稿或入队 | 引用规则；发送只入队 | outbox | 入队失败提示 | 中 | 热（入队） | 已实现 |
@@ -51,7 +53,7 @@ macOS 原生邮件客户端，只支持 EAS（Exchange ActiveSync），以「一
 ### 1.3 三条不变量
 
 1. UI 读路径不触网：列表、正文命中、搜索都只读本地库。
-2. 同一账号同一集合同时只有一个 Sync 在飞；SyncKey 与批次同事务提交。
+2. 同一账号同一集合同时只有一个 Sync 在飞（读或写）；SyncKey 与批次/写结果同事务提交。
 3. 发送意图不丢、不双发：入队即成功，投递最多成功一次。
 
 ### 1.4 三个最痛失败
@@ -95,6 +97,7 @@ graph TD
   S1 --> STORE
   S2 --> SYNC
   S3 --> STORE
+  S3 -.写路径（T-1114-10 设计）.-> SYNC
   S4 --> OUT
   SYNC -.SyncStore.-> STORE
   OUT --> STORE
@@ -131,7 +134,7 @@ graph TD
 |---|---|---|---|
 | 接入 | `AccountSetupScene.connect/validate` | 验证顺序、失败回滚、错误分类 | 视图不再拼装账号 |
 | 收取 | `SyncScene.refresh/startAutoRefresh` | 刷新节奏、单飞、通知条件、失败态 | App 的 `.task` 不再轮询 |
-| 阅读 | `ReadScene.open/downloadAttachment` | 缓存优先、补拉落库、附件单飞与预算 | 视图不再决定「先读库还是先拉网」 |
+| 阅读 | `ReadScene.open/downloadAttachment`；新增 `markReadLocally/writeBackMarkRead/deleteMessage`（T-1114-10 设计，2026-11-14 已实现） | 缓存优先、补拉落库、附件单飞与预算；本地置读先行、写回/删除经 `SyncEngine` 串行 | 视图不再决定「先读库还是先拉网」，也不直接触网写 |
 | 撰写发送 | `ComposeScene.send/saveDraft` | 回复引用、入队语义、草稿状态 | 视图模型不再调发送服务 |
 | 投递 | `Outbox.flushOnce/flushAll/retry/cancel` | 状态机、退避、租约、幂等 | 场景不直接发 SMTP/EAS |
 
@@ -177,7 +180,7 @@ graph TD
 | `SyncEngine` | 1 | ≤5 | 只依赖 `MailDomain`（`SyncStore` 端口） |
 | `Outbox` | 2 | ≤4 | `MailStore` + `MailGateway`（MIME 内部） |
 | `EASAdapter` | 2 | ≤5 | `MailDomain` + `EASClient` |
-| 每个场景 | 1–2 | ≤5 | 端口计入 `MailDomain`，不重复计 |
+| 每个场景 | 1–3 | ≤5 | 端口计入 `MailDomain`，不重复计；`ReadScene` 因写路径增 `SyncEngine`（T-1114-10 设计，2026-11-14 已实现）。原预算 1–2；上调至 1–3 是本次唯一新增的组件级依赖，已进 P1 确认清单与决策记录项，替代方案为窄 `SyncWriting` 端口（保持 2） |
 | `Presentation` | 1 | ≤3 | 只依赖 `Scenes`（与 `MailDomain` 值类型） |
 | `Composition` | 8 | 豁免 | 组合根（全部库 target） |
 
@@ -206,6 +209,20 @@ public protocol MailGateway: Sendable {
 - 错误只有一个目录 `MailError`（9 个 case）；映射只发生在 `EASAdapter.map`。
 - 唯一生产实现：`EASAdapter`（`Sources/EASAdapter/EASAdapter.swift`）。
 
+**写路径端口（T-1114-10 设计，2026-11-14 已实现）**：新增同层窄端口，不扩 `MailGateway`，使只读 fake 与读契约不受影响：
+
+```swift
+public protocol MailWriteGateway: Sendable {
+    func markRead(collectionID: String, serverID: String, syncKey: String) async throws -> MessageDelta
+    func delete(collectionID: String, serverID: String, syncKey: String) async throws -> MessageDelta
+}
+```
+
+- 成功当且仅当 `Sync/Collection/Status=1` 且返回非空新 key；`Status=3/4` → `syncKeyInvalid`；Sync 写 401 → `deviceNotRegistered`（`SendMail` 既有 401 → `authFailed` 不改）；其余按既有 `MailError` 目录。
+- 返回 `MessageDelta`：写响应里若携带其他服务器变更，必须由 `commit*` 与本地效果、新 key 同事务应用；`moreAvailable == true` 由 `SyncEngine` 拒绝提交，等 R16 样本再设计 drain。
+- 唯一生产实现仍是 `EASAdapter`（同时遵循 `MailGateway` 与 `MailWriteGateway`）；组合根用 `GatewayEndpoints{read, write}` 注入，**`write` 非可选**。
+- 写能力全链路非可选：`GatewayEndpoints.write`、`SyncEngine.init(writeGateway:)`、`ReadScene.init(writeEngine:)` 均无 `nil`/默认值；只读测试用测试 target 的 `UnsupportedWriteGateway`，生产 target 不提供该替身。装配顺序：T-1114-21 先装配端点，T-1114-15/16 再分别注入 `SyncEngine`/`ReadScene`；T-1114-15/16 各含 `CMP-ROOT` 仅装配例外。
+
 ### 3.2 `SyncStore`（L1 端口，`MailStore` 直接遵循）
 
 ```swift
@@ -215,11 +232,15 @@ public protocol SyncStore: Sendable {
     func syncKey(_ account: AccountID, collection: String) throws -> String?
     func applySyncBatch(_ account: AccountID, folder: String, delta: MessageDelta) throws
     func resetCollection(_ account: AccountID, folder: String) throws
+    func markRead(_ account: AccountID, folder: String, serverID: String) throws -> Bool
+    func commitMarkRead(_ account: AccountID, folder: String, serverID: String, delta: MessageDelta) throws
+    func commitDelete(_ account: AccountID, folder: String, serverID: String, delta: MessageDelta) throws
 }
 ```
 
 - 同步调用（本地库）；`MailStore` 在 `SyncStoreConformance.swift` 直接遵循，`StoreAdapter` 已删除（D6）。
 - 不变量：批次与 key 同事务；失败不推进 key；`(account, folder, serverID)` 幂等。
+- 新增方法（T-1114-10 设计，2026-11-14 已实现）：`markRead` 只做本地 0→1；`commitMarkRead`/`commitDelete` 把「写响应 delta + 本地效果 + 新 key」放同一事务，失败整批回滚。`MailStore` 仍是唯一写入口，schema 不变。
 
 ### 3.3 平台端口（`MailDomain`）
 
@@ -238,6 +259,7 @@ public protocol SyncStore: Sendable {
 | `applyFolderSnapshot/applySyncBatch/applyBody/body` | 文件夹快照、批次与 key 同事务、正文分表 |
 | `messages/searchLocal/attachments/markAttachmentCached` | 读与附件缓存标记 |
 | `saveDraft/enqueueOutbox/pendingOutbox` | 草稿不入队、发送意图入队 |
+| `markRead/commitMarkRead/commitDelete` | 本地置读；服务器写成功后「delta + 本地效果 + key」同事务（T-1114-10 设计，2026-11-14 已实现；无 schema 变更） |
 
 - schema v8（`v8_outbox_v2`）：`outbox` 增加 `sending_since`、`next_attempt_at`；状态取值 `draft/queued/sending/failed_retryable/failed_permanent/canceled`（旧 `failed` → `failed_retryable`）。
 - schema v9（`v9_message_cc`，T-1114-05）：`messages` 加可空 `cc` 列，并把非 `folders` 的 message `sync_key` 置 `"0"` 触发一次回填；保留正文/附件，不调用 `resetCollection`。`applySyncBatch` 写入 To/Cc 且用 `COALESCE` 防止只带 `Read` 的 `Change` 清空已有值；`messages`/`searchLocal` 都映射 `recipients` 与 `cc`。
@@ -268,14 +290,14 @@ public actor Outbox {
 |---|---|---|
 | `AccountSetupScene` | `validate`、`connect` | `design/components/CMP-SCN-ACCOUNT/spec.md` |
 | `SyncScene`（actor） | `refresh`、`startAutoRefresh`、`stopAutoRefresh` | `design/components/CMP-SCN-SYNC/spec.md` |
-| `ReadScene` | `folders/messages/search/attachments/bodyIfCached/open/downloadAttachment` | `design/components/CMP-SCN-READ/spec.md` |
+| `ReadScene` | `folders/messages/search/attachments/bodyIfCached/open/downloadAttachment`；新增 `markReadLocally/writeBackMarkRead/deleteMessage`（T-1114-10 设计，2026-11-14 已实现） | `design/components/CMP-SCN-READ/spec.md` |
 | `ComposeScene` | `replySeed/replyAllSeed/forwardSeed/saveDraft/send/pending/retry/cancel` | `design/components/CMP-SCN-COMPOSE/spec.md` |
 
-场景是值类型或 actor，不持有 `@Observable` UI 状态；场景之间不互相调用（门 2）。
+场景是值类型或 actor，不持有 `@Observable` UI 状态；场景之间不互相调用（门 2）。`ReadScene` 新增的写方法只经**同一个** `SyncEngine`（与 `SyncScene` 共用）触网；`folders/messages/search/attachments/bodyIfCached/open` 仍零网络。`SyncEngine` 新增 `markRead/deleteMessage` 与显式 FIFO 门，一个账号只允许一个实例。
 
 ### 3.7 `Presentation`
 
-`MailboxViewModel`、`ComposeViewModel`、`AccountSetupViewModel`；`BodyPresentation{none/loading/loaded(html,truncated)/failed(text)}`、`BodyNotice`、`SyncPresentation`、`Selection`；`ErrorText` 是唯一的 `MailError → 中文` 映射，`DisplayFormat` 收拢发件人与日期格式化。只依赖 `Scenes` + `MailDomain`。
+`MailboxViewModel`、`ComposeViewModel`、`AccountSetupViewModel`；`BodyPresentation{none/loading/loaded(html,truncated)/failed(text)}`、`BodyNotice`、`SyncPresentation`、`Selection`；`ErrorText` 是唯一的 `MailError → 中文` 映射，`DisplayFormat` 收拢发件人与日期格式化。只依赖 `Scenes` + `MailDomain`。T-1114-10 设计新增 `MailboxDwell`（10 秒计时）与 `MailboxDeletion`（隐藏/单飞/错误），并给 `MailboxViewModel` 增 `setApplicationActive/deleteSelected/visibleMessages/deleteErrorText`；`MailboxViewModel` 主文件保持 ≤400 行。
 
 ## 4. 冷热路径
 
@@ -283,6 +305,8 @@ public actor Outbox {
 |---|---|---|---|---|---|
 | 列表/阅读（命中缓存） | 热 | 0 | 本地错误直接呈现；正文缺失先占位 | 读连接 + WAL | `ScenesTests` 缓存命中零网络；`PresentationTests` 状态序列 |
 | 发送入队 | 热 | 0 | 入队失败保留编辑内容 | 本地事务 | `ComposeSceneTests` 入队不触网 |
+| 停留置读（本地） | 热 | 0 | 本地写失败保持未读；不弹错 | 本地事务 | 设计证据：`MailStoreTests` `markRead`；`PresentationTests` 计时（已实现，2026-11-14） |
+| 已读回写 / 删除 | 冷 | 1（gateway） | 已读：失败不回滚、不提示；删除：失败恢复行与选中并提示；不推进 key | 与 `syncOnce` 共用 FIFO 门；单账号单引擎 | 设计证据：`SyncEngineTests` 门串行；`ReadSceneTests`；`MailboxViewModelTests`（已实现，2026-11-14） |
 | 阅读补拉 | 冷 | 1（gateway） | `failed(MailError)`，保留占位/摘要；取消不落库 | 同一 `MessageRef` 单飞 | `ReadSceneTests` 先落库再 yield、失败不覆盖缓存 |
 | 同步刷新 | 冷 | 1（gateway） | 保留旧数据；auth/device/policy 暂停自动刷新 | 单账号 actor | `SyncSceneTests` 单飞/通知/暂停 |
 | 投递 | 冷 | 1（gateway） | 可重试退避；永久失败保留内容 | 独立 actor + 泵，不共享同步队列 | `OutboxTests` 租约/退避/幂等；`OutboxPumpTests` |
@@ -297,16 +321,16 @@ public actor Outbox {
 |---|---|---|---|---|
 | accounts | `MailStore` | `createAccount/markAccountReady/discardAccount` | `AccountSetupScene`、`Composition` | 强 |
 | folders | `MailStore` | `applyFolderSnapshot` | `ReadScene`、`SyncEngine` | 强 |
-| messages | `MailStore` | `applySyncBatch` | `ReadScene`、`SyncScene` | 强 |
+| messages | `MailStore` | `applySyncBatch`；`markRead/commitMarkRead/commitDelete`（T-1114-10 设计，2026-11-14 已实现） | `ReadScene`、`SyncScene` | 强 |
 | message_bodies | `MailStore` | `applyBody`（经 `ReadScene`） | `ReadScene` | 强 |
 | attachments | `MailStore` | `markAttachmentCached` + `applySyncBatch` | `ReadScene` | 强 |
-| sync_state | `MailStore` | `applySyncBatch/applyFolderSnapshot/resetCollection` | `SyncEngine` | 强（与批次同事务） |
+| sync_state | `MailStore` | `applySyncBatch/applyFolderSnapshot/resetCollection`；`commitMarkRead/commitDelete` | `SyncEngine` | 强（与批次/写提交同事务） |
 | outbox | `MailStore`（物理行）/ `Outbox`（状态机） | `enqueueOutbox/claimOutbox/markOutbox*` | `ComposeScene`、`Outbox` | 强（本地） |
 | fts | `MailStore` | 随 `applyBody/applySyncBatch` 增量 | `ReadScene.search` | 最终（同事务） |
 | Keychain 凭据 | `CredentialStore` 实现 | `save/delete` | `Composition`、`AccountSetupScene` | 强 |
 | 附件文件 | `AttachmentFiles` 实现 | `store` | `ReadScene` | 强（文件系统） |
 
-**未建**：`pending_op`（已读/移动/删除的本地意图）。本次只登记扩展点，不建表（见 §10）。
+**未建**：`pending_op`（离线已读/移动/删除的本地意图）。本批按「在线写回、无离线队列」落地：已读本地先落库、失败不重试；删除以服务器确认成功为准，失败回滚并提示。**不建表、不新增 schema**；离线补写与跨设备一致性仍归 Q2（见 §10）。
 
 本地库为明文 SQLite（WAL + FTS5），附件缓存同样明文；加密依赖 FileVault，不做 SQLCipher、无审计日志——2026-11-09 安全审计的已知接受项（`plan/risks.md` R12）。
 
@@ -318,7 +342,8 @@ public actor Outbox {
 AppComposition（180 行）
 ├─ ConfigurationSource：Keychain / DEBUG 环境（DB 路径由它解析，CLI 的 --db 在命令层覆盖）
 ├─ MailStore(path:)
-├─ GatewayFactory → PlatformGateway.make(ServerConfiguration) → EASAdapter(EASClient)
+├─ GatewayFactory → PlatformGateway.make(ServerConfiguration) → GatewayEndpoints{read: EASAdapter(EASClient), write: 同一 adapter（非可选）}
+├─ 一个 SyncEngine（writeGateway 非可选；同时注入 SyncScene 与 ReadScene；写命令与 syncOnce 共用同一 FIFO 门与集合 key）
 ├─ scenes: AccountSetupScene / SyncScene / ReadScene / ComposeScene
 ├─ viewModels: AccountSetupViewModel / MailboxViewModel
 ├─ Outbox + OutboxPump（启动补投、30s 周期、入队信号、可停可重启）
@@ -363,7 +388,7 @@ CommandLineComposition（127 行）
 
 ### 7.1 当前验证面
 
-- `./Scripts/swiftw test` → **182 tests / 38 suites**（2026-11-14，T-1114-09 后复测）。
+- `./Scripts/swiftw test` → **228 tests / 44 suites**（2026-11-14，W-M3-03 实现后复测）。
 - 测试 target：`MailDomainTests`、`MailStoreTests`、`SyncEngineTests`、`OutboxTests`、`EASClientTests`、`EASAdapterTests`、`ScenesTests`、`PresentationTests`、`CompositionTests`。
 - `bash Scripts/check-architecture.sh` → 4 门：per-target import 白名单、场景互调、`AppComposition` ≤200 行、`Composition` 业务 switch。4 门全过。
 - schema 迁移：`MailStoreTests/MigrationTests` 的 pre-v8 与 pre-v9 fixture。
@@ -448,7 +473,7 @@ D10 的决策记录：`history/decisions/2026-11-13-fetched-body-contract.md`。
 4. **PolicyKey 不持久化**：只存在 `EASClient` 实例内，每个新进程首命令前重新 Provision；旧场景卡「PolicyKey 入 Keychain」已按代码更正。
 5. **`SyncEngine.start/stop/stateStream` 未实现**：维持 `syncOnce/currentState`，节奏归 `SyncScene`。
 6. **附件场景未完整**：25MB 上限、断点续传、`AttachmentName` 回退、真机下载/打开未做。
-7. **阅读场景**：已读回写服务器、sanitizer 自动化断言、1 万封 P95 未做。
+7. **阅读场景**：已读回写/键盘删除已设计（2026-11-14，T-1114-10，见 §3.1/§5 与 `SCN-0008`/`SCN-0009`），实现已由 T-1114-11…T-1114-18 与 T-1114-21 落地（2026-11-14），待 T-1114-19/20 与 R16 真机样本；sanitizer 自动化断言、1 万封 P95 未做。
 8. **失败件保留上限（24h / 100 条，T11）无清理实现**：outbox 行会保留到成功、取消或手动重试。
 9. **`backup/pre-autosquash` 分支保留**，不删。
 
@@ -458,4 +483,6 @@ D10 的决策记录：`history/decisions/2026-11-13-fetched-body-contract.md`。
 
 - 规格冻结：2026-11-13，整体结论通过，D1–D9 逐条确认；D10 于 2026-11-13 追加。
 - 结构收口：2026-11-14，T-1110-10 把规格并入本文与组件规格，工序目录归档。
+- **2026-11-14 待确认 P1（T-1114-10，第 2 轮）**：新增 `MailWriteGateway`、`SyncStore` 三个写方法、`SyncEngine` 写方法 + FIFO 门 + **非可选** `writeGateway`、`ReadScene` **非可选**写引擎、`GatewayEndpoints`（`write` 非可选）；场景扇出预算 1–2→1–3（仅 `ReadScene`，替代方案为窄 `SyncWriting` 端口）；T-1114-15/16 各含 `CMP-ROOT` 仅装配例外。不新增 schema；确认后开 T-1114-11，确认前只写文档与测试草案。
+- **2026-11-14 实现节点执行记录**：本批 T-1114-11…18/21 已按已评审设计实现并提交，但 `doc/history/decisions/2026-11-14-mail-write-path.md` 的 frozen 人工确认记录仍未创建；实现节点没有伪造该记录。**建议收尾前补人工确认**；R16 真机/录制网关写命令接受性仍未取证。
 - 后续契约变更走新决策记录（`history/decisions/`），并同步改对应组件规格与 pinning test。

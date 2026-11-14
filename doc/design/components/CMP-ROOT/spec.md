@@ -26,7 +26,7 @@ component: CMP-ROOT
 - 公开契约：
   - `AppComposition.make(environment:) -> AppComposition?`、`.init(store:credentials:configuration:)`、测试注入 init、`route`、`mailbox`、`accountSetup`、`start/stop/connect`
   - `CommandLineComposition.configuration(environment:insecure:)`、`.easConfiguration(_:)`、`.make(databasePath:configuration:gatewayFactory:)`
-  - `GatewayFactory`、`OutboxPump`（内部）
+  - `GatewayFactory`、`GatewayEndpoints`（`read`/`write` 均非可选；T-1114-10 设计，2026-11-14 已实现）、`OutboxPump`（内部）
 - 入口：`Sources/Composition/AppComposition.swift#AppComposition`、`CommandLineComposition.swift#CommandLineComposition`、`OutboxPump.swift#OutboxPump`、`GatewayFactory.swift#GatewayFactory`
 - 依赖：其余 8 个库 target（`MailDomain`、`MailStore`、`SyncEngine`、`Outbox`、`EASClient`、`EASAdapter`、`Scenes`、`Presentation`）。组合根豁免扇出。
 - 冷热：启动一次；运行期只做路由，不进热路径。
@@ -73,3 +73,28 @@ component: CMP-ROOT
 - 允许 import 全部库 target 与平台框架（Security、UserNotifications、CryptoKit、Observation）。
 - 禁止：`MailStore` 业务查询/写入（路径初始化与存在性检查除外）、`MailGateway`/`Outbox`/`SyncEngine` 的业务方法、业务错误文案、retry/sleep 循环、按业务状态分支。
 - **门禁已知局限**：`Scripts/check-architecture.sh` 门 3 只数 `AppComposition.swift` 行数；门 4 的业务 case 标签 + `switch` 主语匹配依赖命名。新增组合根文件时需同步扩展脚本，不能只看 4 门全过。
+
+## 设计增量：写端口与同一引擎装配（T-1114-10，2026-11-14 设计；T-1114-21/15/16 已实现）
+
+- `GatewayFactory` 从返回单个读端口改为返回端点 bundle，生产仍是同一个 `EASAdapter`：
+
+  ```swift
+  public struct GatewayEndpoints: Sendable {
+      public var read: any MailGateway
+      public var write: any MailWriteGateway   // 非可选
+  }
+  public typealias GatewayFactory = @Sendable (ServerConfiguration) -> GatewayEndpoints
+  ```
+
+- `PlatformGateway.make` 返回 `GatewayEndpoints(read: adapter, write: adapter)`；`EASAdapter` 同时遵循 `MailGateway` 与 `MailWriteGateway`；生产 `read`/`write` 由同一 `let adapter` 构造（`EASAdapter` 是 struct，无对象身份，该不变量由实现检查/代码评审守）。
+- 任务顺序（B1/B2）：**T-1114-21 先**把 `GatewayFactory`/`PlatformGateway` 改为返回 `GatewayEndpoints`，此时 `SyncEngine`/`ReadScene` 签名未改，组合根仍只用 `endpoints.read`；**T-1114-15** 把 `endpoints.write` 传给 `SyncEngine`；**T-1114-16** 把同一个 `engine` 传给 `ReadScene`。T-1114-15/16 各含 `CMP-ROOT` 仅装配例外，WIP 由该 change 独占；T-1114-21 不再做“最后补 `endpoints.write`”。
+- `AppComposition.attachMailbox` / `CommandLineComposition.make` 只做机械注入：
+  1. `let endpoints = gatewayFactory(configuration)`；
+  2. `let engine = SyncEngine(gateway: endpoints.read, store: store, account: account, writeGateway: endpoints.write)`（T-1114-15 起）；
+  3. **同一个 `engine`** 传给 `SyncScene(engine:)` 与 `ReadScene(..., writeEngine: engine)`（T-1114-16 起）；
+  4. `Outbox`/`ReadScene.gateway`/`AccountSetupScene` 用 `endpoints.read`；`AppComposition.makeSetupScene` 里既有的 `gatewayFactory(...)` 直接当 `any MailGateway` 的调用点，T-1114-21 必须一并改为 `.read`，否则类型不匹配。
+- 不变量：一个账号只构造一个 `SyncEngine`；组合根不得为 `ReadScene` 另建引擎（否则两把串行门各自为政，R19）；不判 `MailError`、不决定是否触发写、不重试。
+- 测试：`CompositionTests` 的 `makeGatewayFactory` 返回 `GatewayEndpoints(read: fake, write: UnsupportedWriteGateway())`，其中 `UnsupportedWriteGateway` 定义在 `Tests/CompositionTests/Support.swift`（其他测试 target 各自定义同形替身，或另立 test-only support，不进入 production target）；新增一条装配测试断言生产 `PlatformGateway.make` 的 `write` 是 `EASAdapter`（生产唯一实现；类型上非可选，不存在 `nil` 分支），并断言装配后的场景图可接受该端口。**若该断言需要具体类型，T-1114-21 同批给 `CompositionTests` 增加 `EASAdapter` 测试依赖（当前 `Package.swift` 未列），或改用不引入生产类型的断言；不得为断言把 `EASAdapter` 暴露进 `Composition`。** 写行为在 `SyncEngineTests`/`ScenesTests` 证，不在组合根证。
+- 兼容性：`GatewayFactory` 是 Composition 内部注入面，改类型只影响组合根与装配测试；`MailGateway` 读契约不变。`AppComposition` 行数预算 ≤200 不变（预计 +3～5）。
+
+**实现（2026-11-14）**：`GatewayEndpoints{read,write}` 与 `GatewayFactory` 端点化；`PlatformGateway.make` 返回同一个 `EASAdapter` 的 read/write；`AppComposition`/`CommandLineComposition` 把 `endpoints.write` 传给 `SyncEngine`，把同一个 `engine` 传给 `ReadScene`。`CompositionTests` 17 例绿，含 `write is EASAdapter` 断言；`AppComposition` 182 行（上限 200）。

@@ -14,12 +14,12 @@ component: CMP-DOMAIN
 - 单元：模块（值类型 + 端口 + 错误目录的组合组件）
 - 层 / 类型：L1 契约；领域
 - 业务价值：让场景、数据与协议都只认识一套稳定概念。没有它，每个 target 自带一份值类型，改一个字段要动四处。
-- 负责 X：值类型（`AccountID`、`OutboxID`、`Folder`、`Message`、`Attachment`、`Draft`、`OutboxItem`、`FolderListing`、`MessageDelta`、`SyncReport`、`FetchedBody`、`AttachmentRef`、`ServerCapabilities`）、端口（`MailGateway`、`SyncStore`、`CredentialStore`、`Notifier`、`AttachmentFiles`、`MailClock`）、`MailError`、`ServerConfiguration`。
+- 负责 X：值类型（`AccountID`、`OutboxID`、`Folder`、`Message`、`Attachment`、`Draft`、`OutboxItem`、`FolderListing`、`MessageDelta`、`SyncReport`、`FetchedBody`、`AttachmentRef`、`ServerCapabilities`）、端口（`MailGateway`、`MailWriteGateway`、`SyncStore`、`CredentialStore`、`Notifier`、`AttachmentFiles`、`MailClock`）、`MailError`、`ServerConfiguration`。
 - 不负责 Y：任何 I/O、持久化、协议编解码、UI 文案。
 - 内部逻辑：无行为；只做值传递与契约声明。`FetchedBody` 保留 `text/isHTML/isTruncated`（D10）。
 - 拥有的数据：无持久数据。
 - 变化轴：领域概念本身的字段与语义（邮件、文件夹、发送意图）。
-- 公开契约：`CMP-DOMAIN#MailGateway`、`#SyncStore`、`#CredentialStore`、`#Notifier`、`#AttachmentFiles`、`#MailClock`；能力 ID 由各操作名引用（如 `CMP-DOMAIN#fetchBody`）。
+- 公开契约：`CMP-DOMAIN#MailGateway`、`#MailWriteGateway`（T-1114-10 设计，2026-11-14 已实现；作为非可选生产能力注入）、`#SyncStore`、`#CredentialStore`、`#Notifier`、`#AttachmentFiles`、`#MailClock`；能力 ID 由各操作名引用（如 `CMP-DOMAIN#fetchBody`）。
 - 入口：`Sources/MailDomain/Values.swift#AccountID`、`Ports.swift#MailGateway`、`Errors.swift#MailError`、`Configuration.swift#ServerConfiguration`
 - 依赖：仅 Foundation。扇出 0。
 - 冷热：两侧共用；只做值传递。
@@ -50,7 +50,9 @@ component: CMP-DOMAIN
   | 来源 | `MailError` | 可重试 |
   |---|---|---|
   | `401` 读 | `authFailed` | 否 |
-  | `200` 空 body / 写 `401` | `deviceNotRegistered` | 否 |
+  | `200` 空 body（读） | `deviceNotRegistered` | 否 |
+  | `SendMail` 401 | `authFailed` | 否（既有 pinned 行为，本批不改） |
+  | Sync 写命令 401 | `deviceNotRegistered` | 否（T-1114-10 设计，2026-11-14 已实现） |
   | `449` / 策略拒绝 | `policyBlocked` | 否 |
   | Sync `3/4` | `syncKeyInvalid` | 是（重建） |
   | `503` + `Retry-After` | `throttled(seconds:)` | 是 |
@@ -66,7 +68,7 @@ component: CMP-DOMAIN
 ## 契约卡：SyncStore
 
 - 所属 / 目的：同步引擎读写本地事实的最小端口，去掉旧的 `StoreAdapter` 与 `async`（D6）。
-- 签名：`folders`、`applyFolderSnapshot`、`syncKey`、`applySyncBatch`、`resetCollection`（均为同步 `throws`）。
+- 签名：`folders`、`applyFolderSnapshot`、`syncKey`、`applySyncBatch`、`resetCollection`（均为同步 `throws`）；已实现 `markRead`、`commitMarkRead`、`commitDelete`（T-1114-14；见文末设计增量）。
 - 不变量：批次与 key 同事务；失败不推进 key；`(account, folder, serverID)` 幂等。
 - 错误模式：存储错误以 `MailStoreError` 抛出；`SyncEngine` 原样上抛。
 - 并发：`MailStore` 用 `DatabaseQueue` 单写；端口本身不承诺跨实例并发。
@@ -130,3 +132,31 @@ component: CMP-DOMAIN
 - 定位不变：`AddressList` 是纯值类型上的归一化函数，不读写任何端口；`MailDomain` 仍是「值类型 + 端口 + 错误目录」，不引入业务状态或 I/O。
 - 测试：`MailDomainTests` 补 `Message.cc` 默认值/相等性与 `AddressList` 表驱动（引号、尖括号、重复、空输入、DN 形态）；集合运算补 `<team>` 与 `<>` 内 `;` 的回归，锁住「已归一化地址不再解析」；`ComposeScene` 只调用，不复制规则。
 - 实现（2026-11-14）：`Values.swift#Message.cc` 默认 `nil`；`AddressList.swift` 按上述规则拆分归一化；集合运算走内部 `init(normalized:)`。`MailDomainTests` 10 例绿（新增 7 例：cc 默认/相等、拆分、形态、去重、集合运算、`<team>` 集合运算回归、`<>` 内 `;` 集合运算回归），全量 167 tests / 37 suites 绿。
+
+## 设计增量：邮箱写路径（T-1114-10，2026-11-14 设计；T-1114-11/14 已实现）
+
+- 新增窄写端口，不扩 `MailGateway`（只读 fake 与读契约不受影响）：
+
+  ```swift
+  public protocol MailWriteGateway: Sendable {
+      func markRead(collectionID: String, serverID: String, syncKey: String) async throws -> MessageDelta
+      func delete(collectionID: String, serverID: String, syncKey: String) async throws -> MessageDelta
+  }
+  ```
+
+- `MessageDelta` 复用为写响应：`added/changed/removedServerIDs/syncKey/moreAvailable` 都有效；适配层不裁剪。一次调用只发一条 Sync 写命令。
+- `SyncStore` 增三个方法（签名见 `CMP-STORE/spec.md` 设计增量）：
+
+  ```swift
+  func markRead(_ account: AccountID, folder: String, serverID: String) throws -> Bool
+  func commitMarkRead(_ account: AccountID, folder: String, serverID: String, delta: MessageDelta) throws
+  func commitDelete(_ account: AccountID, folder: String, serverID: String, delta: MessageDelta) throws
+  ```
+
+- 不变量：写端口成功当且仅当 `Status=1` + 非空新 key；`commit*` 把响应 delta、本地效果与新 key 放同一事务；失败不推进 key。`MailError` 不新增 case：写 401 → `deviceNotRegistered`、`Status=3/4` → `syncKeyInvalid`、其余按既有目录。
+- **非可选能力**：`MailWriteGateway` 不是“可选注入、nil 退化”的能力；`GatewayEndpoints.write`、`SyncEngine.init(writeGateway:)`、`ReadScene.init(writeEngine:)` 都要求非可选实现。生产 target 不提供 `UnsupportedWriteGateway`；只读测试在测试 target 定义该替身并显式注入。
+- **命名映射**：`MailWriteGateway.collectionID` 是 EAS 集合 ID；`SyncStore.folder` 是本地文件夹 ID。既有调用以 `MessageRef.folderID` 传 `collectionID`；新增实现必须保持该映射，不得混用。
+- 兼容性：`MailGateway` 7 个方法不变；`Message`/`Draft`/`Outbox` 值类型不变；`MailDomain` 仍只依赖 Foundation、无 I/O。尺寸预计 +15 行（515 → 约 530），远低于 800 行目标。
+- 契约测试：`MailDomainTests` 只做编译期端口遵循；`EASAdapterTests`/`SyncEngineTests`/`MailStoreTests` 覆盖行为。
+
+**实现（2026-11-14）**：`Ports.swift` 的 `MailWriteGateway` 两方法已落地；`SyncStore` 增三方法，`MailStore` 实现并由 `SyncStoreConformance` 转发。`MailDomainTests` 的测试替身只覆盖端口形状；`MailWriteGateway` 未进入生产 target 的 nil/默认退化路径。全量 228 tests / 44 suites 绿。

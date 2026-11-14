@@ -29,7 +29,7 @@ scenario: SCN-0004
 4. 补拉：`fetchBody` → 纯文本转 HTML（`HTMLText`）→ `applyBody` → yield `.loaded`；`isTruncated` 透传到 `BodyPresentation.loaded(truncated:)`，UI 给「正文过长」提示。
 5. 补拉失败 → yield `.failed(MailError)`；有摘要则 `BodyNotice.previewFallback` 保留摘要，无摘要则 `.failed(text)` 显示重试入口。
 6. 附件区按元数据渲染；点击转 `SCN-0005`。
-7. 已读标志：**未实现**（本地即时置已读、异步回写服务器都不存在）。
+7. 已读标志：**本场景不负责**。列表停留自动已读（本地置读、蓝点消失、服务器回写）归 `SCN-0008`；本场景只负责打开、缓存与补拉，不重复认领已读断言。
 
 失败路径：
 
@@ -57,7 +57,7 @@ scenario: SCN-0004
 
 `designed`（2026-11-14 核对）。入口已从旧 `MailboxModel` 改为 `ReadScene` + `MailboxViewModel`；测试证据更新如下。
 
-实现：`ReadScene.open`（缓存优先、单飞、先 `applyBody` 再 yield）、`MailboxViewModel` 正文状态机、`MessageBodyView`（WKWebView、禁 JS、CSP）已落地。2026-11-10 修掉「同步摘要冒充正文」（`b1ec332`）。**已读回写服务器未实现**，sanitizer 仍是 CSP + 关脚本的轻量实现。
+实现：`ReadScene.open`（缓存优先、单飞、先 `applyBody` 再 yield）、`MailboxViewModel` 正文状态机、`MessageBodyView`（WKWebView、禁 JS、CSP）已落地。2026-11-10 修掉「同步摘要冒充正文」（`b1ec332`）。**已读归 `SCN-0008`**（2026-11-14，T-1114-10 设计），本卡不再把「已读回写未实现」作为自身残留；sanitizer 仍是 CSP + 关脚本的轻量实现。
 
 | 测试项 | 现状 |
 |---|---|
@@ -66,4 +66,4 @@ scenario: SCN-0004
 | `T-SCN-0004-03` | 部分：CSP 禁脚本与远程资源阻止只靠代码审查（`MessageBodyView`）；无「脚本不执行、图片不发请求」的自动化断言 |
 | `T-SCN-0004-04` | 通过（组件级）：`ScenesTests`「a gateway failure is yielded as failed and does not overwrite the cache」；`PresentationTests`「a failed fetch without a preview becomes the retry state」「a failed fetch keeps the preview readable and allows retry」 |
 
-未转 `verified` 的原因：01 无性能证据、03 无自动化断言、已读回写未落地。
+未转 `verified` 的原因：01 无性能证据、03 无自动化断言。已读回写/列表停留置读不属于本卡，见 `SCN-0008`。

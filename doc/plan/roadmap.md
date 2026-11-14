@@ -9,7 +9,7 @@ updated: 2026-11-14
 # 路线图
 
 只记里程碑、工序与依赖。需求状态看 `requirements/`，设计真相看 `design/`。
-首版范围已于 2026-11-09 确认：REQ-0001…0007 `accepted`（`history/decisions/2026-11-09-scope-baseline.md`）。2026-11-14 追加并交付：REQ-0012「全部回复的收件人与抄送预填」`delivered`（W-M2-03，任务表见本文 §W-M2-03 任务表）。
+首版范围已于 2026-11-09 确认：REQ-0001…0007 `accepted`（`history/decisions/2026-11-09-scope-baseline.md`）。2026-11-14 追加并交付：REQ-0012「全部回复的收件人与抄送预填」`delivered`（W-M2-03，任务表见本文 §W-M2-03 任务表）。2026-11-14 追加需求分析：REQ-0013「列表停留自动已读」与 REQ-0014「列表键盘删除」`accepted`，纳入 W-M3-03；设计已完成（`SCN-0008`/`SCN-0009` `designed`，P1 待确认），任务拆分复核完成（2026-11-14），任务表见本文 §W-M3-03 任务表。
 工序目录名沿用历史 `works/YYYY-MM-DD-<短名>/`；2026-11-14 起过程记录放工作区 `task-spaces/<run>/`，**任务表作为项目排期的一部分落在本文件**，不再只存在于某次运行的 brief 里。
 
 ## 里程碑
@@ -19,7 +19,7 @@ updated: 2026-11-14
 | M0 协议探针 | 证明外网 EAS 通道可用，锁定线格式、设备身份与命令覆盖 | 命令行跑通 `OPTIONS → Provision → FolderSync → Sync → ItemOperations → SendMail`，实测状态码与能力矩阵成文 | 已完成（`history/works/2026-11-09-eas-probe/`） |
 | M1 只读客户端 | 账号接入、文件夹树、列表、正文、附件、离线缓存 | 五个只读场景（SCN-0001…0005）全部 `verified` | 进行中：账号、文件夹树、列表、正文已通；附件 02–04 未实现；场景卡待转 `verified` |
 | M2 发送与草稿 | Outbox、SendMail、回复/转发、草稿、Sent 镜像、全部回复 | send-message 场景 `verified`；离线发送可在联网后只发一次 | 进行中：Outbox 入队/冷投递/重试已实现；Sent 镜像与撰写附件未做；全部回复 `SCN-0007` `verified`（2026-11-14，T-1114-09，含真机 UI 冒烟），REQ-0012 `delivered`；其余场景卡待 `verified` |
-| M3 体验 | Ping、通知、本地搜索、错误恢复与空态 | 新邮件端到端 ≤ 60s 可见（Ping 或轮询）；搜索、通知场景 `verified` | 进行中：Ping 不支持 → 5 分钟轮询；搜索与通知已落地，场景卡待 `verified` |
+| M3 体验 | Ping、通知、本地搜索、错误恢复与空态 | 新邮件端到端 ≤ 60s 可见（Ping 或轮询）；搜索、通知场景 `verified`；W-M3-03 的 `SCN-0008`/`SCN-0009` `verified` | 进行中：Ping 不支持 → 5 分钟轮询；搜索与通知已落地，场景卡待 `verified`；W-M3-03 实现完成（2026-11-14，T-1114-11…18/21）：`SCN-0008`/`SCN-0009` 仍 `designed`，待 T-1114-19/20 验证；P1 frozen 记录与 R16 真机样本仍缺 |
 | M4 加固 | 策略、限流、安全、性能 | 限流退避、缓存上限、安全审计、5k 性能基线已落 | 已完成（`history/works/2026-11-09-m4-hardening/`） |
 
 ## 工序
@@ -36,6 +36,7 @@ updated: 2026-11-14
 | W-M2-03 全部回复与抄送预填 | M2 | W-M2-02；REQ-0012 `delivered` | CMP-EAS、CMP-DOMAIN、CMP-EASADAPTER、CMP-STORE、CMP-SCN-COMPOSE、CMP-PRES、CMP-APP | 已完成（2026-11-14）：`T-1114-02`…`T-1114-08` 落地 Cc 采集、领域/存储、`replyAllSeed`、视图模型与工具栏；`T-1114-09` 验证 3 正 1 反全绿，`SCN-0007` 转 `verified`、REQ-0012 转 `delivered`；全量 182 tests / 38 suites、架构 4 门过；真机 UI 冒烟已完成（本地录制网关，未向真实邮箱投递）。任务表见本文 §W-M2-03 任务表 |
 | W-M3-01 Ping 与通知 | M3 | W-M2-01 | CMP-SYNC、通知策略 | Ping 实测不支持 → 轮询；通知已落地（无过程记录，无独立场景卡） |
 | W-M3-02 本地搜索 | M3 | W-M1-03 | CMP-STORE | 已实现（无过程记录，无独立场景卡）；FTS 不扫正文列 |
+| W-M3-03 列表已读与键盘删除 | M3 | W-M1-04；REQ-0013/0014 已 accepted | CMP-PRES、CMP-APP、CMP-SCN-READ、CMP-SYNC、CMP-STORE、CMP-DOMAIN、CMP-EAS、CMP-EASADAPTER、CMP-ROOT | 设计完成（2026-11-14，T-1114-10 第 2 轮）：`SCN-0008`/`SCN-0009` `designed`；实现完成（2026-11-14，T-1114-11…18/21）：写端口、EAS 写命令、适配器、存储提交、FIFO 门、场景编排、计时/删除/视图接线落地，全量 228 tests / 44 suites、架构 4 门过；待 T-1114-19/20 验证与 R16 真机样本，`SCN-0008`/`SCN-0009` 仍 `designed`；任务表见本文 §W-M3-03 任务表 |
 | W-SCN-REFACTOR 场景收口与分层重构 | M1/M2/M3 结构前置 | W-DOC-01、M4 结论 | 全仓 | 已完成（`history/works/2026-11-10-scene-refactor/`）：4 场景、9 库 + 2 可执行、159 测试、4 架构门 |
 
 ### W-SCN-REFACTOR 场景收口与分层重构（2026-11-14 完成）
@@ -47,7 +48,7 @@ updated: 2026-11-14
 - 发信改为「入队即返回 + `Outbox` 冷投递」；outbox schema v8（租约 + 退避 + 显式状态）。
 - 最终验证：159 tests / 37 suites 全绿；`Scripts/check-architecture.sh` 4 门全过；`AppComposition` 180 行。
 
-结构收口**不等于功能里程碑完成**：M1/M2/M3 的出口仍看场景卡 `verified`。当前仍缺：真机冒烟（`uumailctl diagnose/sync/send`、App live bootstrap）、附件 25MB/续传/名称回退、已读回写、Sent 镜像、outbox UI 角标、`PendingOps`。
+结构收口**不等于功能里程碑完成**：M1/M2/M3 的出口仍看场景卡 `verified`。当前仍缺：真机冒烟（`uumailctl diagnose/sync/send`、App live bootstrap）、附件 25MB/续传/名称回退、已读回写/键盘删除（已设计，待实现）、Sent 镜像、outbox UI 角标、`PendingOps`。
 
 ## 过程记录缺口（2026-11-13 登记）
 
@@ -80,8 +81,58 @@ updated: 2026-11-14
 
 并行关系：`T-1114-02` 与 `T-1114-03` 可并行；之后 `T-1114-04`、`T-1114-05`、`T-1114-06` 分属三个组件可并行。
 
+## W-M3-03 任务表（列表已读与键盘删除）
+
+来源：`REQ-0013`/`REQ-0014`（`accepted`）、`SCN-0008`/`SCN-0009`（`designed`，2026-11-14 T-1114-10）、`design/components/CMP-*` 设计增量。设计提案于 2026-11-14 完成第 2 轮修订（按评审 B1–B4）。实现节点于 2026-11-14 按编排指令完成 T-1114-11…18/21 并提交；**P1 的 frozen 人工确认记录仍未创建**（建议收尾前补），R16（网关写命令）真机/录制样本仍未取证。
+
+任务拆分复核（2026-11-14）：每个任务在「规格锚点」列指到组件规格的具体段落；依赖无环；出口含测试名/命令/证据位置。T-1114-11 与 T-1114-14 的边界按「一次提交可编译」调整：`MailWriteGateway` 留在 T-1114-11；`SyncStore` 三方法与唯一生产遵循 `MailStore` 同批进 T-1114-14，避免协议加方法后 `MailStore`/测试替身编译失败的中间态。
+
+| 任务 | 类型 | 组件 | 规格锚点 | 依赖 | 状态 | 出口 |
+|---|---|---|---|---|---|---|
+| `T-1114-10` | `design` | SCN-0008 / SCN-0009 + 写路径（0 组件） | `SCN-0008`/`SCN-0009` §入口/§运行序/§测试；`CMP-*` 设计增量 | 需求分析 brief | 已完成（2026-11-14，第 2 轮） | 两张场景卡四元素齐、3 正 1 反可执行、转 `designed`；写端口非可选/串行写/预算拆分拍板；`architecture.md` §3.1/§5 与组件规格增量；P1 提案待确认 |
+| `T-1114-11` | `change` | `CMP-DOMAIN` | `CMP-DOMAIN/spec.md` §设计增量：邮箱写路径（`MailWriteGateway`） | T-1114-10 + P1 确认 | 已完成（2026-11-14，待 T-1114-19/20 验证） | `Ports.swift` 新增 `MailWriteGateway`（2 方法，非可选）；`MailDomainTests` 内加编译期遵循 mock（不进生产 target）；**不动 `SyncStore`**，不产生不可编译中间态；`./Scripts/swiftw test --filter MailDomainTests` 绿 |
+| `T-1114-12` | `change` | `CMP-EAS` | `CMP-EAS/spec.md` §设计增量：Sync 写命令 | T-1114-11 | 已完成（实现/测试，2026-11-14；R16 真机/录制样本未取证） | `sync(change:)` 支持 `.read`（`Change/ApplicationData/Read=1`）与 `.delete`（`Delete/ServerId`）；`EASClientTests` 新增 golden 请求体/新 key/`Status=3/4`/写 401→`deviceNotRegistered`；**先证网关接受（R16），被拒停下上报**，证据入 `evidence/`；`./Scripts/swiftw test --filter EASClientTests` 绿 |
+| `T-1114-13` | `change` | `CMP-EASADAPTER` | `CMP-EASADAPTER/spec.md` §设计增量：写端口映射 | T-1114-11、T-1114-12 | 已完成（2026-11-14，待 T-1114-19/20 验证） | `EASAdapter` 同时遵循读/写端口；`markRead`/`delete` 全量透传 `MessageDelta`、复用 `EASAdapter.map`；`EASAdapterTests` 补 delta 透传与写 401/3/4/offline；不在适配层判业务；`./Scripts/swiftw test --filter EASAdapterTests` 绿 |
+| `T-1114-14` | `change` | `CMP-STORE + CMP-DOMAIN` | `CMP-STORE/spec.md` §设计增量：本地置读与写成功提交；`CMP-DOMAIN/spec.md` §设计增量：邮箱写路径（`SyncStore`） | T-1114-11 | 已完成（2026-11-14，待 T-1114-19/20 验证） | 同批增 `SyncStore.markRead/commitMarkRead/commitDelete` 与 `MailStore` 实现/转发器，更新测试替身；`MailStoreTests` 覆盖只改目标行、已读幂等、delta+本地效果+key 同事务、回滚不推进 key、重复软删幂等、partial echo 不清空目标信封；全量 `./Scripts/swiftw test` 绿；不新增 schema；`MailStore` 组件 ≤1000 行，超限先停下报预算 |
+| `T-1114-21` | `change` | `CMP-ROOT` | `CMP-ROOT/spec.md` §设计增量：写端口与同一引擎装配 | T-1114-13 | 已完成（2026-11-14，待 T-1114-19/20 验证） | `GatewayEndpoints{read,write}` 与 `GatewayFactory` 端点化，`write` 非可选；`PlatformGateway.make` 返回同一 `EASAdapter` 的 read/write；`CompositionTests` 测试工厂显式注入 `UnsupportedWriteGateway`，断言生产 `write` 是 `EASAdapter`（需具体类型时同批补测试依赖）；`./Scripts/swiftw test --filter CompositionTests` + 架构门绿；组合根不判业务 |
+| `T-1114-15` | `change` | `CMP-SYNC + CMP-ROOT（仅装配）` | `CMP-SYNC/spec.md` §设计增量：串行写路径；`CMP-ROOT/spec.md` §设计增量 | T-1114-11、T-1114-13、T-1114-14、T-1114-21 | 已完成（2026-11-14，待 T-1114-19/20 验证） | `SyncEngine.init` 非可选 `writeGateway` + 显式 FIFO 门 + `markRead`/`deleteMessage`；`SyncEngineTests` 覆盖写与 `syncOnce` 串行、key 恰好推进一次、失败不推进/不落本地、`Status=3/4` reset 与写互斥、`moreAvailable` 不提交、取消不发网络；同批更新所有测试构造点；两处生产组合根传 `endpoints.write`；`./Scripts/swiftw test --filter SyncEngineTests` + 架构门绿 |
+| `T-1114-16` | `change` | `CMP-SCN-READ + CMP-ROOT（仅装配）` | `CMP-SCN-READ/spec.md` §设计增量：自动已读与键盘删除；`CMP-ROOT/spec.md` §设计增量 | T-1114-15 | 已完成（2026-11-14，待 T-1114-19/20 验证） | `ReadScene` 非可选 `writeEngine: SyncEngine` + `markReadLocally`/`writeBackMarkRead`/`deleteMessage`；`ScenesTests` 覆盖本地先行、回写失败不回滚、删除只在服务器成功后落本地、取消传播；同批更新测试构造点，并把两处生产组合根传同一个 `engine`；`./Scripts/swiftw test --filter ScenesTests` + 架构门绿 |
+| `T-1114-17` | `change` | `CMP-PRES` | `CMP-PRES/spec.md` §设计增量：停留计时与键盘删除 | T-1114-16 | 已完成（2026-11-14，待 T-1114-19/20 验证） | `MailboxDwell`/`MailboxDeletion` 与 VM 接线；主 VM ≤400（目标 ≤380）；`PresentationTests` 覆盖 10 秒触发/取消/后台/重载不重置/幂等/回写失败无错误，搜索模式不计时（进入/停留都不重启），删除隐藏即现/连按一次/失败恢复/搜索模式重载；O5 用正文补拉慢/失败断言删除命令按时发出；R23 跨文件夹同 `serverID` fixture 判定，若需改 `Selection.messageID` 公开类型/语义则停下按 P2 评审；`./Scripts/swiftw test --filter PresentationTests` 绿 |
+| `T-1114-18` | `change` | `CMP-APP` | `CMP-APP/spec.md` §设计增量：列表焦点删除与前台状态 | T-1114-17 | 已完成（2026-11-14；最小 UI 探针命中，真机窗口未跑；待 T-1114-19/20 验证） | 列表焦点 Delete/Backspace（`.onDeleteCommand` 优先、`.onKeyPress(.delete)` 备选）+ `scenePhase` 转发 + 状态栏 `deleteErrorText`；先做最小 UI 探针并留证据：列表聚焦命中、搜索框/正文/撰写页不命中；探针失败停下上报，不用全局 NSEvent 兜底；身份接线按 T-1114-17 的 R23 结论；`./Scripts/swiftw test --filter PresentationTests` + 架构门绿 |
+| `T-1114-19` | `verify` | SCN-0008（0 组件） | `SCN-0008` §测试/§状态 | T-1114-18 | 待启动 | `T-SCN-0008-01..04`（3 正 1 反）全绿；`SCN-0003`/`SCN-0004` 回归；全量 `./Scripts/swiftw test` + 架构 4 门；证据入 `task-spaces/<run>/evidence/`；只建议翻 `verified`，不自行翻 |
+| `T-1114-20` | `verify` | SCN-0009（0 组件） | `SCN-0009` §测试/§状态 | T-1114-19 | 待启动 | `T-SCN-0009-01..04`（3 正 1 反）全绿；`SCN-0004`/`SCN-0003`/`SCN-0008` 回归；全量 `./Scripts/swiftw test` + 架构 4 门；列出 `doc/README.md` 与 roadmap 的状态翻转项交收尾节点；证据入 `evidence/`；只建议翻 `verified`，不自行翻 |
+
+并行：`T-1114-11` 完成后，`T-1114-12`（`CMP-EAS`）与 `T-1114-14`（`CMP-STORE` + `CMP-DOMAIN` 契约）分属不同组件/契约，可并行；`T-1114-21` 在 `T-1114-13` 后可启动，可与 `T-1114-14` 并行（不同组件），但必须早于 `T-1114-15`。`T-1114-11`/`T-1114-14` 都触碰 `CMP-DOMAIN`，按组件 WIP=1 串行；`T-1114-21`/`T-1114-15`/`T-1114-16` 都含 `CMP-ROOT`，串行且不并行第二个 `CMP-ROOT` 任务。`T-1114-16` 之后 `T-1114-17`、`T-1114-18` 串行；`T-1114-19`、`T-1114-20` 串行，验证不跳步。
+
+**跨组件仅装配例外**：`T-1114-15`/`T-1114-16` 的组件列分别为 `CMP-SYNC + CMP-ROOT（仅装配）`、`CMP-SCN-READ + CMP-ROOT（仅装配）`。原因：写端口/写引擎非可选后，新增构造参数会让两处生产组合根编译失败；拆成独立 `CMP-ROOT` 任务无法形成可编译的单组件提交，保留旧构造/默认值又会重新制造静默退化。WIP 处置：同一时刻不并行第二个 `CMP-ROOT` 任务，`CMP-ROOT` 的 WIP 由该 change 独占；组合根只构造/注入/路由，不判业务。
+
+`T-1114-14` 的 `CMP-STORE + CMP-DOMAIN` 不是装配例外，而是「公共契约与其唯一生产遵循同批」：`SyncStore` 加方法必须同批改 `MailStore`，否则无法编译；它只做一次验证（`MailStoreTests` + 全量编译），不拆成两个组件提交。
+
+change 共同出口：`./Scripts/swiftw test` 全量绿（或过滤对应 target 绿且不破坏其他 target 编译）+ `bash Scripts/check-architecture.sh` 4 门过 + `SCN-0008`/`SCN-0009` 不回归 + 更新对应 `doc/design/components/<CMP>/spec.md` 的契约与实现进度 + 同步 `doc/design/architecture.md` §3/§5（数据所有权/写路径）与 §10；未更新规格不算完成。所有 change 受 P1 人工确认门约束。
+
+本批统一验证命令：`./Scripts/swiftw test`、`bash Scripts/check-architecture.sh`；单任务过滤用 `./Scripts/swiftw test --filter <Target>`；verify 任务另跑 `T-SCN-0008-01..04`/`T-SCN-0009-01..04` 与 `SCN-0003`/`SCN-0004` 回归。
+
+### 装载清单（2026-11-14 拆分复核）
+
+| 任务 | 必读 | 预计装载 | 备注 |
+|---|---|---|---|
+| `T-1114-11` | `CMP-DOMAIN/spec.md` §设计增量；`Sources/MailDomain/Ports.swift`；`Tests/MailDomainTests` | ~300 行 | 只加端口 |
+| `T-1114-12` | `CMP-EAS/spec.md` §设计增量；`EASClient.swift`、`WBXML.swift`；`EASClientTests`；playbook §3/§5 | ~1,600 行 | R16 探针证据 |
+| `T-1114-13` | `CMP-EASADAPTER/spec.md` §设计增量；`EASAdapter.swift`；`CMP-DOMAIN` 写端口；`EASAdapterTests` | ~450 行 | 不判业务 |
+| `T-1114-14` | `CMP-STORE/spec.md` §设计增量；`MailStore.swift`、`Migrations.swift`、`SyncStoreConformance.swift`；`CMP-DOMAIN` §设计增量；`MailStoreTests`；`Tests/SyncEngineTests` 与 `Tests/ScenesTests/ScenesSupport.swift` 的两个 `SyncStore` 替身 | ~1,900 行 | 本批最大；`MailStore` 超 1000 行先停 |
+| `T-1114-21` | `CMP-ROOT/spec.md` §设计增量；`GatewayFactory.swift`、两处组合根；`CompositionTests` | ~600 行 | 只装配 |
+| `T-1114-15` | `CMP-SYNC/spec.md` §设计增量；`SyncEngine.swift`；`SyncEngineTests`；`CMP-ROOT` 增量；测试替身 | ~1,100 行 | 门与 key |
+| `T-1114-16` | `CMP-SCN-READ/spec.md` §设计增量；`ReadScene.swift`；`ScenesTests` 支持与用例；组合根 | ~1,050 行 | 同一 engine |
+| `T-1114-17` | `CMP-PRES/spec.md` §设计增量；`MailboxViewModel.swift`、`PresentationTypes.swift`；`PresentationTests` 支持与用例 | ~1,100 行 | 主 VM 预算 |
+| `T-1114-18` | `CMP-APP/spec.md` §设计增量；`MailboxView.swift`；`SCN-0009` §测试；`PresentationTests` | ~700 行 | UI 探针 |
+| `T-1114-19`/`T-1114-20` | `SCN-0008`/`SCN-0009` §测试/§状态；`SCN-0003`/`SCN-0004` 回归；相关测试 | 各 ~1,500–1,700 行 | 证据入 `evidence/` |
+
+装载纪律：本批按单任务 ≤2,000 行装载控制；单任务不跨第二个组件/契约，若实现时发现必须跨或装载超限，先停下按批次纪律重拆，不静默扩大。本批最大为 `T-1114-14`（约 1,900 行），已接近上限，仍限 `CMP-STORE`/`CMP-DOMAIN` 一个契约链。所有 change 另读 `doc/design/architecture.md` §3/§5/§10 的相关段落（约 150 行），并在出口同步。
+
+P1 确认记录：确认后归档为 `uumail/doc/history/decisions/2026-11-14-mail-write-path.md`（当前仍未创建，不伪造 `frozen`；实现节点已按编排指令推进，建议收尾前补人工确认）。决策记录必须包含：写端口全链路非可选与测试替身、T-1114-15/16 的 `CMP-ROOT` 仅装配例外与 WIP 处置、场景扇出 1–2→1–3（含窄 `SyncWriting` 替代方案 F）、**T-1114-11/14 的「契约与唯一生产遵循同批」边界**。R16 探针证据随 T-1114-12 的 dev/evidence 记录，不写入本表。
+
 ## 批次纪律
 
-- 每个工序一次立一个 `works/` 目录，任务表写在 `brief.md`；一个任务一个对话。
+- 每个工序一次立一个 `works/` 目录；2026-11-14 起过程记录放工作区 `task-spaces/<run>/`，**任务表写在本文件对应工序节**，brief 只保留当次分析/范围，不维护第二份现行任务表；一个任务一个对话。
 - 组件级 WIP=1：同一时刻只有一个在飞任务改同一组件。
 - M1 未通过前不启动 M2；M2 与 M3 可并行但共享 CMP-SYNC，需错峰。

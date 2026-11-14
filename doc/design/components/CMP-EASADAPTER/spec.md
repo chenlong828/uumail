@@ -14,12 +14,12 @@ component: CMP-EASADAPTER
 - 单元：组件（技术边界 / 防腐层）
 - 层 / 类型：L0；把 EAS 协议层挡在 `MailDomain` 契约之外
 - 业务价值：EAS 的类型、错误与配置只在这一处出现；协议升级/网关差异只改这里，场景与同步不动。
-- 负责 X：实现 `MailGateway` 的 7 个操作；`ServerConfiguration → EASConfiguration` 的构造入口；`EASError → MailError` 的唯一映射；正文类型/截断标记的透传（D10）；MIME 以 opaque 字节送出。
+- 负责 X：实现 `MailGateway` 的 7 个操作与 `MailWriteGateway` 的 2 个写操作（T-1114-10 设计，2026-11-14 已实现）；`ServerConfiguration → EASConfiguration` 的构造入口；`EASError → MailError` 的唯一映射；正文类型/截断标记的透传（D10）；MIME 以 opaque 字节送出。
 - 不负责 Y：业务判断、重试策略、持久化、UI、MIME 组装（`Outbox/MimeBuilder`）。
 - 内部逻辑：每个操作只做「调用 `EASClient` → 映射错误 → 转成领域值」；错误映射集中在 `EASAdapter.map`，不做重试。
 - 拥有的数据：无。
 - 变化轴：EAS 协议版本与网关差异。
-- 公开契约：`CMP-EASADAPTER#MailGateway`（`MailGateway` v2 的唯一生产实现）。
+- 公开契约：`CMP-EASADAPTER#MailGateway`、`#MailWriteGateway`（`MailGateway` v2 与 `MailWriteGateway` v1 的唯一生产实现）。
 - 入口：`Sources/EASAdapter/EASAdapter.swift#EASAdapter`、`#map`
 - 依赖：`MailDomain`、`EASClient`。扇出 2。
 - 冷热：冷。
@@ -79,3 +79,22 @@ component: CMP-EASADAPTER
 - `EASAdapter.message(_:)` 已把 `EASMessage.cc` 传给 domain `Message.cc`；`EASMessage.cc` 为空时保持 `nil`（`EASClient` 已把空白归一为 `nil`）。
 - 不在本层拆分地址、去重或排除自己；这些统一在 `ComposeScene` 调用 `MailDomain.AddressList` 时做。本层只做 EAS → 领域值映射。
 - 测试：`EASAdapterTests` 2 例。一次 Sync 回放同时含 `Add` 与 `Change`，断言 domain `Message.cc` 分别取到 `c@x.y; d@x.z` 与 `e@x.y`；缺失与空白 `Cc` 断言 `nil`。既有 HTML/纯文本/截断与 401 映射 4 例不回归。
+
+## 设计增量：写端口映射（T-1114-10，2026-11-14 设计；T-1114-13 已实现）
+
+- `EASAdapter` 追加遵循 `MailWriteGateway`：
+
+  ```swift
+  public func markRead(collectionID: String, serverID: String, syncKey: String) async throws -> MessageDelta
+  public func delete(collectionID: String, serverID: String, syncKey: String) async throws -> MessageDelta
+  ```
+
+- 每个方法只做三件事：调用 `client.sync(collectionID:syncKey:change:)` → `Self.map(error)` → 把 `SyncResult` 转成 `MessageDelta`（`added/changed/removedServerIDs/syncKey/moreAvailable` 全量透传）。
+- 把 `fetchMessages` 里的 `SyncResult → MessageDelta` 映射抽成私有函数，读路径与写路径共用；不复制字段列表。
+- 不判断消息是否可读/可删、不决定重试、不拆地址、不落库；业务判断留在 `SyncEngine`/场景。
+- 错误：写 401 由 `EASClient` 映射为 `deviceNotRegistered`，本层按表映射为 `MailError.deviceNotRegistered`；`syncKeyInvalid`/`throttled`/`offline`/`unsupported` 沿用现有表；不新增 `MailError` case。
+- 装配：生产 `PlatformGateway.make` 返回 `GatewayEndpoints(read: adapter, write: adapter)`，`read`/`write` 是**同一个 `EASAdapter` 实例**；装配测试断言 `write` 的类型/来源，不用 `nil` 表示只读。
+- 测试：`EASAdapterTests` 补 `markRead`/`delete` 的 delta 透传与错误映射（写 401、3/4、offline）；既有 6 例不回归。
+- 尺寸：当前 134 行；预计 +30，仍低于 300。
+
+**实现（2026-11-14）**：`EASAdapter` 同时遵循 `MailGateway` 与 `MailWriteGateway`；读/写响应共用 `Self.delta` 全量透传。`EASAdapterTests` 9 例绿，含 markRead/delete delta、写 401、3/4、503、500 映射。
