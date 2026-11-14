@@ -21,7 +21,7 @@ scenario: SCN-0008
 - `CMP-STORE#markRead`、`#commitMarkRead`（本地置读；写成功后 delta + read + key 同事务；T-1114-14）
 - `CMP-DOMAIN#MailWriteGateway.markRead`（T-1114-11）、`#SyncStore.markRead`/`#commitMarkRead`（T-1114-14）
 - `CMP-EASADAPTER#markRead`、`CMP-EAS#sync(change: .read)`（`Change` + `ApplicationData/Read=1`；T-1114-13/T-1114-12）
-- `CMP-APP#MailboxView`（`scenePhase` 前后台转发；不写业务；T-1114-18）
+- `CMP-APP#MailboxView`（前台/失活状态转发：`NSApplication.didBecomeActive`/`willResignActive` 通知，不写业务；T-1114-18）
 
 ## 运行序
 

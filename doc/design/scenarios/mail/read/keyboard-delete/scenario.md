@@ -14,7 +14,7 @@ scenario: SCN-0009
 
 ## 入口
 
-- `CMP-APP#MailboxView`（列表焦点下的 `.onDeleteCommand`/等价 Delete/Backspace 绑定、`scenePhase` 转发；视图不判业务；T-1114-18）
+- `CMP-APP#MailboxView`（列表焦点下的 `.onDeleteCommand`/等价 Delete/Backspace 绑定、前台/失活 `NSApplication` 通知转发；视图不判业务；T-1114-18）
 - `CMP-PRES#MailboxViewModel.deleteSelected`、`MailboxDeletion`（临时隐藏集、单飞、选中推进/恢复、错误展示；T-1114-17）
 - `CMP-SCN-READ#deleteMessage`（删除编排；不本地预删；T-1114-16）
 - `CMP-SYNC#deleteMessage`（与 `syncOnce` 共享 key 的显式串行门；T-1114-15）
