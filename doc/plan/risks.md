@@ -24,11 +24,13 @@ updated: 2026-11-14
 | R11 | 抓包样本含敏感内容 | 真实邮件正文/主题进入仓库或日志 | 合规事故 | 已决：脱敏后入仓（`history/decisions/2026-11-09-scope-baseline.md` 决策记录）；脱敏脚本与样本同目录，`.env`、`logs/`、`output/` 不入库，提交前检查 | `history/decisions/2026-11-09-scope-baseline.md`、`design/architecture.md` §7.3 |
 | R12 | 传输与静态数据加固缺口 | 无 certificate pinning；本地库与缓存明文、无 SQLCipher；无审计日志 | 内部 CA 中间人或磁盘/备份泄露时邮件内容暴露 | 凭据只进 Keychain；库与缓存依赖 FileVault；附件名过滤路径分隔符；不做 pinning/SQLCipher 为已知接受项，后续按需补 | `design/components/CMP-STORE/spec.md` 数据所有权、`design/components/CMP-APP/spec.md` |
 | R13 | 发送只入队后用户看不出待发/失败 | 离线或投递失败后，列表与状态栏没有 pending/failed 计数；只有撰写页短暂显示「已加入发件箱」 | 用户误以为邮件已发出，重复发送或错过重试 | 组合根已有 `OutboxPump` 自动重投；短期靠撰写页状态文案，后续加列表/状态栏角标（`Outbox.pending` 已可读） | `design/components/CMP-PRES/spec.md`、`CMP-APP/spec.md`、`CMP-OUT/spec.md` |
-| R14 | 网关 Sync 信封不返回 `Cc` | `EASClientTests` fixture 或真机样本无 `Cc`；`To` 有值而 `Cc` 恒空 | REQ-0012 的「全部回复填抄送」无法按当前路径交付 | T-1114-02 先用 fixture/真机证；不返回则停止并按 REQ-0012 重议，不静默降级为只填 To | `design/components/CMP-EAS/spec.md` 设计增量、`design/scenarios/mail/send/reply-all-recipients/scenario.md` |
+| R14 | 网关 Sync 信封不返回 `Cc` | `EASClientTests` fixture 或真机样本无 `Cc`；`To` 有值而 `Cc` 恒空 | REQ-0012 的「全部回复填抄送」无法按当前路径交付 | 已关闭（2026-11-14）：T-1114-02 真机 Sync 回放确认网关返回 `Cc`，证据见 `design/components/CMP-EAS/playbook.md` §5.3；后续按 REQ-0012 实现 | `design/components/CMP-EAS/spec.md` 设计增量、`design/scenarios/mail/send/reply-all-recipients/scenario.md` |
 | R15 | v9 回填只覆盖最近窗口，且升级后首次同步可能发一次新邮件通知 | 旧库升级后第一次同步；`report.added > 0` 但用户没有新邮件 | 更早邮件 `cc` 为空；一次性通知噪声 | REQ-0012 已把范围限定为「最近同步窗口」；更早邮件不伪造；通知副作用登记为已知接受项，若不可接受另开 CMP-SYNC 任务抑制 | `design/components/CMP-STORE/spec.md` 设计增量、`design/scenarios/mail/send/reply-all-recipients/scenario.md` |
 
 ## 风险等级口径
 
 - 高：直接使项目不可用或造成合规事故（R1、R2、R11）。
-- 中：影响关键旅程但可降级（R3、R4、R5、R6、R8、R12、R13、R14）。
+- 中：影响关键旅程但可降级（R3、R4、R5、R6、R8、R12、R13）。
 - 低：局部体验或可回滚（R7、R9、R10、R15）。
+
+R14 已于 2026-11-14 关闭（T-1114-02：网关 Sync 信封实测返回 `Cc`）。

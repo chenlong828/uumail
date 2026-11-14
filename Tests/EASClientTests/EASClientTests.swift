@@ -258,6 +258,8 @@ struct EASSyncTests {
             var fields: [WBXMLElement] = []
             if let subject = message.subject { fields.append(.text("Subject", subject)) }
             if let from = message.from { fields.append(.text("From", from)) }
+            if let to = message.to { fields.append(.text("To", to)) }
+            if let cc = message.cc { fields.append(.text("Cc", cc)) }
             if let date = message.dateReceived { fields.append(.text("DateReceived", date)) }
             if let read = message.isRead { fields.append(.text("Read", read ? "1" : "0")) }
             if let preview = message.bodyPreview {
@@ -298,7 +300,8 @@ struct EASSyncTests {
                         dateReceived: "2026-11-08T05:11:18.000Z",
                         isRead: false,
                         importance: 1,
-                        bodyPreview: "preview text"
+                        bodyPreview: "preview text",
+                        cc: "c@x.y; d@x.z"
                     )
                 ]
             ))
@@ -312,6 +315,8 @@ struct EASSyncTests {
         let message = try #require(result.added.first)
         #expect(message.serverID == "123")
         #expect(message.subject == "Hello")
+        #expect(message.to == "me@x.y")
+        #expect(message.cc == "c@x.y; d@x.z")
         #expect(message.isRead == false)
         #expect(message.bodyPreview == "preview text")
 
@@ -323,6 +328,29 @@ struct EASSyncTests {
         #expect(collection.child("CollectionId")?.stringValue() == "13")
         #expect(document.child("Sync")?.child("SyncKey") == nil, "a top-level SyncKey makes Exchange answer Status=4")
         #expect(collection.child("Class") == nil)
+    }
+
+    @Test("blank Cc on the wire is not a value")
+    func blankCcIsNil() async throws {
+        let stub = StubTransport(responses: [
+            EASHTTPResponse(status: 200, headers: [:], body: syncResponse(
+                status: "1",
+                syncKey: "44",
+                adds: [
+                    EASMessage(serverID: "1", cc: "   "),
+                    EASMessage(serverID: "2", cc: "\n\t"),
+                    EASMessage(serverID: "3"),
+                ]
+            ))
+        ])
+        let client = EASClient(configuration: makeConfiguration(), transport: stub, policyKey: "1")
+        let result = try await client.sync(collectionID: "13")
+
+        let cc = result.added.map(\.cc)
+        #expect(cc.count == 3)
+        #expect(cc[0] == nil)
+        #expect(cc[1] == nil)
+        #expect(cc[2] == nil)
     }
 
     @Test("MoreAvailable is reported so the caller keeps pulling")

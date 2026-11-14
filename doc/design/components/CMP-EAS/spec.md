@@ -23,7 +23,7 @@ component: CMP-EAS
 - 入口：`Sources/EASClient/EASClient.swift#EASClient`、`WBXML.swift#WBXML`、`URLSessionTransport.swift#URLSessionTransport`
 - 依赖：Foundation（URLSession）、WBXML 编解码、传输层。扇出 0 本仓 target。
 - 冷热：冷；独立 URLSession、连接数受限。
-- 尺寸预算：≤1500 行；当前 1173 行（含 WBXML 与传输）。
+- 尺寸预算：≤1500 行；当前 1183 行（含 WBXML 与传输）。
 - 单独运行：`./Scripts/swiftw test --filter EASClientTests`；协议探活另有命令行入口，见 playbook §7。
 - 删除测试：删掉后 `EASAdapter` 要自己拼 HTTP 与 WBXML，版本降级复制两份 → 复杂度集中，是真边界。
 
@@ -83,7 +83,7 @@ component: CMP-EAS
 - 超时 / 取消 / 背压：命令级 60s；取消传播到 URLSession；附件整包读取（未流式落盘）。
 - 一致性 / 可见性：只做单次请求语义。
 - 兼容性：协议版本按 `16.1 → 14.1 → 14.0` 降级并持久化；PolicyKey 不持久化（见模块卡）。
-- 契约测试：`EASClientTests` 20 例 + `WBXMLTests` 6 例（golden 字节、错误映射表、401/449/503/空 200/坏 body、截断重取）。
+- 契约测试：`EASClientTests` 21 例 + `WBXMLTests` 6 例（golden 字节、错误映射表、401/449/503/空 200/坏 body、截断重取）。
 
 ## 实现进度（2026-11-14）
 
@@ -91,7 +91,7 @@ component: CMP-EAS
 |---|---|---|
 | 编解码（NUL 字符串/opaque/code page） | ✅ `WBXML.swift` | golden 字节 + 回环 6 例 |
 | `options/provision/folderSync` | ✅ | stub 传输 + 真机 |
-| `sync`（信封、key、status 3/4、MoreAvailable） | ✅ | 3 例 |
+| `sync`（信封、key、status 3/4、MoreAvailable） | ✅ | 4 例（含 `To`/`Cc` 回放与空白归一） |
 | `fetchBody`（HTML/纯文本/截断重取） | ✅ | 3 例 |
 | `fetchAttachment` / `send` | ✅ | 1 例 + 3 例 |
 | `ping` | ✅ 方法 | 真机三档均 `Status=4` |
@@ -112,9 +112,9 @@ component: CMP-EAS
 - 禁止：`EASClient` → `MailStore`/`SyncEngine`/`Scenes`；契约里出现 WBXML 元素名、HTTP 头、URLQuery（`EASAdapter` 转换后不泄漏）。
 - 允许：`EASAdapter` 构造并使用；`uumailctl` 诊断命令直连（D8 例外）；只有组合根构造具体类型。
 
-## 设计增量：Sync Cc（T-1114-02，待实现，先证后改）
+## 设计增量：Sync Cc（T-1114-02，已实现 2026-11-14）
 
-- `EASMessage` 增 `cc: String?`，放在初始化参数尾部、默认 `nil`；`parseMessage` 从 `ApplicationData/Cc` 读取，空字符串/纯空白归一为 `nil`。
-- 前置门：先用 fixture 或真机样本确认本网关 Sync 信封实际返回 `Cc`。返回则解析并补回放测试；不返回则**停止**，把证据与影响写回 brief/result，按 REQ-0012 重议，不实现「只填 To」的静默降级。
-- `EASClientTests.syncResponse` fixture 目前不输出 `To`/`Cc`，T-1114-02 必须先补字段：至少一条 Sync 回放同时含 `To` 与 `Cc`，并断言 `EASMessage.to`、`EASMessage.cc`。
-- 线格式 token 已具备（`Sources/EASClient/Resources/eas_tokens.json` page 23 `Cc`）；不在场景层拼 WBXML，不改错误映射与协议命令。
+- 网关可达性已证（2026-11-14 真机 Sync 回放，收件箱窗口 25 封）：抽样邮件的 `ApplicationData` 同时返回 `To` 与 `Cc`，`Cc` 为可选字符串；因此按 REQ-0012 继续实现，不触发「不返回则停止」分支。证据见 `CMP-EAS/playbook.md` §5.3。
+- `EASMessage` 增 `cc: String?`，放在初始化参数尾部、默认 `nil`；`parseMessage` 从 `ApplicationData/Cc` 读取，去掉首尾空白，空字符串/纯空白归一为 `nil`。
+- `EASClientTests.syncResponse` fixture 已补 `To`/`Cc`：`parsesEnvelopes` 同时断言 `EASMessage.to`、`EASMessage.cc`；`blankCcIsNil` 钉住空白与缺失都归一为 `nil`。
+- 线格式 token 已具备（`Sources/EASClient/Resources/eas_tokens.json` 的 Email page 2 `Cc` token 23）；不在场景层拼 WBXML，不改错误映射与协议命令。

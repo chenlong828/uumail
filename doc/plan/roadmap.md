@@ -33,7 +33,7 @@ updated: 2026-11-14
 | W-M1-04 正文渲染与附件下载 | M1 | W-M1-03 | CMP-STORE、CMP-EAS、AttachmentCache | 已实现；SCN-0004、SCN-0005 待 `verified`（附件真机未验） |
 | W-M2-01 Outbox 与发信 | M2 | W-M1-04 | CMP-OUT、CMP-EAS | 已完成（无过程记录，见下）：协议、队列、撰写界面；真机自测信投递成功 |
 | W-M2-02 回复/转发与草稿 | M2 | W-M2-01 | CMP-OUT、CMP-STORE | 已实现（无过程记录，见下）；回复/转发复用 `SCN-0006`，草稿无场景卡 |
-| W-M2-03 全部回复与抄送预填 | M2 | W-M2-02；REQ-0012 `accepted` | CMP-EAS、CMP-DOMAIN、CMP-EASADAPTER、CMP-STORE、CMP-SCN-COMPOSE、CMP-PRES、CMP-APP | 设计完成：`SCN-0007` `designed`（2026-11-14）；实现待 P1 确认后启动；任务表见本文 §W-M2-03 任务表 |
+| W-M2-03 全部回复与抄送预填 | M2 | W-M2-02；REQ-0012 `accepted` | CMP-EAS、CMP-DOMAIN、CMP-EASADAPTER、CMP-STORE、CMP-SCN-COMPOSE、CMP-PRES、CMP-APP | 设计完成：`SCN-0007` `designed`（2026-11-14）；`T-1114-02` 已证网关返回 `Cc` 并落地解析；其余 change 待 P1 确认后启动；任务表见本文 §W-M2-03 任务表 |
 | W-M3-01 Ping 与通知 | M3 | W-M2-01 | CMP-SYNC、通知策略 | Ping 实测不支持 → 轮询；通知已落地（无过程记录，无独立场景卡） |
 | W-M3-02 本地搜索 | M3 | W-M1-03 | CMP-STORE | 已实现（无过程记录，无独立场景卡）；FTS 不扫正文列 |
 | W-SCN-REFACTOR 场景收口与分层重构 | M1/M2/M3 结构前置 | W-DOC-01、M4 结论 | 全仓 | 已完成（`history/works/2026-11-10-scene-refactor/`）：4 场景、9 库 + 2 可执行、159 测试、4 架构门 |
@@ -69,7 +69,7 @@ updated: 2026-11-14
 | 任务 | 类型 | 组件 | 依赖 | 状态 | 出口 |
 |---|---|---|---|---|---|
 | `T-1114-01` | `design` | SCN-0007（0 组件） | — | 已完成（2026-11-14） | 场景卡四元素齐、3 正 1 反可执行、转 `designed` |
-| `T-1114-02` | `change` | `CMP-EAS` | T-1114-01 | 待启动 | Sync 信封 `Cc` 解析 + fixture 测试；网关不返回则停下上报 |
+| `T-1114-02` | `change` | `CMP-EAS` | T-1114-01 | 已完成（2026-11-14） | Sync 信封 `Cc` 解析 + fixture 测试；真机样本已证网关返回，未触发停止分支 |
 | `T-1114-03` | `change` | `CMP-DOMAIN` | T-1114-01 | 待启动 | `Message.cc` 可选字段 + 值类型测试 |
 | `T-1114-04` | `change` | `CMP-EASADAPTER` | T-1114-02、T-1114-03 | 待启动 | `EASMessage.cc → Message.cc` 映射 + 测试 |
 | `T-1114-05` | `change` | `CMP-STORE` | T-1114-03 | 待启动 | schema v9 `cc` 列、读写、历史回填、迁移测试 |

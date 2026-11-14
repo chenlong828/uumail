@@ -111,6 +111,12 @@ EAS 用 WBXML 1.3。以下四点按**实测字节**而非规范字面实现：
 
 客户端行为：`EASClient.ping` 保留（复测用，CLI 未暴露子命令），App 不依赖它刷新，改为 **5 分钟轮询 `Sync`**（`UumailApp` 的 task 循环，间隔见 `CMP-APP/spec.md`；失败保留旧数据，下一轮再试）。UI 的刷新节奏按轮询如实标注，不承诺秒级推送。
 
+## 5.3 Sync 信封返回 Cc（2026-11-14 实测）
+
+- 用已登记设备对收件箱连续 `Sync`（首轮 `SyncKey=0` 只回新 key；第二轮取窗口内 25 封），`ApplicationData` 字段为 `To,Cc,From,Subject,DateReceived,DisplayTo,ThreadTopic,Importance,Read,Attachments,Body,MessageClass,InternetCPID,Flag,ContentClass,NativeBodyType,ConversationId,ConversationIndex,Categories,IsDraft`。
+- 抽样前 3 封均含 `To` 与 `Cc`；`Cc` 是单个字符串，可含多个地址（观察长度 67–259 字符）。空/纯空白 `Cc` 按无值处理。
+- 结论：REQ-0012 的 Cc 数据链路可直接从 Sync 信封取得，不需要 ItemOperations 逐封抓 MIME 头；`EASMessage.cc` 由 T-1114-02 落地。
+
 ## 6. 设备登记与失效处理
 
 - 网关以 `DeviceId` 为键登记，状态「未激活」时**静默丢弃**请求：读命令回 `200` 空 body，写命令回 `401`。客户端必须把这两种现象都映射为「设备未登记」而不是「网络问题」或「密码错误」。

@@ -104,6 +104,7 @@ public struct EASMessage: Equatable, Sendable {
     public var subject: String?
     public var from: String?
     public var to: String?
+    public var cc: String?
     public var dateReceived: String?
     public var isRead: Bool?
     public var importance: Int?
@@ -119,12 +120,14 @@ public struct EASMessage: Equatable, Sendable {
         isRead: Bool? = nil,
         importance: Int? = nil,
         bodyPreview: String? = nil,
-        attachments: [EASAttachment] = []
+        attachments: [EASAttachment] = [],
+        cc: String? = nil
     ) {
         self.serverID = serverID
         self.subject = subject
         self.from = from
         self.to = to
+        self.cc = cc
         self.dateReceived = dateReceived
         self.isRead = isRead
         self.importance = importance
@@ -422,6 +425,12 @@ public actor EASClient {
         func value(_ name: String) -> String? {
             application?.child(name)?.stringValue()
         }
+        func nonBlank(_ name: String) -> String? {
+            guard let text = value(name)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !text.isEmpty
+            else { return nil }
+            return text
+        }
         return EASMessage(
             serverID: serverID,
             subject: value("Subject"),
@@ -439,7 +448,8 @@ public actor EASClient {
                     size: node.child("EstimatedDataSize").flatMap { Int($0.stringValue() ?? "") }
                         ?? node.child("AttSize").flatMap { Int($0.stringValue() ?? "") }
                 )
-            }
+            },
+            cc: nonBlank("Cc")
         )
     }
 
