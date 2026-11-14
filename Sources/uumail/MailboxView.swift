@@ -1,11 +1,14 @@
 import AppKit
+import MailDomain
 import Presentation
 import SwiftUI
 
 struct MailboxView: View {
     @Bindable var viewModel: MailboxViewModel
+    @Environment(\.scenePhase) private var scenePhase
     @State private var compose: ComposeViewModel?
     @State private var searchText = ""
+    @FocusState private var messageListFocused: Bool
 
     var body: some View {
         NavigationSplitView {
@@ -29,6 +32,10 @@ struct MailboxView: View {
             }
             .onChange(of: viewModel.selection.searchQuery) { _, query in
                 if searchText != query { searchText = query }
+            }
+            .onAppear { viewModel.setApplicationActive(scenePhase == .active) }
+            .onChange(of: scenePhase) { _, phase in
+                viewModel.setApplicationActive(phase == .active)
             }
             .toolbar {
                 ToolbarItemGroup(placement: .primaryAction) {
@@ -97,16 +104,16 @@ struct MailboxView: View {
 
     private var messageSelection: Binding<String?> {
         Binding(
-            get: { viewModel.selection.messageID },
-            set: { messageID in
-                if let messageID { viewModel.select(messageID: messageID) }
+            get: { viewModel.selectedListKey },
+            set: { listKey in
+                if let listKey { viewModel.select(listKey: listKey) }
             }
         )
     }
 
     private var messageList: some View {
         List(selection: messageSelection) {
-            ForEach(viewModel.messages, id: \.serverID) { message in
+            ForEach(viewModel.visibleMessages, id: \.listKey) { message in
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Circle()
                         .fill(message.isRead ? Color.clear : Color.accentColor)
@@ -126,11 +133,23 @@ struct MailboxView: View {
                         .foregroundStyle(.secondary)
                 }
                 .padding(.vertical, 2)
-                .tag(message.serverID)
+                .tag(message.listKey)
             }
         }
+        .focusable()
+        .focused($messageListFocused)
+        .onDeleteCommand {
+            Task { await viewModel.deleteSelected() }
+        }
+        .onKeyPress(.delete) {
+            // Fallback for hosts where List does not consume Delete; the VM single-flight
+            // guard makes a duplicate delivery harmless.
+            guard messageListFocused else { return .ignored }
+            Task { await viewModel.deleteSelected() }
+            return .handled
+        }
         .overlay {
-            if viewModel.messages.isEmpty {
+            if viewModel.visibleMessages.isEmpty {
                 ContentUnavailableView(
                     viewModel.sync.phase == .syncing ? "正在同步…" : "没有邮件",
                     systemImage: "tray"
@@ -141,18 +160,23 @@ struct MailboxView: View {
 
     private var statusBar: some View {
         HStack {
-            switch viewModel.sync.phase {
-            case .idle:
-                Text(viewModel.sync.lastSyncedAt.map { "上次同步 \(DisplayFormat.timestamp($0))" } ?? "就绪")
-            case .syncing:
-                ProgressView().controlSize(.small)
-                Text("同步中…")
-            case .failed(let message):
+            if let deleteError = viewModel.deleteErrorText {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                Text(message).lineLimit(1)
+                Text(deleteError).lineLimit(1)
+            } else {
+                switch viewModel.sync.phase {
+                case .idle:
+                    Text(viewModel.sync.lastSyncedAt.map { "上次同步 \(DisplayFormat.timestamp($0))" } ?? "就绪")
+                case .syncing:
+                    ProgressView().controlSize(.small)
+                    Text("同步中…")
+                case .failed(let message):
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                    Text(message).lineLimit(1)
+                }
             }
             Spacer()
-            Text("\(viewModel.messages.count) 封")
+            Text("\(viewModel.visibleMessages.count) 封")
         }
         .font(.caption)
         .foregroundStyle(.secondary)
@@ -172,4 +196,10 @@ struct MailboxView: View {
         default: "folder"
         }
     }
+}
+
+
+private extension Message {
+    /// Folder + server id: search results can contain the same server id in two folders.
+    var listKey: String { MailboxViewModel.listKey(for: self) }
 }

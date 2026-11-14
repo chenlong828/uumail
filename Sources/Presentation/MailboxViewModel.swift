@@ -62,7 +62,7 @@ public final class MailboxViewModel {
     // MARK: - Derived state
 
     /// Composite row identity; `serverID` is only unique inside one folder.
-    public static func listKey(for message: Message) -> String {
+    public nonisolated static func listKey(for message: Message) -> String {
         "\(message.folderID ?? "")\u{1F}\(message.serverID)"
     }
 
