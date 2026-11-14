@@ -26,7 +26,7 @@ component: CMP-APP
 - 入口：`Sources/uumail/UumailApp.swift#UumailApp`、`MailboxView.swift#MailboxView`、`MessageBodyView.swift#MessageBodyView`、`ComposeView.swift#ComposeView`、`AccountSetupView.swift#AccountSetupView`
 - 依赖：`Presentation`、`Composition`（仅 `UumailApp.swift`）、SwiftUI/AppKit/WebKit。扇出 2。
 - 冷热：热（读本地库）。
-- 尺寸预算：单文件 ≤300 行；当前 `uumail` 共 487 行。
+- 尺寸预算：单文件 ≤300 行；当前 `uumail` 共 493 行。
 - 单独运行：`./Scripts/make-app.sh && open dist/uumail.app`（release 构建，产物不入库）
 - 删除测试：删掉则只能命令行看信，对终端用户等于没有产品。
 
@@ -41,6 +41,7 @@ component: CMP-APP
 | 附件条下载并打开 | `MessageBodyView.swift` → `VM.download` → `ReadScene` | `ReadSceneTests` 2 例；真机未验 |
 | 搜索框（本地 FTS） | `MailboxView` → `MailboxViewModel.search` | VM 搜索用例 |
 | 撰写：新建/回复/转发/存草稿/发送 | `ComposeView.swift` + `ComposeViewModel` | 5 例；2026-11-14 用户真机实测：App 端到端发送与接收通过 |
+| 全部回复工具栏 | `MailboxView.swift` → `MailboxViewModel.composeReplyAll` | 编译；接线由 `MailboxViewModelTests` 2 例覆盖（T-1114-07） |
 | 刷新节奏（5 分钟轮询） | `MailboxViewModel.startAutoRefresh` → `SyncScene` | `SyncSceneTests`；真机长跑未验 |
 | 附件缓存（2 GB 最旧优先） | `FileAttachmentFiles`（Composition） | `FileAttachmentFilesTests` 3 例 |
 
@@ -53,9 +54,11 @@ component: CMP-APP
 - 已读回写服务器未实现；正文 sanitizer 仍是 CSP + 关脚本的轻量实现。
 - 视图层已无 `service` 参数与模型构造（门 1 与 grep 验证），但这是构造性约束，不是行为测试。
 
-## 设计增量：全部回复按钮（T-1114-08，待实现）
+## 设计增量：全部回复按钮（T-1114-08，已实现 2026-11-14）
 
 - `MailboxView` 工具栏在「回复」与「转发」之间加「全部回复」按钮；`viewModel.selectedMessage == nil` 时 disabled，动作只调 `viewModel.composeReplyAll()`。
 - 视图不读 `Message` 字段、不拼地址、不判断 `Cc` 是否为空；所有地址规则在 `ComposeScene`/`AddressList`。
 - `ComposeView` 已有「抄送」输入框，不需要新增控件或绑定逻辑。
 - 验证：编译 + `MailboxViewModelTests` 接线；真机冒烟（选带 Cc 多人邮件 → 全部回复 → To/Cc 正确 → 发送 → outbox 与 MIME 带 Cc；选自己的邮件 → 自己不出现在任何一栏）留待 T-1114-09。
+
+**实现（2026-11-14）**：`MailboxView` 工具栏在「回复」「转发」之间加「全部回复」（`arrowshape.turn.up.left.2`），无选中邮件时 disabled，按钮动作只调 `MailboxViewModel.composeReplyAll()`；视图未新增 `Message` 字段读取或地址拼接。`./Scripts/swiftw build` 通过；全量 181 tests / 38 suites 与架构 4 门全绿。真机冒烟留 `T-1114-09`。

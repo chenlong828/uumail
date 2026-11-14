@@ -44,6 +44,12 @@ struct MailboxView: View {
                     }
                     .disabled(viewModel.selectedMessage == nil)
                     Button {
+                        compose = viewModel.composeReplyAll()
+                    } label: {
+                        Label("全部回复", systemImage: "arrowshape.turn.up.left.2")
+                    }
+                    .disabled(viewModel.selectedMessage == nil)
+                    Button {
                         compose = viewModel.composeForward()
                     } label: {
                         Label("转发", systemImage: "arrowshape.turn.up.right")
