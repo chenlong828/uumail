@@ -9,8 +9,8 @@ updated: 2026-11-14
 # 路线图
 
 只记里程碑、工序与依赖。需求状态看 `requirements/`，设计真相看 `design/`。
-首版范围已于 2026-11-09 确认：REQ-0001…0007 `accepted`（`history/decisions/2026-11-09-scope-baseline.md`）。2026-11-14 追加：REQ-0012「全部回复的收件人与抄送预填」`accepted`（W-M2-03，任务表见工作区 `task-spaces/20261114-103223/brief.md`）。
-工序目录名沿用历史 `works/YYYY-MM-DD-<短名>/`；2026-11-14 起新工序的任务表与过程记录放工作区 `task-spaces/<run>/`，`works/` 只保留历史。
+首版范围已于 2026-11-09 确认：REQ-0001…0007 `accepted`（`history/decisions/2026-11-09-scope-baseline.md`）。2026-11-14 追加：REQ-0012「全部回复的收件人与抄送预填」`accepted`（W-M2-03，任务表见本文 §W-M2-03 任务表）。
+工序目录名沿用历史 `works/YYYY-MM-DD-<短名>/`；2026-11-14 起过程记录放工作区 `task-spaces/<run>/`，**任务表作为项目排期的一部分落在本文件**，不再只存在于某次运行的 brief 里。
 
 ## 里程碑
 
@@ -33,7 +33,7 @@ updated: 2026-11-14
 | W-M1-04 正文渲染与附件下载 | M1 | W-M1-03 | CMP-STORE、CMP-EAS、AttachmentCache | 已实现；SCN-0004、SCN-0005 待 `verified`（附件真机未验） |
 | W-M2-01 Outbox 与发信 | M2 | W-M1-04 | CMP-OUT、CMP-EAS | 已完成（无过程记录，见下）：协议、队列、撰写界面；真机自测信投递成功 |
 | W-M2-02 回复/转发与草稿 | M2 | W-M2-01 | CMP-OUT、CMP-STORE | 已实现（无过程记录，见下）；回复/转发复用 `SCN-0006`，草稿无场景卡 |
-| W-M2-03 全部回复与抄送预填 | M2 | W-M2-02；REQ-0012 `accepted` | CMP-EAS、CMP-DOMAIN、CMP-EASADAPTER、CMP-STORE、CMP-SCN-COMPOSE、CMP-PRES、CMP-APP | 设计完成：`SCN-0007` `designed`（2026-11-14）；实现待 P1 确认后启动；任务表 `task-spaces/20261114-103223/brief.md` |
+| W-M2-03 全部回复与抄送预填 | M2 | W-M2-02；REQ-0012 `accepted` | CMP-EAS、CMP-DOMAIN、CMP-EASADAPTER、CMP-STORE、CMP-SCN-COMPOSE、CMP-PRES、CMP-APP | 设计完成：`SCN-0007` `designed`（2026-11-14）；实现待 P1 确认后启动；任务表见本文 §W-M2-03 任务表 |
 | W-M3-01 Ping 与通知 | M3 | W-M2-01 | CMP-SYNC、通知策略 | Ping 实测不支持 → 轮询；通知已落地（无过程记录，无独立场景卡） |
 | W-M3-02 本地搜索 | M3 | W-M1-03 | CMP-STORE | 已实现（无过程记录，无独立场景卡）；FTS 不扫正文列 |
 | W-SCN-REFACTOR 场景收口与分层重构 | M1/M2/M3 结构前置 | W-DOC-01、M4 结论 | 全仓 | 已完成（`history/works/2026-11-10-scene-refactor/`）：4 场景、9 库 + 2 可执行、159 测试、4 架构门 |
@@ -61,6 +61,24 @@ updated: 2026-11-14
 | W-M3-02 本地搜索 | `b3a6f62` 23:05 FTS5 trigram、CJK 子串、跨文件夹 | `CMP-STORE/spec.md`（`searchLocal` 行） |
 
 这四条当时的任务号只留在 commit message（`T-1109-17`、`T-1109-18`、`T-M4-01..05`、`T-M2-verify`）里，没有 brief 任务表与验收记录，补记也无从核对验收标准；故只登记缺口，不补造 result。下一次同类改动按批次纪律从 `brief.md` 起建目录。
+
+## W-M2-03 任务表（全部回复与抄送预填）
+
+来源：`REQ-0012`（`accepted`）、`SCN-0007`（`designed`）、`design/components/CMP-*` 设计增量。设计冻结于 2026-11-14，实现须先过 P1 人工确认门。
+
+| 任务 | 类型 | 组件 | 依赖 | 状态 | 出口 |
+|---|---|---|---|---|---|
+| `T-1114-01` | `design` | SCN-0007（0 组件） | — | 已完成（2026-11-14） | 场景卡四元素齐、3 正 1 反可执行、转 `designed` |
+| `T-1114-02` | `change` | `CMP-EAS` | T-1114-01 | 待启动 | Sync 信封 `Cc` 解析 + fixture 测试；网关不返回则停下上报 |
+| `T-1114-03` | `change` | `CMP-DOMAIN` | T-1114-01 | 待启动 | `Message.cc` 可选字段 + 值类型测试 |
+| `T-1114-04` | `change` | `CMP-EASADAPTER` | T-1114-02、T-1114-03 | 待启动 | `EASMessage.cc → Message.cc` 映射 + 测试 |
+| `T-1114-05` | `change` | `CMP-STORE` | T-1114-03 | 待启动 | schema v9 `cc` 列、读写、历史回填、迁移测试 |
+| `T-1114-06` | `change` | `CMP-SCN-COMPOSE` | T-1114-01、T-1114-03 | 待启动 | `replyAllSeed` + 地址解析/去重/排除自己 + 组件测试 |
+| `T-1114-07` | `change` | `CMP-PRES` | T-1114-06 | 待启动 | `Mode.replyAll`、`composeReplyAll`、视图模型测试 |
+| `T-1114-08` | `change` | `CMP-APP` | T-1114-07 | 待启动 | 工具栏「全部回复」按钮，视图不拼地址 |
+| `T-1114-09` | `verify` | SCN-0007 / REQ-0012 | 全部 | 待启动 | 3+1 绿、`SCN-0006` 回归、架构门过、`verified`/`delivered` |
+
+并行关系：`T-1114-02` 与 `T-1114-03` 可并行；之后 `T-1114-04`、`T-1114-05`、`T-1114-06` 分属三个组件可并行。
 
 ## 批次纪律
 
