@@ -442,18 +442,21 @@ struct SyncEngineWriteTests {
         #expect(store.commitDeletes.isEmpty)
     }
 
-    @Test("a write response with MoreAvailable is refused instead of committed")
-    func moreAvailableWriteIsRefused() async throws {
+    @Test("a write response with MoreAvailable commits the delta and key (R16 sample)")
+    func moreAvailableWriteIsCommitted() async throws {
         let store = try store(key: "5")
         let gateway = FakeGateway(folderListing: FolderListing(folders: [inbox], syncKey: "1"), deltas: [:])
-        let write = RecordingWriteGateway(delta: delta(key: "6", more: true))
+        let response = MessageDelta(
+            added: [Message(serverID: "900", subject: "页内其它邮件")],
+            changed: [], removedServerIDs: [], syncKey: "6", moreAvailable: true
+        )
+        let write = RecordingWriteGateway(delta: response)
         let engine = SyncEngine(gateway: gateway, store: store, account: AccountID("a"), writeGateway: write)
 
-        await #expect(throws: MailError.unsupported) {
-            try await engine.markRead(collectionID: "13", serverID: "101")
-        }
-        #expect(try store.syncKey(AccountID("a"), collection: "13") == "5")
-        #expect(store.commitMarkReads.isEmpty)
+        try await engine.markRead(collectionID: "13", serverID: "101")
+
+        #expect(store.commitMarkReads == [response], "a full delta page from a write is committed, not refused")
+        #expect(try store.syncKey(AccountID("a"), collection: "13") == "6")
     }
 
     @Test("a missing or bootstrap key fails before any write goes out")
@@ -571,4 +574,42 @@ struct SyncEngineWriteTests {
         }
         #expect(await write.calls.count == 1)
     }
+
+    @Test("T-1114-15: a queued write never interleaves with a Status=3/4 reset and starts from the rebuilt key")
+    func resetDoesNotInterleaveWithQueuedWrite() async throws {
+        let store = try store(key: "5")
+        let gateway = FakeGateway(
+            folderListing: FolderListing(folders: [inbox], syncKey: "1"),
+            deltas: [
+                "0": delta(key: "200"),
+                "200": delta(key: "201"),
+            ]
+        )
+        let gate = AsyncGate()
+        await gateway.setMessagesGate(gate)
+        let write = RecordingWriteGateway(delta: delta(key: "202"))
+        let engine = SyncEngine(gateway: gateway, store: store, account: AccountID("a"), writeGateway: write)
+
+        let syncTask = Task { try await engine.syncOnce() }
+        await gate.waitUntilWaiting()
+        let writeTask = Task { try await engine.markRead(collectionID: "13", serverID: "101") }
+        try await Task.sleep(for: .milliseconds(20))
+        #expect(store.resets.isEmpty, "the reset must not run before the gated round finishes")
+        #expect(await write.calls.isEmpty, "the queued write must not interleave with the round")
+
+        await gate.open()
+        _ = try await syncTask.value
+        try await writeTask.value
+
+        #expect(store.resets == ["13"])
+        let fetchKeys = await gateway.calls.compactMap { call -> String? in
+            if case .messages(_, let key) = call { return key }
+            return nil
+        }
+        #expect(fetchKeys == ["5", "0", "200"], "the stale round, then a rebuild from key 0")
+        #expect(await write.calls == [.markRead(collectionID: "13", serverID: "101", key: "201")],
+                "the write must start from the key the rebuild committed, never the stale one")
+        #expect(try store.syncKey(AccountID("a"), collection: "13") == "202")
+    }
+
 }

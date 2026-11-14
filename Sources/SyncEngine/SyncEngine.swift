@@ -127,9 +127,9 @@ public actor SyncEngine {
                 inbox, allowReset: !rebuilt, currentKey: key
             )
             if result.reset {
+                // The reset round already rebuilt and committed a window under the same
+                // gate hold; count it and keep the run from resetting a second time.
                 rebuilt = true
-                key = "0"
-                continue
             }
             added += result.added
             changed += result.changed
@@ -148,8 +148,10 @@ public actor SyncEngine {
         )
     }
 
-    /// One gated round: re-read the key, optionally bootstrap, then exactly one Sync and
-    /// its commit. A stale key resets the collection inside the same critical section.
+    /// One gated round: re-read the key, optionally bootstrap, then one Sync and its
+    /// commit. A stale key resets the collection **and rebuilds it inside the same
+    /// critical section**, so a queued write can never observe the empty key between the
+    /// reset and the next round.
     private func syncRound(
         _ inbox: FolderSummary, allowReset: Bool, currentKey: String
     ) async throws -> RoundResult {
@@ -157,32 +159,40 @@ public actor SyncEngine {
         defer { release() }
         if Task.isCancelled { throw CancellationError() }
 
-        var key = try store.syncKey(account, collection: inbox.serverID) ?? currentKey
-        if key == "0" {
-            // SyncKey=0 answers with a key and no items. Ask for the window immediately in
-            // the same critical section so a write cannot slip in between the two calls.
-            let bootstrap = try await gateway.fetchMessages(
-                collectionID: inbox.serverID, syncKey: "0", window: window, filterType: filterType
-            )
-            key = bootstrap.syncKey
-            guard key != "0" else { throw MailError.unsupported }
-        }
+        var mayReset = allowReset
+        var key = currentKey
+        var didReset = false
+        while true {
+            key = try store.syncKey(account, collection: inbox.serverID) ?? key
+            if key == "0" {
+                // SyncKey=0 answers with a key and no items. Ask for the window immediately
+                // in the same critical section so a write cannot slip in between the calls.
+                let bootstrap = try await gateway.fetchMessages(
+                    collectionID: inbox.serverID, syncKey: "0", window: window, filterType: filterType
+                )
+                key = bootstrap.syncKey
+                guard key != "0" else { throw MailError.unsupported }
+            }
 
-        do {
-            let delta = try await gateway.fetchMessages(
-                collectionID: inbox.serverID, syncKey: key, window: window, filterType: filterType
-            )
-            try store.applySyncBatch(account, folder: inbox.serverID, delta: delta)
-            return RoundResult(
-                added: delta.added.count,
-                changed: delta.changed.count,
-                removed: delta.removedServerIDs.count,
-                rounds: 1,
-                moreAvailable: delta.moreAvailable
-            )
-        } catch MailError.syncKeyInvalid where allowReset {
-            try store.resetCollection(account, folder: inbox.serverID)
-            return RoundResult(reset: true)
+            do {
+                let delta = try await gateway.fetchMessages(
+                    collectionID: inbox.serverID, syncKey: key, window: window, filterType: filterType
+                )
+                try store.applySyncBatch(account, folder: inbox.serverID, delta: delta)
+                return RoundResult(
+                    added: delta.added.count,
+                    changed: delta.changed.count,
+                    removed: delta.removedServerIDs.count,
+                    rounds: 1,
+                    moreAvailable: delta.moreAvailable,
+                    reset: didReset
+                )
+            } catch MailError.syncKeyInvalid where mayReset {
+                try store.resetCollection(account, folder: inbox.serverID)
+                mayReset = false
+                didReset = true
+                key = "0"
+            }
         }
     }
 
@@ -200,7 +210,9 @@ public actor SyncEngine {
         let delta = try await writeGateway.markRead(
             collectionID: collectionID, serverID: serverID, syncKey: key
         )
-        guard !delta.moreAvailable else { throw MailError.unsupported }
+        // A write response may carry a full delta page and MoreAvailable (R16 sample);
+        // that is a normal paging signal, not an anomaly. Commit delta + key together and
+        // let the next incremental sync consume the rest.
         try store.commitMarkRead(account, folder: collectionID, serverID: serverID, delta: delta)
     }
 
@@ -215,7 +227,8 @@ public actor SyncEngine {
         let delta = try await writeGateway.delete(
             collectionID: collectionID, serverID: serverID, syncKey: key
         )
-        guard !delta.moreAvailable else { throw MailError.unsupported }
+        // See markRead: MoreAvailable on a write response is the gateway's normal paging
+        // signal (R16 sample); the delta and key commit together.
         try store.commitDelete(account, folder: collectionID, serverID: serverID, delta: delta)
     }
 
