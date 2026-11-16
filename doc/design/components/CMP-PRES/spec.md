@@ -2,7 +2,7 @@
 layer: design
 module: presentation
 status: active
-updated: 2026-11-14
+updated: 2026-11-16
 component: CMP-PRES
 ---
 
@@ -11,23 +11,23 @@ component: CMP-PRES
 ## 模块卡
 
 - 状态：`active`
-- 单元：模块（薄视图模型 + 展示类型 + 文案/格式化）
+- 单元：模块（薄视图模型 + 展示类型 + 文案/格式化 + UI 偏好适配）
 - 层 / 类型：L3；表现
 - 业务价值：把用户动作转成一次场景调用，把场景结果映射为可观察状态与中文文案；让视图退化成绑定。没有它，视图直接持有场景并写展示逻辑，状态机无法测试。
-- 负责 X：`MailboxViewModel`（文件夹/列表/正文/附件/同步/选择/搜索/自动刷新；T-1114-10 设计新增停留计时、键盘删除、前台状态、搜索模式保持（2026-11-14 已实现））、`ComposeViewModel`（新建/回复/全部回复/转发、入队状态、草稿）、`AccountSetupViewModel`（validate/connect、忙碌态、错误）、展示类型（`BodyPresentation`、`BodyNotice`、`SyncPresentation`、`Selection`）、`ErrorText` 唯一文案表、`DisplayFormat`（发件人/日期）。
-- 不负责 Y：业务规则、直接访问 `MailStore`/`MailGateway`/`Outbox`、轮询节奏（`SyncScene`）、缓存优先与补拉（`ReadScene`）。
+- 负责 X：`MailboxViewModel`（文件夹/列表/正文/附件/同步/选择/搜索/自动刷新；T-1114-10 设计新增停留计时、键盘删除、前台状态、搜索模式保持（2026-11-14 已实现））、`ComposeViewModel`（新建/回复/全部回复/转发、入队状态、草稿）、`AccountSetupViewModel`（validate/connect、忙碌态、错误）、展示类型（`BodyPresentation`、`BodyNotice`、`SyncPresentation`、`Selection`）、`ErrorText` 唯一文案表、`DisplayFormat`（发件人/日期）、`ThemePreferenceStore`（主题偏好的读/写/回退；2026-11-16 设计新增，见文末增量）。
+- 不负责 Y：业务规则、直接访问 `MailStore`/`MailGateway`/`Outbox`、轮询节奏（`SyncScene`）、缓存优先与补拉（`ReadScene`）、系统外观跟随与主题菜单（`CMP-APP` 的 `preferredColorScheme`/`ThemeCommands`）。
 - 内部逻辑：
   - 每个动作只调一次场景方法；结果映射为状态，不重试、不判断业务分支。
   - 正文：缓存优先 → `.loading`/摘要提示 → `.loaded(html, truncated)` 或 `.failed(text)`；`BodyNotice` 承载「正在补拉」与「摘要回退」。
   - 自动刷新：消费 `SyncScene.startAutoRefresh` 流，映射 `SyncPresentation`；`stopAutoRefresh` 取消消费并停场景循环。
   - `ComposeViewModel.send` 调 `ComposeScene.send`，成功即 `status = .queued` 并触发组合根的投递信号；失败保留编辑文本。
-- 拥有的数据：视图状态（选择、搜索词、加载态、编辑器文本），不持久化。
-- 变化轴：窗口形态与交互。
-- 公开契约：`CMP-PRES#MailboxViewModel`（T-1114-10 设计新增 `#visibleMessages`、`#deleteErrorText`、`#setApplicationActive`、`#deleteSelected`（2026-11-14 已实现））、`#ComposeViewModel`、`#AccountSetupViewModel`、`#ErrorText`、`#DisplayFormat`；`MailboxDwell`/`MailboxDeletion` 是模块内文件，不新增 public 类型。
-- 入口：`Sources/Presentation/MailboxViewModel.swift#MailboxViewModel`、`ComposeViewModel.swift#ComposeViewModel`、`AccountSetupViewModel.swift#AccountSetupViewModel`、`ErrorText.swift#ErrorText`、`PresentationTypes.swift#BodyPresentation`
-- 依赖：`Scenes`、`MailDomain`、Observation。扇出 1。
-- 冷热：热（主线程）。
-- 尺寸预算：单文件 ≤400 行；当前 `MailboxViewModel` **298**、`ComposeViewModel` 196、`AccountSetupViewModel` 约 100；`Presentation` 共 1054 行（含 Body/Delete/Compose/Dwell/Deletion 拆分）。
+- 拥有的数据：视图状态（选择、搜索词、加载态、编辑器文本），不持久化；另持有**主题偏好的本地镜像**（`UserDefaults["appearance.theme"]`，注入 store；不是业务数据，真源仍是 App 的 `@State`，见文末增量）。
+- 变化轴：窗口形态与交互；主题外观（2026-11-16 新增一档三态主题）。
+- 公开契约：`CMP-PRES#MailboxViewModel`（T-1114-10 设计新增 `#visibleMessages`、`#deleteErrorText`、`#setApplicationActive`、`#deleteSelected`（2026-11-14 已实现））、`#ComposeViewModel`、`#AccountSetupViewModel`、`#ErrorText`、`#DisplayFormat`、`#ThemePreference`、`#ThemePreferenceStore`（2026-11-16 新增 public，P2 已确认并实现）；`MailboxDwell`/`MailboxDeletion` 仍是模块内文件。
+- 入口：`Sources/Presentation/MailboxViewModel.swift#MailboxViewModel`、`ComposeViewModel.swift#ComposeViewModel`、`AccountSetupViewModel.swift#AccountSetupViewModel`、`ErrorText.swift#ErrorText`、`PresentationTypes.swift#BodyPresentation`、`ThemePreference.swift#ThemePreference/#ThemePreferenceStore`
+- 依赖：`Scenes`、`MailDomain`、`Observation`、`Foundation`（`UserDefaults`；不算新组件依赖）。扇出 1。
+- 冷热：热（主线程）；主题偏好读/写是低频冷路径，不与 VM 热路径共享状态。
+- 尺寸预算：单文件 ≤400 行；当前 `MailboxViewModel` **298**、`ComposeViewModel` 196、`AccountSetupViewModel` 100、`ThemePreference` 50；`Presentation` 共 1104 行（含 Body/Delete/Compose/Dwell/Deletion 拆分）。
 - 单独运行：`./Scripts/swiftw test --filter PresentationTests`
 - 删除测试：删掉后视图直接持有场景并写展示逻辑，测试无法覆盖状态机 → 复杂度集中，是真边界。
 
@@ -200,3 +200,44 @@ component: CMP-PRES
 - 测试：`MailboxViewModelTests` 补 10 秒触发/取消/后台/重载不重置/幂等/回写失败无错误；`MailboxDeletionTests`（或并入 VM 测试）补隐藏即现、连按只一次、失败恢复、切文件夹不强行恢复；O5 用「正文补拉慢/失败」断言删除命令按时发出；R23 用跨文件夹同 `serverID` fixture 断言选中/删除命中正确文件夹；`PresentationTests` 既有 28 例不回归。
 
 **实现（2026-11-14）**：新增 `MailboxDwell.swift`、`MailboxDeletion.swift`、`MailboxViewModel+Compose.swift`、`MailboxViewModel+Delete.swift`、`MailboxViewModel+Body.swift`；主 `MailboxViewModel.swift` **298 行**（目标 ≤380），Compose/Delete/Body 段已移出，`selectedMessage` 改从 `visibleMessages` 读取并过滤隐藏行。`PresentationTests` **52 例**绿：10 秒触发/切换/文件夹/搜索/删除取消、失活与回前台不足 10 秒、搜索模式进入与停留不计时、重载不重置、幂等、写响应 `Read=0` 不回翻本地、回写失败静默、删除即时隐藏/连按去重/失败恢复正文后重试/not-found 成功/非末条正文切换/R23 跨文件夹同 serverID/O5 慢正文不阻塞删除、隐藏行不可选中/打开。R23 用复合 `listKey`（folder + serverID）解决，未改 `Selection.messageID` 公开类型/语义。
+
+## 设计增量：主题偏好（REQ-0016，2026-11-16，P2 已确认；实现 2026-11-16）
+
+- 新增 public 类型（P2 契约变更，2026-11-16 已确认，见 `doc/history/decisions/2026-11-16-theme-appearance.md`）：
+  - `ThemePreference`：`system/light/dark` 三态，`String` raw value，`CaseIterable`、`Sendable`。
+  - `ThemePreferenceStore`：内部注入 `UserDefaults` 的本地 UI 偏好适配器（public `init()` 用 `.standard`）；`load()` 缺失/损坏/未知 → `.system`；`save(_:)` 只写一个 key、比较原始字符串幂等、不抛错。
+  - 不引入存储协议/工厂/单例；测试用独立 `UserDefaults(suiteName:)`，不污染真实偏好。
+- 契约：
+
+  ```swift
+  public enum ThemePreference: String, CaseIterable, Sendable {
+      case system, light, dark
+  }
+
+  public struct ThemePreferenceStore {
+      public init()                                 // 使用 .standard
+      init(defaults: UserDefaults)                  // internal；测试用 @testable 注入
+      static let defaultsKey = "appearance.theme"   // internal
+      public func load() -> ThemePreference
+      public func save(_ preference: ThemePreference)
+  }
+  ```
+
+- 公开面（第 2 轮复核 D4）：`UserDefaults` 与 key 不进入公开契约；app 用 `ThemePreferenceStore()`，测试用 `@testable import Presentation` + `ThemePreferenceStore(defaults: suite)`。行为与第 1 轮提案一致，只收窄 `init`/key 的可见性；若评审要求跨模块注入，再改回 public `init(defaults:)`，本批不预付。
+- 不变量：
+  - `load()` 是纯读，任何存储内容都不崩溃；非法原始值回退 `.system`。
+  - `save(_:)` 只写 `UserDefaults["appearance.theme"]`；不写业务库/Keychain/网络；不抛错、不回滚调用方状态；已是同一合法原始值则 no-op。
+  - 损坏值 `"purple"` → `save(.system)` 写入 `"system"`（按原始字符串比较，而不是按 `load()` 的 fallback 结果比较），清理脏值。
+  - store 不是会话真源：`CMP-APP#UumailApp.@State theme` 决定当前外观；写失败时本次会话不变、下次启动读旧值/默认。
+- 不负责：`preferredColorScheme` 的应用、菜单勾选、系统外观监听（都在 `CMP-APP`）；业务判断与网络。
+- 并发：`UserDefaults` 线程安全；`ThemePreferenceStore` 不加锁、不做异步/缓存；只在主线程启动读与选择写。
+- 测试计划（`PresentationTests`，新增 `ThemePreferenceStoreTests`）：
+  测试文件用 `@testable import Presentation`；每个用例经 `ThemePreferenceStore(defaults: suite)` 注入独立 `UserDefaults(suiteName:)` 并在结束时清理，不碰 `.standard`。
+  - `defaultsToSystemWhenUnset`：空 suite → `.system`。
+  - `roundTripsEachPreference`：三态 save→load。
+  - `invalidValueFallsBackToSystem`：写入 `"purple"`/空串/大小写不符 → `.system`；`save(.system)` 后原始值被清理为 `"system"`。
+  - `persistsAndRestoresAcrossInstances`：同一 suite 两个 store 实例 → 后一个读到前一个写的值（模拟重开）。
+  - `repeatedSaveKeepsSingleValue`：同值 save 两次，读回一致、不抛错。
+  - 写失败不可强制注入：`UserDefaults.set` 无同步失败信号；设计以「不抛/不回滚 + 会话状态独立」保证，若评审要求强制注入，另评最小存储协议（本批不预付）。
+- 第 2 轮复核（2026-11-16，run `20261116-154416`）：与现状代码核对无结构性漂移；按 D4 收窄公开面（`UserDefaults` 与 key 转 internal），行为不变；`Presentation` 扇出按 `architecture.md` §2.5 仍为 1（`Scenes`；`MailDomain` 值类型不重复计）。
+- 确认与实现（2026-11-16，T-1116-01/02）：Q5 A + Q6 A + P2 确认（含 D4 公开面收窄）；`Sources/Presentation/ThemePreference.swift` 已落地 public `init()` + internal `init(defaults:)`，`load()`/`save(_:)` 按上述不变量实现；`Tests/PresentationTests/ThemePreferenceStoreTests.swift` 5 例通过，`PresentationTests` 共 57 例。`SCN-0011` 已落 `settings/appearance/theme-switch` 并转 `designed`；证据见 `task-spaces/20261116-154416/evidence/`。

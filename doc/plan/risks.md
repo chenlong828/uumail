@@ -2,7 +2,7 @@
 layer: plan
 module: global
 status: draft
-updated: 2026-11-14
+updated: 2026-11-16
 ---
 
 # 风险
@@ -34,11 +34,14 @@ updated: 2026-11-14
 | R21 | 普通 `applySyncBatch` 遇到只带 `Read` 的 partial `Change`，可能用 nil 清空 `subject`/`sender`/`received_raw` | 服务器 `Change` 只带 `Read`；本地 upsert 后主题/发件人/日期变空 | 列表显示失真，且写路径若直接 apply 回包会放大 | 本批 `commit*` 排除目标 `added/changed` 保护写路径；普通同步统一 `COALESCE` 属 SCN-0003 语义变更，另立 CMP-STORE 任务，不混进本批 | `design/components/CMP-STORE/spec.md` 设计增量、`design/scenarios/mail/receive/inbox-sync/scenario.md`（仅登记，不本批改） |
 | R22 | 非可选写端口使 T-1114-15/16 必须同一 change 改 `CMP-ROOT`，跨组件仅装配例外与组件级 WIP 冲突 | 两个 change 并行，或与其他 `CMP-ROOT` 任务并行；组合根被塞入业务判断 | 任务无法按单组件评审/回滚；组合根变成第二个业务层 | T-1114-10 已登记例外：组件列写 `+CMP-ROOT（仅装配）`，`CMP-ROOT` 的 WIP 由该 change 独占，不并行第二个 `CMP-ROOT` 任务；组合根只构造/注入/路由；P1 确认清单与决策记录同步 | `design/architecture.md` §3.1/§10、`design/components/CMP-ROOT/spec.md`、`plan/roadmap.md` §W-M3-03 |
 | R23 | 搜索模式的列表/选择身份只按 `serverID`，跨文件夹可能重复 | `searchLocal` 跨文件夹返回；`messages` 主键含 `folder_id`；`Selection.messageID`/`ForEach(id: serverID)` 只按 `serverID` | 搜索模式下删除/打开可能命中另一文件夹的同 ID 邮件；`SCN-0009` 的搜索删除断言可能假绿 | T-1114-17 用跨文件夹同 `serverID` fixture 验证，作为验收前证据；若冲突，把列表/选择身份改为 `MessageRef`（folder + serverID）或等价复合键；若因此改 `Selection.messageID` 公开类型/语义，按 P2 契约变更另评，不在本批静默改；现有场景断言不足以覆盖冲突，若冲突成立按 P2 修订场景，不在本节点重写 | `design/components/CMP-PRES/spec.md` 设计增量、`design/components/CMP-APP/spec.md`、`design/scenarios/mail/read/keyboard-delete/scenario.md` |
+| R24 | `WKWebView.appearance` 被未来 SwiftUI/AppKit 更新重置，正文画布重新跟随深色 | 深色主题下正文变黑/透明，作者 `prefers-color-scheme: dark` 变体重新生效；`AppearanceProbe` 回归红 | 阅读白底失效，REQ-0015 核心场景退化 | `MessageWebView.makeNSView` 设常量、`updateNSView` 在 `lastRender` guard 前复确认 `appearance`；实现后把像素探针纳入回归；若仍被重置，再评估 `NSView` 子类/fence | `design/components/CMP-APP/spec.md` 设计增量、`SCN-0010` |
+| R25 | `UserDefaults` 写失败没有可观察同步信号，REQ-0016 的写失败分支无法强制注入 | 偏好写入失败但 `save` 不抛；测试无法区分「写成功」与「写失败」 | 「写失败不回滚/不弹错」只能靠设计保证与代码审查，验收强度不足 | `save` 不抛/不回滚，会话外观由 `@State` 独立持有；测试覆盖损坏回退/持久化/幂等；若评审要求强制注入，另评最小存储协议或可失败存储替身，不本批预付 | `design/components/CMP-PRES/spec.md` 设计增量、`SCN-0011` |
+| R26 | SwiftUI 菜单勾选只在父级菜单打开时刷新；静止读取 `NSMenuItem.state` 得到旧值 | 自动化测试未打开父菜单就读状态，出现假红/假绿；评审误判勾选未生效 | `SCN-0011` 的勾选断言不可信，可能挡住真实回归或放过错误 | 测试先打开系统 View 菜单再读 `state`；真实 UX 已由 2026-11-16 菜单探针验证；把「必须打开父菜单」写入 `SCN-0011` 测试说明 | `design/components/CMP-APP/spec.md` 设计增量、`SCN-0011` |
 
 ## 风险等级口径
 
 - 高：直接使项目不可用或造成合规事故（R1、R2、R11）。
-- 中：影响关键旅程但可降级（R3、R4、R5、R6、R8、R12、R13、R18、R19、R21、R22、R23）。
-- 低：局部体验或可回滚（R7、R9、R10、R15）。
+- 中：影响关键旅程但可降级（R3、R4、R5、R6、R8、R12、R13、R18、R19、R21、R22、R23、R24）。
+- 低：局部体验或可回滚（R7、R9、R10、R15、R25、R26）。
 
 R14 已于 2026-11-14 关闭（T-1114-02：网关 Sync 信封实测返回 `Cc`）。R16/R17/R20 已于 2026-11-14 关闭（真机写命令、预算拆分、写响应语义）。

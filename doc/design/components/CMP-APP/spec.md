@@ -2,7 +2,7 @@
 layer: design
 module: app
 status: active
-updated: 2026-11-14
+updated: 2026-11-16
 component: CMP-APP
 ---
 
@@ -26,7 +26,7 @@ component: CMP-APP
 - 入口：`Sources/uumail/UumailApp.swift#UumailApp`、`MailboxView.swift#MailboxView`、`MessageBodyView.swift#MessageBodyView`、`ComposeView.swift#ComposeView`、`AccountSetupView.swift#AccountSetupView`
 - 依赖：`Presentation`、`Composition`（仅 `UumailApp.swift`）、SwiftUI/AppKit/WebKit。扇出 2。
 - 冷热：热（读本地库）。
-- 尺寸预算：单文件 ≤300 行；当前 `uumail` 共 493 行。
+- 尺寸预算：单文件 ≤300 行；当前 `uumail` 共 608 行（2026-11-16 实现后实测；旧记 493/528 为过期数字）。
 - 单独运行：`./Scripts/make-app.sh && open dist/uumail.app`（release 构建，产物不入库）
 - 删除测试：删掉则只能命令行看信，对终端用户等于没有产品。
 
@@ -75,3 +75,23 @@ component: CMP-APP
 - 尺寸：`MailboxView` 当前 175 行，预计 +20～25，仍低于 300。
 
 **实现（2026-11-14）**：`MailboxView` 列表使用 `visibleMessages` 与复合 `listKey`，加 `@FocusState`/`.focusable()`、`.onDeleteCommand` 主路径与 `.onKeyPress(.delete)` 备选、`NSApplication` 前台通知转发、状态栏 `deleteErrorText`。焦点 UI 探针（SwiftUI + `NSEvent`，见 `task-spaces/20261114-232232/evidence/ui-delete-probe-focus.txt`）逐上下文验证：列表 `deleteCommands=1`；搜索框 / 正文 `NSTextView` / 撰写 sheet / 配置页均 `deleteCommands=0`，并记录各自 firstResponder 证明按键落在目标控件上。真实 SwiftUI `WindowGroup` 前台探针（`evidence/scene-phase-probe.txt`）：`scenePhase` 始终 `.active`，`NSApp.isActive` 与 `willResignActive`/`didBecomeActive` 通知会变化；实现已改用通知，视图只转发。探针是独立宿主，不是 `uumail` bundle 的 AX 驱动；列表命中/排他与前台信号机制均已实测。
+
+## 设计增量：菜单主题与深色阅读白底（2026-11-16，P2 已确认；实现 2026-11-16）
+
+- 来源：`REQ-0015` / `REQ-0016`；完整设计论证、候选取舍与探针见 `task-spaces/20261116-145040/design.md`、`evidence/`；确认记录见 `doc/history/decisions/2026-11-16-theme-appearance.md`；正式场景卡 `SCN-0010`（`doc/design/scenarios/mail/read/dark-reading-pane/`）与 `SCN-0011`（`doc/design/scenarios/settings/appearance/theme-switch/`）已于 2026-11-16 转 `designed`。
+- 阅读白底（`REQ-0015`，`SCN-0010`）：
+  - `MessageWebView.makeNSView` 把画布固定为不透明浅色：沿用现有 KVC `setValue(true, forKey: "drawsBackground")`（macOS 的 `WKWebView` 没有公开 `drawsBackground` 属性，不引入新的私有 API）、`underPageBackgroundColor = .white`、`appearance = NSAppearance(named: .aqua)`；`updateNSView` 在 `lastRender` guard 之前复确认 appearance（R24），`lastRender` 未变时不调用 `loadHTMLString`。
+  - `MessageWebView.baseStyle` 与 `sanitized` 抽到新文件 `Sources/uumail/MessageBodyStyle.swift`（`enum MessageBodyStyle`，internal，无 SwiftUI/WebKit 依赖）；`baseCSS` 增 `html, body { background-color: #ffffff; color-scheme: light; }`；CSP 两档策略与注入顺序不变；`MessageBodyView` 只保留视图与占位/附件/banner。
+  - 范围只限正文画布；附件条、远程图片开关、截断提示、侧栏/列表/工具栏仍随主题（Q6 A，2026-11-16 确认）。
+  - 语义取舍：正文 `prefers-color-scheme` 固定 light，作者 dark-media 变体不生效；作者显式背景/文字色/表格/图片保留。若产品要保留暗色变体，先改 `REQ-0015`/`SCN-0010`。
+- 菜单主题（`REQ-0016`，`SCN-0011`）：
+  - `UumailApp` 拥有 `@State theme: ThemePreference` 与 `private let store: ThemePreferenceStore`（`init` 先构造本地 store 再赋 `self.store`、`_theme = State(initialValue: store.load())`、`_composition`，不在 `self` 未初始化时调用 store），根视图 `.preferredColorScheme(theme.colorScheme)`，Scene `.commands { ThemeCommands(theme:store:) }`。
+  - 新文件 `Sources/uumail/ThemeCommands.swift`：`CommandGroup(after: .sidebar)` + `Picker("主题", selection:)`，三项「跟随系统/浅色/深色」；`Binding` setter 用 `guard newValue != theme` 保证重复选择幂等，变化时 `theme = newValue; store.save(newValue)`；`ThemePreference → ColorScheme?` 映射在本文件。
+  - 机制选 `preferredColorScheme`，不用 `NSApp.appearance`；真实 SwiftUI App 探针证明覆盖窗口标题栏与 sheet、运行时切换、`nil` 跟随系统。菜单勾选只在父 View 菜单打开时刷新，测试须先打开父菜单。
+- 不改：`MailboxView`/`ComposeView`/`AccountSetupView` 作为消费者；`Package.swift` 依赖/target；`CMP-ROOT`；`CMP-SCN-READ`；`MailDomain`/`MailStore`/`Scenes` 契约；schema。
+- 预算：`UumailApp` 45→57、`ThemeCommands` 45、`MessageBodyStyle` 41、`MessageBodyView` 164→146；单文件仍 ≤300，CMP-APP 实测总行数 608。
+- 验证：`PresentationTests` 的 `ThemePreferenceStoreTests`；独立 `AppearanceProbe`（编译生产 `MessageBodyStyle.swift`）与 `ThemeProbe`；真实 app 截图/AX 冒烟；证据入 `task-spaces/<run>/evidence/`。不新增 `uumail` 测试 target。
+- 夹具精度（第 2 轮复核 D2）：`T-SCN-0010-03` 的作者背景断言须用 body 级背景或把采样点落在作者着色元素内；`#123456` 的 `takeSnapshot` 实测约 `rgba(21,69,105,1.00)`（sRGB），断言用容差（±2/通道），不对源 hex 精确相等；页面中心落在未着色区域时采样为白色是兜底生效，不是作者样式被覆盖。
+- 第 2 轮复核（2026-11-16，run `20261116-154416`）：与现状代码逐项核对，无结构性漂移；补充 KVC 与采样夹具口径；实现后实测 CMP-APP 608 行，单文件最大 `MailboxView` 210 行，仍 ≤300。
+- 确认（2026-11-16，T-1116-01）：Q5 A（`settings/appearance/theme-switch` + 系统 View「主题」子菜单）、Q6 A（只正文画布）、P2 确认（白底机制 A、应用机制 A、偏好归属 B、菜单 A、测试载体 B′、`MessageBodyStyle` 抽文件，含 D1/D2/D4 与「作者 dark-media 变体不生效」）。确认来源见 `doc/history/decisions/2026-11-16-theme-appearance.md`；正式卡已落并转 `designed`，任务拆分见 `plan/roadmap.md` §W-M3-04。
+- 实现（2026-11-16，T-1116-02…04）：`Sources/Presentation/ThemePreference.swift`、`Sources/uumail/ThemeCommands.swift`、`Sources/uumail/MessageBodyStyle.swift`、`UumailApp.swift`、`MessageBodyView.swift` 已按本节落地；`ThemePreferenceStoreTests` 5 例、`AppearanceProbe`/`ThemeProbe` 探针通过，原始输出见 `task-spaces/20261116-154416/evidence/`。实测行数见本节末。

@@ -2,7 +2,7 @@
 layer: plan
 module: global
 status: draft
-updated: 2026-11-14
+updated: 2026-11-16
 ---
 
 # 开放问题
@@ -15,6 +15,8 @@ updated: 2026-11-14
 Provision 深度、多账号、DeviceId 来源、失败件上限、抓包入库、HTML 远程资源、联系人边界、OAuth/Graph — 八项已确认，见 `history/decisions/2026-11-09-scope-baseline.md`。需求状态同批落定：REQ-0001…0007 `accepted`，其余 `draft`。
 
 附件缓存上限与淘汰策略（原 Q2）：按 A 方案落地，总容量 2 GB（`2_000_000_000` 字节）、按修改时间最旧优先淘汰；见 `history/decisions/2026-11-09-attachment-cache-cap.md`。
+
+外观主题的入口/文档树归属与白底范围（原 Q5/Q6）：按 A 关闭——场景树 `settings/appearance/theme-switch`、菜单落系统 View「主题」子菜单；白底只限正文画布。P2 批次确认（白底机制/应用机制/偏好归属/菜单/测试载体）同批完成；见 `history/decisions/2026-11-16-theme-appearance.md`。
 
 ## Q1 本地保留策略：正文与邮件怎么裁剪
 
