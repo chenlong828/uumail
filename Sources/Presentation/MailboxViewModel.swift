@@ -87,6 +87,12 @@ public final class MailboxViewModel {
         return visibleMessages.first { $0.serverID == id }
     }
 
+    /// The envelope header for the selection. Derived on read; it owns no state and calls
+    /// no scene, so the reading hot path stays network-free (REQ-0017 / SCN-0012).
+    public var headerPresentation: MessageHeaderPresentation? {
+        selectedMessage.map { MessageHeaderPresentation(message: $0) }
+    }
+
     var selectedRef: MessageRef? {
         guard let message = selectedMessage else { return nil }
         return ref(for: message)

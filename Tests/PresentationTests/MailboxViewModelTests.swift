@@ -234,6 +234,98 @@ struct MailboxSearchTests {
     }
 }
 
+@Suite("MailboxViewModel header")
+@MainActor
+struct MailboxHeaderTests {
+    @Test("headerPresentation is nil without a selection and after switching folders")
+    func nilWithoutSelection() throws {
+        let fixture = try makeMailboxFixture(
+            folders: [presentationInbox, presentationDrafts],
+            messages: ["13": [presentationMessage("1", subject: "第一封")]]
+        )
+
+        #expect(fixture.viewModel.headerPresentation == nil)
+
+        fixture.viewModel.loadCached()
+        #expect(fixture.viewModel.headerPresentation?.subject == "第一封")
+
+        fixture.viewModel.select(folderID: "4")
+        #expect(fixture.viewModel.selectedMessage == nil)
+        #expect(fixture.viewModel.headerPresentation == nil)
+    }
+
+    @Test("headerPresentation follows the selection and switching leaves no stale subject")
+    func followsSelectionAndSwitch() throws {
+        let fixture = try makeMailboxFixture(
+            messages: ["13": [
+                presentationMessage("1", subject: "第一封", sender: "one@example.com"),
+                presentationMessage("2", subject: "第二封", sender: "two@example.com"),
+            ]]
+        )
+        fixture.viewModel.loadCached()
+
+        fixture.viewModel.select(messageID: "1")
+        #expect(fixture.viewModel.headerPresentation?.subject == "第一封")
+        #expect(fixture.viewModel.headerPresentation?.rows.first?.value == "one@example.com")
+
+        fixture.viewModel.select(messageID: "2")
+        let second = try #require(fixture.viewModel.headerPresentation)
+        #expect(second.subject == "第二封")
+        #expect(second.rows.first?.value == "two@example.com")
+        #expect(!second.rows.contains { $0.value == "one@example.com" })
+    }
+
+    @Test("R23: cross-folder rows with the same server id map the selected row's header")
+    func crossFolderSameServerID() async throws {
+        let fixture = try makeMailboxFixture(
+            folders: [presentationInbox, presentationDrafts],
+            messages: [
+                "13": [presentationMessage("1", subject: "周报-收件箱", folderID: "13")],
+                "4": [presentationMessage("1", subject: "周报-草稿", folderID: "4")],
+            ]
+        )
+        fixture.viewModel.loadCached()
+        await fixture.viewModel.search("周报")
+        let draft = try #require(fixture.viewModel.visibleMessages.first { $0.folderID == "4" })
+
+        fixture.viewModel.select(listKey: MailboxViewModel.listKey(for: draft))
+
+        #expect(fixture.viewModel.selection.folderID == "13", "search keeps the originating folder")
+        #expect(fixture.viewModel.headerPresentation?.subject == "周报-草稿")
+    }
+
+    @Test("reading headerPresentation adds no gateway call and leaves the body/list alone")
+    func readIsPureDerivation() async throws {
+        let fixture = try makeMailboxFixture(
+            messages: ["13": [
+                presentationMessage(
+                    "1",
+                    subject: "只读头部",
+                    recipients: "b@example.com",
+                    receivedRaw: "2026-11-16T09:30:00Z"
+                )
+            ]]
+        )
+        fixture.viewModel.loadCached()
+        await fixture.viewModel.openSelected()
+
+        let bodyCalls = fixture.gateway.bodyCalls
+        let sendCalls = fixture.gateway.sendCalls
+        let body = fixture.viewModel.body
+        let messages = fixture.viewModel.messages
+        let header = fixture.viewModel.headerPresentation
+
+        #expect(header?.subject == "只读头部")
+        for _ in 0..<3 {
+            #expect(fixture.viewModel.headerPresentation == header)
+        }
+        #expect(fixture.gateway.bodyCalls == bodyCalls)
+        #expect(fixture.gateway.sendCalls == sendCalls)
+        #expect(fixture.viewModel.body == body)
+        #expect(fixture.viewModel.messages == messages)
+    }
+}
+
 @Suite("MailboxViewModel compose")
 @MainActor
 struct MailboxComposeTests {

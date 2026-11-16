@@ -298,3 +298,4 @@ component: CMP-PRES
   - `MailboxViewModelTests`：`headerPresentation` 跟随选中与切换、无选中为 nil、`select(folderID:)` 后为 nil、跨文件夹同 `serverID` 命中正确邮件（R23）。
 - L2：`HeaderProbe`（编译生产视图 + 同源 Presentation 文件，离屏 `NSHostingView` 读可选中 `Text` 的 `NSTextField.stringValue`）覆盖渲染值、隐藏行、切换与占位；seam 已由设计探针验证，见 `task-spaces/20261116-212545/evidence/header-probe/`。
 - 自检：不改既有公开成员（纯新增，兼容）；不新增 `@Observable` 状态；无未登记 skip。
+- 实现（2026-11-16，T-1116-08）：`Sources/Presentation/MessageHeaderPresentation.swift`（56 行）与 `MailboxViewModel.headerPresentation` 已落地。`MessageHeaderPresentationTests` 6 例（完整/稀疏/空白/畸形日期/裁剪/相等）与 `MailboxViewModelTests` 新增 4 例（无选中与切文件夹、切换、跨文件夹同 `serverID`、读取不新增网关/正文工作）全绿；`./Scripts/swiftw test --filter PresentationTests` 67 例通过、架构 4 门通过；`MailboxViewModel` 304 行（≤400）。证据：`task-spaces/20261116-212545/evidence/t1116-08-tests.txt`。

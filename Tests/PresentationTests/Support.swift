@@ -200,6 +200,7 @@ func presentationMessage(
     sender: String? = "a@b.c",
     recipients: String? = nil,
     cc: String? = nil,
+    receivedRaw: String? = nil,
     preview: String? = nil,
     folderID: String = "13",
     isRead: Bool = true
@@ -209,7 +210,7 @@ func presentationMessage(
         subject: subject,
         sender: sender,
         recipients: recipients,
-        receivedRaw: nil,
+        receivedRaw: receivedRaw,
         isRead: isRead,
         bodyPreview: preview,
         folderID: folderID,
