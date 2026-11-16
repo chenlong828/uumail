@@ -930,6 +930,38 @@ struct MailboxManualMarkReadTests {
         #expect(try fixture.store.syncKey(account: fixture.account, collection: "13") == "3")
     }
 
+    @Test("T-SCN-0014-01: a false local transition does not write back and reloads the stale list")
+    func manualMarkReadFalseReturnDoesNotWriteBack() async throws {
+        let write = PresentationRecordingWriteGateway(delta: delta())
+        let fixture = try makeMailboxFixture(
+            messages: ["13": [presentationMessage("1", isRead: false)]],
+            write: write
+        )
+        fixture.viewModel.loadCached()
+        #expect(fixture.viewModel.canMarkSelectedRead)
+        #expect(fixture.viewModel.visibleMessages.first?.isRead == false)
+
+        // The race: another writer marks the row read after the VM's guard, so the real
+        // `markReadLocally` observes no 0→1 and returns false while the VM list is stale.
+        let store = fixture.store
+        let account = fixture.account
+        let realLocalMarkRead = fixture.viewModel.localMarkRead
+        fixture.viewModel.localMarkRead = { ref in
+            _ = try store.markRead(account: account, folder: ref.folderID, serverID: ref.serverID)
+            return try realLocalMarkRead(ref)
+        }
+
+        fixture.viewModel.markSelectedRead()
+        try await Task.sleep(for: .milliseconds(30))
+
+        #expect(try fixture.store.messages(account: fixture.account, folder: "13").first?.isRead == true)
+        #expect(fixture.viewModel.visibleMessages.first?.isRead == true,
+                "the false transition must reload the stale list from the store")
+        #expect(fixture.viewModel.markReadErrorText == nil)
+        #expect(await write.calls.isEmpty, "a false 0→1 must not start a server write")
+        #expect(!fixture.viewModel.canMarkSelectedRead, "the reloaded row is already read")
+    }
+
     @Test("T-SCN-0014-02: repeated marks and other selections never write twice or leak")
     func manualMarkReadIsIdempotentAndSelectionScoped() async throws {
         let write = PresentationRecordingWriteGateway(delta: delta())
