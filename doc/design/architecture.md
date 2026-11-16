@@ -28,7 +28,9 @@ macOS 原生邮件客户端，只支持 EAS（Exchange ActiveSync），以「一
 | 账号接入 | `AccountSetupScene` | 用户填表点连接 | 账号 `ready` + 文件夹树 + 凭据入 Keychain | 顺序固定（probe→provision→文件夹→建号→快照→ready→凭据）；失败不留半成品 | accounts、folders、sync_state、Keychain | 分类错误，停在配置页 | 首次/换机 | 冷 | 已实现；真机全链未跑 |
 | 文件夹与收件箱同步 | `SyncScene` | 启动、每 5 分钟、手动刷新 | 本地出现新文件夹与新邮件 | 单飞；批次与 key 同事务；失败保旧数据 | folders、messages、sync_state | 状态栏错误，后台退避 | 每 5 分钟 | 冷 | 已实现 |
 | 浏览与阅读 | `ReadScene` | 选文件夹、选邮件 | 列表与正文 | 读路径不触网；缓存优先；缺正文先占位后补拉 | messages、message_bodies | 占位 + 重试入口 | 高频 | 热 | 已实现；P95 未复测 |
-| 列表停留自动已读 | `ReadScene` + `MailboxDwell` | 选中未读、前台连续 10 秒 | 本地已读、蓝点消失、后台回写 | 本地先行；写回与同步共享 key 串行；失败不回滚、不提示 | messages、sync_state | 静默保留本地已读 | 中 | 热（本地）+ 冷（回写） | 已实现（T-1114-11…18，2026-11-14）；已验证（T-1114-19，2026-11-15） |
+| 列表停留自动已读 | `ReadScene` + `MailboxDwell` + `MailboxViewModel.performMarkRead` | 选中未读、前台连续 3 秒 | 本地已读、蓝点消失、后台回写 | 本地先行；写回与同步共享 key 串行；失败不回滚、不提示；计时器只计时 | messages、sync_state | 静默保留本地已读 | 中 | 热（本地）+ 冷（回写） | 已实现（T-1114-11…18，2026-11-14）；2026-11-16 由 10 秒改为 3 秒，待重验 |
+| 手动标记已读 | `ReadScene` + `MailboxViewModel` + `MailboxToolbar` | 主工具栏「标记为已读」 | 本地立即已读、蓝点消失、后台回写一次 | 仅当前选中未读；本地先行；仅 0→1 回写；已读/无选中禁用；回写失败静默；本地失败非 `MailError` 归一后显示中文 | messages、sync_state | 本地失败保持未读 + 提示；回写失败静默 | 中 | 热（本地）+ 冷（回写） | 已实现（2026-11-16，T-1116-12/13；P2 已确认，待三卡重验） |
+| 远程图片放行 | `MailboxViewModel` + `MailboxToolbar` | 主工具栏「加载远程图片」 | 当前正文以放行档 CSP 重渲染 | 默认关；仅当前邮件；切邮件重置；不写偏好；禁 JS/白底/其它 CSP 档不变 | 无（会话内视图状态） | 无正文/未加载/失败不可用；图片失败不弹错 | 低 | 热 | 已实现（2026-11-16，T-1116-12/13；P2 已确认，待三卡重验） |
 | 键盘删除 | `ReadScene` + `MailboxViewModel` | 列表聚焦 Delete/Backspace | 行消失、服务器删除、本地软删 | 服务器确认后原子软删；失败恢复并提示；单飞 | messages、sync_state | 恢复行/选中 + 中文错误 | 中 | 热（隐藏）+ 冷（写） | 已实现（T-1114-11…18，2026-11-14）；已验证（T-1114-20，2026-11-15） |
 | 附件 | `ReadScene` | 点附件 | 本地文件并打开 | 同一附件单飞；缓存 2 GB 最旧优先 | attachments、附件文件 | 提示失败可重试 | 中 | 冷 | 部分：无 25MB 上限、续传、名称回退 |
 | 本地搜索 | `ReadScene` | 输入关键字 | 结果列表 | 本地优先；<3 字符走 LIKE | messages、fts | 空结果/错误提示 | 中 | 热 | 已实现 |
@@ -297,7 +299,7 @@ public actor Outbox {
 
 ### 3.7 `Presentation`
 
-`MailboxViewModel`、`ComposeViewModel`、`AccountSetupViewModel`；`BodyPresentation{none/loading/loaded(html,truncated)/failed(text)}`、`BodyNotice`、`SyncPresentation`、`Selection`；`ErrorText` 是唯一的 `MailError → 中文` 映射，`DisplayFormat` 收拢发件人与日期格式化。只依赖 `Scenes` + `MailDomain`。T-1114-10 设计新增 `MailboxDwell`（10 秒计时）与 `MailboxDeletion`（隐藏/单飞/错误），并给 `MailboxViewModel` 增 `setApplicationActive/deleteSelected/visibleMessages/deleteErrorText`；`MailboxViewModel` 主文件 298 行（目标 ≤380；Body/Compose/Delete 已拆到 extension 文件）。
+`MailboxViewModel`、`ComposeViewModel`、`AccountSetupViewModel`；`BodyPresentation{none/loading/loaded(html,truncated)/failed(text)}`、`BodyNotice`、`SyncPresentation`、`Selection`；`ErrorText` 是唯一的 `MailError → 中文` 映射，`DisplayFormat` 收拢发件人与日期格式化。只依赖 `Scenes` + `MailDomain`。T-1114-10 设计新增 `MailboxDwell`（3 秒计时）与 `MailboxDeletion`（隐藏/单飞/错误），并给 `MailboxViewModel` 增 `setApplicationActive/deleteSelected/visibleMessages/deleteErrorText`；`MailboxViewModel` 主文件 304 行（目标 ≤400；Body/Compose/Delete 已拆到 extension 文件）。2026-11-16 设计新增 `allowsRemoteContent/canAllowRemoteContent/setAllowsRemoteContent(_:)`、`canMarkSelectedRead/markSelectedRead()`、`markReadErrorText`（P2 已确认，2026-11-16，`history/decisions/2026-11-16-remote-toolbar-mark-read.md`）；`MailboxDwell` 改为仅计时的 3 秒计时器，写/重载/回写收口到 `MailboxViewModel.performMarkRead`，自动与手动置读共用；本批手动置读路径中，`performMarkRead` 在用户可见前把 `markReadLocally` 的非 `MailError` 归一为 `MailError.storage`，`ErrorText` 只接收归一后的 `MailError`。实现已落地（T-1116-12/13，2026-11-16）：`MailboxViewModel` 378 行、`MailboxDwell` 59 行、`MailboxToolbar` 75 行；`MailboxView`/`MessageBodyView` 见 `CMP-APP` 增量。
 
 ## 4. 冷热路径
 

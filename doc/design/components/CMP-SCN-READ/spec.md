@@ -106,7 +106,7 @@ component: CMP-SCN-READ
   public func deleteMessage(_ ref: MessageRef) async throws
   ```
 
-- `markReadLocally`：只调 `store.markRead`，零网络；返回是否发生 0→1。本地失败原样抛出；调用方（`MailboxDwell`）不展示错误、不回写。
+- `markReadLocally`：只调 `store.markRead`，零网络；返回是否发生 0→1。本地失败**原样抛出**（类型可能是 `MailStoreError`/GRDB `DatabaseError`，不是 `MailError`），`ReadScene` 不在此处增加分类；调用方（2026-11-16 起为 `MailboxViewModel.performMarkRead`，自动计时与手动置读共用）在用户可见前把非 `MailError` 归一为 `.storage(reason:)`：自动计时路径忽略错误、不回写、不展示；手动入口经 `ErrorText` 展示中文。
 - `writeBackMarkRead`：只调 `writeEngine.markRead`；成功返回 `.succeeded`；任何失败（含 `MailError`、存储错误）归为 `.failed(MailError)`，不抛、不回滚、不重试。分类复用 `classify`：`MailError` 原样，其它归 `storage(reason:)`。
 - `deleteMessage`：只调 `writeEngine.deleteMessage` 并把非 `MailError` 归为 `storage`；不本地预删、不捕获业务错误、不做选中推进（PRES 负责）。`CancellationError` 原样传播（不归 `storage`），由 PRES 按取消恢复。
 - 不变量改写：`folders/messages/search/attachments/bodyIfCached/open` 仍零网络；`markReadLocally` 只写本地；只有 `writeBackMarkRead`/`deleteMessage` 触网，且只经 `SyncEngine` 的门。**该改写是本次唯一需要修订的既有不变量**，不得把两个写方法塞进「读路径」叙述。
@@ -116,3 +116,11 @@ component: CMP-SCN-READ
 - 测试构造点：`ReadScene` 的四处构造（`AppComposition`、`CommandLineComposition`、`Tests/ScenesTests/ReadSceneTests.swift`、`Tests/PresentationTests/Support.swift`）必须同批更新；测试用真实 `SyncEngine` + fake `MailGateway`/`SyncStore`，写端口用测试 target 的 `UnsupportedWriteGateway` 或记录 fake，不保留无 `writeEngine` 的只读重载。
 
 **实现（2026-11-14）**：`ReadScene` 构造改为非可选 `writeEngine`；`markReadLocally` 只写本地，`writeBackMarkRead` 返回 `.succeeded/.failed` 不抛，`deleteMessage` 只在服务器成功后由 `MailStore.commitDelete` 软删，取消原样传播。`ScenesTests` 32 例绿，含本地先行、回写失败不回滚、删除失败不软删、取消传播、非 MailError→storage、删除后下一轮同步不复活。
+
+## 设计增量：手动置读复用（REQ-0019，2026-11-16）
+
+- `MailboxViewModel.markSelectedRead()`（P2 待确认）复用既有 `markReadLocally` / `writeBackMarkRead` 两阶段，不新增 `ReadScene` 方法，不改 `MailWriteGateway`/`SyncStore`/`MailStore` 契约、schema 或协议。
+- 自动计时与手动入口都经 `MailboxViewModel.performMarkRead`；`MailboxDwell` 不再直接调用 `ReadScene`。`ReadScene` 的本地读方法仍零网络，写方法仍只经 `SyncEngine` 的 FIFO 门。
+- 并发/幂等由 `MailboxViewModel` 的 `@MainActor` 串行与 `markReadLocally` 的 0→1 返回值保证：第二次调用返回 false，不启动第二次回写。
+- 错误类型：本增量**不改变** `markReadLocally` 的 `throws` 表面（仍原样抛存储错误）；用户在 `markReadErrorText` 看到的中文由 `MailboxViewModel.performMarkRead` 归一后交给 `ErrorText`，`ReadScene` 不 import PRES、不拼文案。若后续把 `markReadLocally` 也统一 `classify` 为 `MailError`，调用方归一仍兼容，但不是本批范围。
+- 不改 `ReadScene.deleteMessage`、附件、正文打开/缓存/补拉；本增量只登记调用方变化，不新增场景断言。

@@ -12,7 +12,7 @@ scenario: SCN-0010
 
 ## 结果
 
-用户在深色主题下（系统深色 + 跟随系统，或菜单强制深色）打开一封邮件，正文内容区是**不透明白色画布**：未声明背景的纯文本/HTML 邮件以白底深字正常显示；邮件作者显式声明的背景色、文字色、表格与图片布局保留。作者的 `prefers-color-scheme: dark` 媒体变体在正文画布按浅色求值、不生效；不使用暗色阅读主题、不做邮件反色。附件条、远程图片开关、截断提示等正文之外的 chrome 仍随应用主题。切换主题、切换邮件、复用 WebView 或重开窗口后正文仍白，且不重新加载正文、不重新拉取。
+用户在深色主题下（系统深色 + 跟随系统，或菜单强制深色）打开一封邮件，正文内容区是**不透明白色画布**：未声明背景的纯文本/HTML 邮件以白底深字正常显示；邮件作者显式声明的背景色、文字色、表格与图片布局保留。作者的 `prefers-color-scheme: dark` 媒体变体在正文画布按浅色求值、不生效；不使用暗色阅读主题、不做邮件反色。附件条、截断提示等正文之外的 chrome 以及窗口主工具栏的远程图片开关仍随应用主题。切换主题、切换邮件、复用 WebView 或重开窗口后正文仍白，且不重新加载正文、不重新拉取。
 
 ## 入口
 
@@ -21,7 +21,7 @@ scenario: SCN-0010
 - `CMP-APP#MessageBodyView`（`.loaded` 分支；`Sources/uumail/MessageBodyView.swift`）
 - `CMP-APP#UumailApp`（`preferredColorScheme` 提供深色前置条件；不在阅读组件里写主题规则）
 - `CMP-PRES#BodyPresentation.loaded(html:truncated:)`（正文数据；本景不改契约）
-- `CMP-APP#MessageBodyView` 的附件条 / 远程图片开关 / 截断 banner（正文之外，仍随主题）
+- `CMP-APP#MessageBodyView` 的附件条 / 截断 banner，以及 `CMP-APP#MailboxToolbar` 的远程图片开关（正文之外，仍随主题；开关位置归 `SCN-0013`）
 
 ## 运行序
 
@@ -33,7 +33,7 @@ scenario: SCN-0010
 4. 正文画布的 `prefers-color-scheme` 固定为 light（`appearance = .aqua` + `color-scheme: light`）：作者 dark-mode 媒体变体不生效；作者显式静态背景/文字色仍保留。
 5. 用户切换主题（`SCN-0011`）：应用 chrome 立即变化；正文不重新 `loadHTMLString`、不重新拉正文、不改变滚动位置/选中，画布仍白。
 6. 用户切换到另一封邮件：新正文走同一规则；复用 WebView 时外观与兜底样式仍生效，不出现「上一封白、下一封透明」。
-7. 附件条、远程图片开关、截断提示、加载/失败占位在画布之外，跟随应用主题，不强制白。远程图片开关只改变 CSP 的 `img-src`，不改白底、禁 JS 与作者样式。
+7. 附件条、截断提示、加载/失败占位在画布之外，跟随应用主题，不强制白；远程图片开关位于窗口主工具栏，也跟随应用主题。远程图片开关只改变 CSP 的 `img-src`，不改白底、禁 JS 与作者样式（位置与可用性归 `SCN-0013`）。
 
 失败路径：
 
@@ -61,7 +61,7 @@ scenario: SCN-0010
 |---|---|---|---|---|
 | `T-SCN-0010-01` | 正 | L2 | 深色主题下打开无背景纯文本/HTML 邮件 → 画布采样为不透明白色（#FFFFFF），默认文字为深色；`baseCSS` 含白色兜底与 `color-scheme: light`；浅色主题下采样一致。 | `AppearanceProbe.lightFloorAndCSP`（直接编译生产 `MessageBodyStyle.swift`）+ `AppearanceProbe.readingPaneIsOpaqueWhiteInDarkMode`（`takeSnapshot` 中心/下部采样） |
 | `T-SCN-0010-02` | 正 | L2 | 深色/浅色/跟随系统来回切换，并在切换后换一封邮件、重开窗口 → 阅读区始终白；切换不触发 `loadHTMLString`、不拉正文、不改滚动与选中；复用 WebView 无透明闪烁。 | `AppearanceProbe.readingPaneStaysWhiteAcrossThemeAndMessageSwitch`（记录 `WKNavigationDelegate` 计数与两次采样） |
-| `T-SCN-0010-03` | 正 | L2 + L1 | 正文自带显式白/深/彩色背景、表格与图片 → 作者样式保留，白底只在透明区域兜底；作者 `prefers-color-scheme: dark` 变体不生效；开启远程图片后仍白底。附件条、远程图片开关与截断提示跟随应用主题——**用代码审查 + 现有视图测试判定（L1）**，不再做像素/截图断言。 | `AppearanceProbe.senderStylesPreservedAndDarkMediaSuppressed`（`#123456` 采样 + dark-media 采样；用 body 级背景或采样点落在作者着色元素内，实测 sRGB 约 `rgba(21,69,105,1.00)`，断言用容差 ±2/通道）；chrome 部分：代码审查确认 `AttachmentBar`/远程开关/截断提示不写死白色 + `MailboxViewModelTests` 现有用例（L1） |
+| `T-SCN-0010-03` | 正 | L2 + L1 | 正文自带显式白/深/彩色背景、表格与图片 → 作者样式保留，白底只在透明区域兜底；作者 `prefers-color-scheme: dark` 变体不生效；开启远程图片后仍白底。附件条、工具栏的远程图片开关与截断提示跟随应用主题——**用代码审查 + 现有视图测试判定（L1）**，不再做像素/截图断言。 | `AppearanceProbe.senderStylesPreservedAndDarkMediaSuppressed`（`#123456` 采样 + dark-media 采样；用 body 级背景或采样点落在作者着色元素内，实测 sRGB 约 `rgba(21,69,105,1.00)`，断言用容差 ±2/通道）；chrome 部分：代码审查确认 `AttachmentBar`/`MailboxToolbar` 的远程开关/截断提示不写死白色 + `MailboxViewModelTests` 现有用例（L1） |
 | `T-SCN-0010-04` | 反 | L2 | 畸形/无 `<head>` 且含 `<script>` 与远程 `<img>` 的正文 → 仍得到白底与 CSP、脚本不执行、远程请求被阻止、不崩溃；加载失败态跟随主题而不是白色空块；作者深色背景不被强制反色。 | `AppearanceProbe.malformedHTMLStillGetsLightFloorAndCSP` + `AppearanceProbe.failedBodyUsesThemeNotWhite` |
 
 > 证据层级：L1 单元测试 / L2 无头探针 / L3 截图 OCR / L4 GUI 自动化（AX）。本卡最高 L2，不做截图与 AX。
@@ -73,5 +73,7 @@ scenario: SCN-0010
 ## 状态
 
 `verified`（2026-11-16，T-1116-06 验证，收尾按评审清单翻转）。原 `designed`（2026-11-16，T-1116-01 落卡）：Q6 已按 A 确认（只正文画布）；P2 已确认。四元素齐；`T-SCN-0010-01..04` 为 3 正 1 反可执行 ID。
+
+位置修订（2026-11-16，设计节点）：远程图片开关由 `MessageBodyView` 正文行移到窗口主工具栏（`SCN-0013` / `REQ-0018`）；本卡只更新位置措辞，不新增/修改任何断言，白底结果与 `verified` 状态不变。`T-SCN-0010-03` 的 chrome 代码审查对象从「正文开关」改为「`MailboxToolbar` 的远程开关」；开关本身的行为与主题归属由 `SCN-0013` 验收。此前证据仍有效。
 
 **已实现与验证（2026-11-16，T-1116-03/06）**：`MessageBodyStyle.swift` 已承接 `baseCSS`/CSP/`sanitized`，`MessageBodyView` 的 `WKWebView` 固定不透明浅色并在 `updateNSView` 复确认外观。`AppearanceProbe` 逐条通过 `T-SCN-0010-01`（深色下中心/下部 `rgba(255,255,255,1.00)`、CSP 默认 data-only）、`T-SCN-0010-02`（切主题导航增量 0、换邮件增量 1、复用后仍白）、`T-SCN-0010-03`（作者 body `#123456` 采样 `rgba(21,69,105,1.00)`、dark-media 采样白）、`T-SCN-0010-04`（畸形 HTML 仍得白底与 CSP、失败占位深色）。证据：`task-spaces/20261116-202956/evidence/n5-appearance-probe.txt`、`n5-chrome-review.txt`、`n5-targeted-theme-and-viewmodel.txt`、`n5-full-test.txt`、`n5-architecture.txt`；鉴定复跑 `n10-appearance-probe.txt`、`n10-full-test.txt`、`n10-architecture.txt`（`task-spaces/20261116-202956/test.md`、`review.md` §7）。此前实现证据见 `task-spaces/20261116-154416/evidence/`。`SCN-0010` 已转 `verified`、`REQ-0015` 已转 `delivered`。
