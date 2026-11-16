@@ -2,7 +2,7 @@
 layer: design
 module: mail
 scope: project:uumail
-status: designed
+status: verified
 updated: 2026-11-16
 flow: mail/read
 scenario: SCN-0012
@@ -81,11 +81,11 @@ scenario: SCN-0012
 
 ## 状态
 
-`designed`（2026-11-16 设计落卡）。四元素：入口 `present`、运行序 `present`（含失败路径）、不可变引用 `present`、测试 `present`（3 正 1 反，`T-SCN-0012-01..04` 可执行，最低 L2）。
+`verified`（2026-11-16，T-1116-10 验证，收尾按 `review.md` §9.7 清单翻转）。原 `designed`（2026-11-16 设计落卡）。四元素：入口 `present`、运行序 `present`（含失败路径）、不可变引用 `present`、测试 `present`（3 正 1 反，`T-SCN-0012-01..04` 可执行，最低 L2）。
 
-L2 探针 seam 已由设计探针验证（`task-spaces/20261116-212545/evidence/header-probe/header-probe-4.txt`，四条测试形态共 14 条断言全 pass）；L1 映射与 VM 用例见 `CMP-PRES` 设计增量的测试计划。公共契约增量属 P2，**人工确认后才合并实现**；未实现、未 `verified`。
+L2 探针 seam 已由设计探针验证（`task-spaces/20261116-212545/evidence/header-probe/header-probe-4.txt`，四条测试形态共 14 条断言全 pass）；L1 映射与 VM 用例见 `CMP-PRES` 设计增量的测试计划。公共契约增量属 P2，已于 2026-11-16 确认（`history/decisions/2026-11-16-reading-pane-headers.md`）。
 
-`verified` 判据：`T-SCN-0012-01..04` 全 pass；`SCN-0004`/`SCN-0010` 回归不退化；无 skip 或 skip 有登记替身。
+`verified` 判据：`T-SCN-0012-01..04` 全 pass；`SCN-0004`/`SCN-0010` 回归不退化；无 skip 或 skip 有登记替身。本轮结果：生产路径 `HeaderProbe` 51 条断言全 `PASS`（`evidence/t1116-10-header-probe.txt`）、L1 10 tests / 2 suites（`evidence/t1116-10-header-l1.txt`）；`SCN-0004` 02/04 共 21 tests / 3 suites、`SCN-0010` 01..04 共 48 PASS 无退化；全量 254 tests / 47 suites、架构 4 门通过（`review.md` §9.2–§9.4）。`T-SCN-0012-04` 正文重试 chrome 的 L2 直读限制已登记 L1 替身（`review.md` §9.5 L1）。
 
 ## 与相邻场景的边界
 
