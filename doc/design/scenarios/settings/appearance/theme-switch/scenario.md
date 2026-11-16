@@ -57,16 +57,18 @@ scenario: SCN-0011
 
 ## 测试
 
-| ID | 类型 | 方案 | 可执行 ID |
-|---|---|---|---|
-| `T-SCN-0011-01` | 正 | 首次启动无偏好 + 系统深色 → chrome 深色、勾「跟随系统」；系统浅色启动 → chrome 浅色；两种情况下正文都白底（引用 `SCN-0010`）。 | `ThemePreferenceStoreTests.defaultsToSystemWhenUnset` + `ThemeProbe.menuShowsFollowSystemChecked`（先打开父 View 菜单） |
-| `T-SCN-0011-02` | 正 | 系统深色时选「浅色」→ 窗口/侧栏/列表/工具栏/配置页/撰写 sheet 立即变浅，正文仍白；退出重开仍浅。系统浅色时选「深色」→ 立即变深，正文仍白；退出重开仍深。 | `ThemePreferenceStoreTests.persistsAndRestoresAcrossInstances` + `ThemeProbe.selectingLightAndDarkAppliesImmediately`（window + sheet 的 `effectiveAppearance`） |
-| `T-SCN-0011-03` | 正 | 「跟随系统」下模拟系统深→浅→深，应用实时跟随；选「深色」后系统变化，应用保持深；切回「跟随系统」立即对齐；重复选同一项不写偏好、不闪烁。 | `ThemeProbe.followSystemTracksSystemChanges`（`nil` + `NSApp.appearance` 模拟系统变化）+ `ThemeProbe.repeatedSelectionDoesNotChangeState`（计数与外观） |
-| `T-SCN-0011-04` | 反 | 偏好缺失/损坏/未知 → 回退跟随系统、不崩溃；`save` 不抛错、当前会话值不被回滚；切换主题不重载正文、不重置选中/滚动/草稿、不触发网络；菜单勾选与生效值一致；正文仍按 `SCN-0010` 白底兜底。 | `ThemePreferenceStoreTests.invalidValueFallsBackToSystem` + `ThemeProbe.themeChangeDoesNotReloadBodyOrResetSelection`（`WKNavigationDelegate` 计数 + 选中/滚动快照） |
+| ID | 类型 | 层级 | 方案 | 可执行 ID |
+|---|---|---|---|---|
+| `T-SCN-0011-01` | 正 | L1 + L2 | 首次启动无偏好 + 系统深色 → chrome 深色、勾「跟随系统」；系统浅色启动 → chrome 浅色；两种情况下正文都白底（引用 `SCN-0010`）。 | `ThemePreferenceStoreTests.defaultsToSystemWhenUnset`（L1）+ `ThemeProbe.menuShowsFollowSystemChecked`（L2，先打开父 View 菜单） |
+| `T-SCN-0011-02` | 正 | L1 + L2 | 系统深色时选「浅色」→ 窗口/侧栏/列表/工具栏/配置页/撰写 sheet 立即变浅，正文仍白；退出重开仍浅。系统浅色时选「深色」→ 立即变深，正文仍白；退出重开仍深。 | `ThemePreferenceStoreTests.persistsAndRestoresAcrossInstances`（L1）+ `ThemeProbe.selectingLightAndDarkAppliesImmediately`（L2，window + sheet 的 `effectiveAppearance`） |
+| `T-SCN-0011-03` | 正 | L2 | 「跟随系统」下模拟系统深→浅→深，应用实时跟随；选「深色」后系统变化，应用保持深；切回「跟随系统」立即对齐；重复选同一项不写偏好、不闪烁。 | `ThemeProbe.followSystemTracksSystemChanges`（`nil` + `NSApp.appearance` 模拟系统变化）+ `ThemeProbe.repeatedSelectionDoesNotChangeState`（计数与外观） |
+| `T-SCN-0011-04` | 反 | L1 + L2 | 偏好缺失/损坏/未知 → 回退跟随系统、不崩溃；`save` 不抛错、当前会话值不被回滚；切换主题不重载正文、不重置选中/滚动/草稿、不触发网络；菜单勾选与生效值一致；正文仍按 `SCN-0010` 白底兜底。 | `ThemePreferenceStoreTests.invalidValueFallsBackToSystem`（L1）+ `ThemeProbe.themeChangeDoesNotReloadBodyOrResetSelection`（L2，`WKNavigationDelegate` 计数 + 选中/滚动快照） |
 
-> `SCN-0011` 断言里的「正文仍白」是前置回归，引用 `SCN-0010` 的断言，不重复计数。菜单勾选断言必须先打开父级 View 菜单，再读取 `NSMenuItem.state`；本轮已实测静止读取会得到旧值（R26）。
+> 证据层级：L1 单元测试 / L2 无头探针 / L3 截图 OCR / L4 GUI 自动化（AX）。本卡最高 L2，不做截图与 AX。
 >
-> 测试替身：偏好逻辑用 `PresentationTests`（`@testable import Presentation`，经 internal `init(defaults:)` 注入独立 `UserDefaults` suite）；菜单/窗口/sheet 用独立 `ThemeProbe`（SwiftUI + AppKit）；真实 app bundle 的最终 chrome 用截图/AX 冒烟，证据入 `evidence/`。不新增 `uumail` 测试 target。
+> `SCN-0011` 断言里的「正文仍白」是前置回归，引用 `SCN-0010` 的断言，不重复计数。菜单勾选断言必须先打开父级 View 菜单，再读取 `NSMenuItem.state`；静止读取会得到旧值（R26）。
+>
+> 测试替身：偏好逻辑用 `PresentationTests`（`@testable import Presentation`，经 internal `init(defaults:)` 注入独立 `UserDefaults` suite）；菜单/窗口/sheet 用独立 `ThemeProbe`（SwiftUI + AppKit，L2）。不新增 `uumail` 测试 target，不要求真实 app 截图或 AX。
 
 ## 状态
 

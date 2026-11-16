@@ -57,16 +57,18 @@ scenario: SCN-0010
 
 ## 测试
 
-| ID | 类型 | 方案 | 可执行 ID |
-|---|---|---|---|
-| `T-SCN-0010-01` | 正 | 深色主题下打开无背景纯文本/HTML 邮件 → 画布采样为不透明白色（#FFFFFF），默认文字为深色；`baseCSS` 含白色兜底与 `color-scheme: light`；浅色主题下采样一致。 | `AppearanceProbe.lightFloorAndCSP`（直接编译生产 `MessageBodyStyle.swift`）+ `AppearanceProbe.readingPaneIsOpaqueWhiteInDarkMode`（`takeSnapshot` 中心/下部采样） |
-| `T-SCN-0010-02` | 正 | 深色/浅色/跟随系统来回切换，并在切换后换一封邮件、重开窗口 → 阅读区始终白；切换不触发 `loadHTMLString`、不拉正文、不改滚动与选中；复用 WebView 无透明闪烁。 | `AppearanceProbe.readingPaneStaysWhiteAcrossThemeAndMessageSwitch`（记录 `WKNavigationDelegate` 计数与两次采样） |
-| `T-SCN-0010-03` | 正 | 正文自带显式白/深/彩色背景、表格与图片 → 作者样式保留，白底只在透明区域兜底；作者 `prefers-color-scheme: dark` 变体不生效；附件条、远程图片开关与截断提示跟随应用主题；开启远程图片后仍白底。 | `AppearanceProbe.senderStylesPreservedAndDarkMediaSuppressed`（`#123456` 采样 + dark-media 采样；用 body 级背景或采样点落在作者着色元素内，实测 sRGB 约 `rgba(21,69,105,1.00)`，断言用容差 ±2/通道）+ `AppearanceProbe.chromeFollowsThemeOutsideCanvas`（截图/外观） |
-| `T-SCN-0010-04` | 反 | 畸形/无 `<head>` 且含 `<script>` 与远程 `<img>` 的正文 → 仍得到白底与 CSP、脚本不执行、远程请求被阻止、不崩溃；加载失败态跟随主题而不是白色空块；作者深色背景不被强制反色。 | `AppearanceProbe.malformedHTMLStillGetsLightFloorAndCSP` + `AppearanceProbe.failedBodyUsesThemeNotWhite` |
+| ID | 类型 | 层级 | 方案 | 可执行 ID |
+|---|---|---|---|---|
+| `T-SCN-0010-01` | 正 | L2 | 深色主题下打开无背景纯文本/HTML 邮件 → 画布采样为不透明白色（#FFFFFF），默认文字为深色；`baseCSS` 含白色兜底与 `color-scheme: light`；浅色主题下采样一致。 | `AppearanceProbe.lightFloorAndCSP`（直接编译生产 `MessageBodyStyle.swift`）+ `AppearanceProbe.readingPaneIsOpaqueWhiteInDarkMode`（`takeSnapshot` 中心/下部采样） |
+| `T-SCN-0010-02` | 正 | L2 | 深色/浅色/跟随系统来回切换，并在切换后换一封邮件、重开窗口 → 阅读区始终白；切换不触发 `loadHTMLString`、不拉正文、不改滚动与选中；复用 WebView 无透明闪烁。 | `AppearanceProbe.readingPaneStaysWhiteAcrossThemeAndMessageSwitch`（记录 `WKNavigationDelegate` 计数与两次采样） |
+| `T-SCN-0010-03` | 正 | L2 + L1 | 正文自带显式白/深/彩色背景、表格与图片 → 作者样式保留，白底只在透明区域兜底；作者 `prefers-color-scheme: dark` 变体不生效；开启远程图片后仍白底。附件条、远程图片开关与截断提示跟随应用主题——**用代码审查 + 现有视图测试判定（L1）**，不再做像素/截图断言。 | `AppearanceProbe.senderStylesPreservedAndDarkMediaSuppressed`（`#123456` 采样 + dark-media 采样；用 body 级背景或采样点落在作者着色元素内，实测 sRGB 约 `rgba(21,69,105,1.00)`，断言用容差 ±2/通道）；chrome 部分：代码审查确认 `AttachmentBar`/远程开关/截断提示不写死白色 + `MailboxViewModelTests` 现有用例（L1） |
+| `T-SCN-0010-04` | 反 | L2 | 畸形/无 `<head>` 且含 `<script>` 与远程 `<img>` 的正文 → 仍得到白底与 CSP、脚本不执行、远程请求被阻止、不崩溃；加载失败态跟随主题而不是白色空块；作者深色背景不被强制反色。 | `AppearanceProbe.malformedHTMLStillGetsLightFloorAndCSP` + `AppearanceProbe.failedBodyUsesThemeNotWhite` |
 
+> 证据层级：L1 单元测试 / L2 无头探针 / L3 截图 OCR / L4 GUI 自动化（AX）。本卡最高 L2，不做截图与 AX。
+>
 > 夹具精度（D2，2026-11-16）：`T-SCN-0010-03` 的作者背景采样必须用 body 级背景或把采样点落在作者着色元素内；`#123456` 的 `takeSnapshot` 实测约 `rgba(21,69,105,1.00)`（sRGB），断言用容差，不对源 hex 精确相等。页面中心落在未着色区域时采样为白色是 `baseCSS` 兜底生效，不是作者样式被覆盖。
 >
-> 测试替身：像素/AX 用独立 `AppearanceProbe`（不新增 `uumail` 测试 target）；探针源码、命令、原始采样值入 `task-spaces/<run>/evidence/`。无替身的断言不得标 `verified`。
+> 测试替身：像素用独立 `AppearanceProbe`（直接编译生产 `MessageBodyStyle.swift`，不新增 `uumail` 测试 target）；探针源码、命令、原始采样值入 `task-spaces/<run>/evidence/`。无替身的断言不得标 `verified`。
 
 ## 状态
 
