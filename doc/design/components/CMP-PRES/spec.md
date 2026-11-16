@@ -21,13 +21,13 @@ component: CMP-PRES
   - 正文：缓存优先 → `.loading`/摘要提示 → `.loaded(html, truncated)` 或 `.failed(text)`；`BodyNotice` 承载「正在补拉」与「摘要回退」。
   - 自动刷新：消费 `SyncScene.startAutoRefresh` 流，映射 `SyncPresentation`；`stopAutoRefresh` 取消消费并停场景循环。
   - `ComposeViewModel.send` 调 `ComposeScene.send`，成功即 `status = .queued` 并触发组合根的投递信号；失败保留编辑文本。
-- 拥有的数据：视图状态（选择、搜索词、加载态、编辑器文本），不持久化；另持有**主题偏好的本地镜像**（`UserDefaults["appearance.theme"]`，注入 store；不是业务数据，真源仍是 App 的 `@State`，见文末增量）。
+- 拥有的数据：视图状态（选择、搜索词、加载态、编辑器文本、当前邮件远程放行、置读错误提示），不持久化；另持有**主题偏好的本地镜像**（`UserDefaults["appearance.theme"]`，注入 store；不是业务数据，真源仍是 App 的 `@State`，见文末增量）。
 - 变化轴：窗口形态与交互；主题外观（2026-11-16 新增一档三态主题）。
-- 公开契约：`CMP-PRES#MailboxViewModel`（T-1114-10 设计新增 `#visibleMessages`、`#deleteErrorText`、`#setApplicationActive`、`#deleteSelected`（2026-11-14 已实现）；2026-11-16 新增 `#headerPresentation`）、`#ComposeViewModel`、`#AccountSetupViewModel`、`#ErrorText`、`#DisplayFormat`、`#ThemePreference`、`#ThemePreferenceStore`（2026-11-16 新增 public，P2 已确认并实现）、`#MessageHeaderPresentation`（2026-11-16 新增 public，P2 已确认，实现见文末增量）；`MailboxDwell`/`MailboxDeletion` 仍是模块内文件。
+- 公开契约：`CMP-PRES#MailboxViewModel`（T-1114-10 设计新增 `#visibleMessages`、`#deleteErrorText`、`#setApplicationActive`、`#deleteSelected`（2026-11-14 已实现）；2026-11-16 新增 `#headerPresentation`；2026-11-16 设计新增 `#allowsRemoteContent`、`#canAllowRemoteContent`、`#setAllowsRemoteContent(_:)`、`#canMarkSelectedRead`、`#markSelectedRead()`、`#markReadErrorText`（P2 待确认，见文末增量））、`#ComposeViewModel`、`#AccountSetupViewModel`、`#ErrorText`、`#DisplayFormat`、`#ThemePreference`、`#ThemePreferenceStore`（2026-11-16 新增 public，P2 已确认并实现）、`#MessageHeaderPresentation`（2026-11-16 新增 public，P2 已确认，实现见文末增量）；`MailboxDwell`/`MailboxDeletion` 仍是模块内文件。
 - 入口：`Sources/Presentation/MailboxViewModel.swift#MailboxViewModel`、`ComposeViewModel.swift#ComposeViewModel`、`AccountSetupViewModel.swift#AccountSetupViewModel`、`ErrorText.swift#ErrorText`、`PresentationTypes.swift#BodyPresentation`、`ThemePreference.swift#ThemePreference/#ThemePreferenceStore`、`MessageHeaderPresentation.swift#MessageHeaderPresentation`（2026-11-16 新增）
 - 依赖：`Scenes`、`MailDomain`、`Observation`、`Foundation`（`UserDefaults`；不算新组件依赖）。扇出 1。
 - 冷热：热（主线程）；主题偏好读/写是低频冷路径，不与 VM 热路径共享状态。
-- 尺寸预算：单文件 ≤400 行；当前 `MailboxViewModel` **298**、`ComposeViewModel` 196、`AccountSetupViewModel` 100、`ThemePreference` 50；`Presentation` 共 1104 行（含 Body/Delete/Compose/Dwell/Deletion 拆分）。
+- 尺寸预算：单文件 ≤400 行；当前 `MailboxViewModel` **304**（2026-11-16 设计前实测）、`ComposeViewModel` 196、`AccountSetupViewModel` 100、`ThemePreference` 50；2026-11-16 设计预计 `MailboxViewModel` 约 365、`MailboxDwell` 70→约 55；`Presentation` 共 1166 行（含 Body/Delete/Compose/Dwell/Deletion 拆分）。
 - 单独运行：`./Scripts/swiftw test --filter PresentationTests`
 - 删除测试：删掉后视图直接持有场景并写展示逻辑，测试无法覆盖状态机 → 复杂度集中，是真边界。
 
@@ -67,6 +67,8 @@ component: CMP-PRES
       public func composeForward() -> ComposeViewModel?
   }
   // 新增的 MailboxDwell / MailboxDeletion 为模块内实现文件，签名见文末设计增量。
+  // 2026-11-16 增量（P2 待确认）：allowsRemoteContent / canAllowRemoteContent /
+  // setAllowsRemoteContent(_:) / canMarkSelectedRead / markSelectedRead() / markReadErrorText，见文末。
 
   @MainActor @Observable public final class ComposeViewModel: Identifiable {
       public enum Mode { case new, reply, replyAll, forward }
@@ -92,7 +94,7 @@ component: CMP-PRES
   ```
 
 - 不变量：不 import 场景之外的逻辑层类型；文案只经 `ErrorText`；选择变化只触发必要的场景调用；同一邮件不重复打开（`openedBody`/在飞 `bodyTask`）；同一附件重复点击不重复下载（场景单飞）。
-- 错误模式：把 `MailError`/存储错误映射为中文（`ErrorText.text(for:)`），不吞错、不自动重试。
+- 错误模式：`ErrorText` 只把 `MailError` 映射为中文；非 `MailError` 不直接交给视图，由对应动作先归一为 `MailError`（本批手动置读在 `performMarkRead` 归一为 `.storage(reason:)`），再经 `ErrorText`；不吞错、不自动重试。
 - 幂等 / 顺序 / 并发：`@MainActor`，状态更新串行；`startAutoRefresh` 重复调用幂等（已有 task 则返回）。
 - 超时 / 取消：`stopAutoRefresh` 取消消费 task；`openSelected` 切换邮件时取消上一封正文 task。
 - 一致性：动作返回后状态已更新；自动刷新的列表刷新来自本地库。
@@ -147,7 +149,7 @@ component: CMP-PRES
 ## 设计增量：停留计时与键盘删除（T-1114-10，2026-11-14 设计；T-1114-17 已实现）
 
 - 文件拆分（不新增 target/组件）：
-  - `Sources/Presentation/MailboxDwell.swift`：10 秒计时、前台状态、取消/重启；不读系统时间，sleep 由构造注入。
+  - `Sources/Presentation/MailboxDwell.swift`：3 秒计时、前台状态、取消/重启；不读系统时间，sleep 由构造注入；只做计时，不直接访问 `ReadScene`/`MailStore`（2026-11-16 设计）。
   - `Sources/Presentation/MailboxDeletion.swift`：临时隐藏集、单飞、错误文案；调用 `ReadScene.deleteMessage`。
   - `Sources/Presentation/MailboxViewModel+Compose.swift`：把现有 Compose 段机械移出，给主文件留预算；行为不变。
   - `MailboxViewModel.swift` 目标 ≤380 行（当前 345 + 计时/删除/失活接线约 60 - 移出约 45 ≈ 360）；实测超 400 先停下按流程处理，不静默调预算。
@@ -166,16 +168,17 @@ component: CMP-PRES
 
   ```swift
   @MainActor final class MailboxDwell {
-      init(read: ReadScene, sleep: @escaping @Sendable (Duration) async throws -> Void)
-      var onMarked: (@MainActor (MessageRef) -> Void)?
+      init(sleep: @escaping @Sendable (Duration) async throws -> Void)
+      var onElapsed: (@MainActor (MessageRef) -> Void)?
       func update(target: MessageRef?, isUnread: Bool, isActive: Bool)
       func cancel()
   }
   ```
 
-  - `update` 是幂等声明式入口：相同 target 且仍可计时 → **不重启**；target 变化/失活/已读/删除 → 取消；回到前台 → 重新起 10 秒。
-  - 到点：`read.markReadLocally` 成功 → `onMarked`（VM 立即重载，蓝点消失；即使返回 false 是「已被同步置读/已删」也重载一次以纠正陈旧列表）→ 仅当返回 true（发生 0→1）才后台 `Task { await read.writeBackMarkRead(ref) }`；不等待网络、不展示回写错误。VM 设置 `onMarked` 时用 `[weak self]`，避免 VM↔dwell 循环持有。
-  - 本地写失败：不重载、不回写、不弹错。
+  - 2026-11-16 设计把写路径移出计时器：`MailboxDwell` 不再持有 `ReadScene`，只负责 3 秒计时与 `onElapsed` 回调；写/重载/回写由 `MailboxViewModel.performMarkRead` 统一完成，自动与手动入口共用。
+  - `update` 是幂等声明式入口：相同 target 且仍可计时 → **不重启**；target 变化/失活/已读/删除 → 取消；回到前台 → 重新起 3 秒。
+  - 到点：`MailboxDwell` 调 `onElapsed(ref)` → `MailboxViewModel.performMarkRead(ref)` 调 internal `localMarkRead`（默认 `read.markReadLocally`）；成功 → VM 立即重载（蓝点消失；即使返回 false 是「已被同步置读/已删」也重载一次以纠正陈旧列表）→ 仅当返回 true（发生 0→1）才后台 `Task { await read.writeBackMarkRead(ref) }`；不等待网络、不展示回写错误。VM 设置 `onElapsed` 时用 `[weak self]`，避免 VM↔dwell 循环持有。
+  - 本地写失败：`performMarkRead` 在返回前把任意错误归一为 `MailError`（`MailError` 原样，非 `MailError` → `.storage(reason: String(describing:))`）；自动计时路径忽略它（不重载、不回写、不弹错）。
 - `MailboxDeletion`：
 
   ```swift
@@ -193,13 +196,13 @@ component: CMP-PRES
   - `begin` 立即隐藏并置在飞；已有一个在飞 → `false`，VM 忽略本次按键。
   - `commit` 等待 `ReadScene.deleteMessage`；成功保留隐藏（等 VM 重载后 `clearHidden`），失败移除隐藏并写 `ErrorText` 文案。
 - `deleteSelected` 顺序：记录删除项索引与当时的 `folderID`/`searchQuery` → `begin` 隐藏 → 取消计时 → 从隐藏后的 `visibleMessages` 取 `min(index, count-1)` 作为下一选中（空则 nil）→ 启动正文加载（缓存优先；网络补拉在独立 task 中继续，**不 await、不阻塞删除提交**）→ `commit` → 成功重载并清隐藏；失败重载、恢复原选中与正文、状态栏错误，并在恢复后调 `refreshDwell()`（取消「下一封」的计时，按恢复项重新判定）。等待期间用户切文件夹/搜索/改选：完成回调只在当前 `folderID` 与 `searchQuery` 仍匹配且选中未被用户改动时恢复，不跨列表强行插入；**无论是否切走，成功后都 `clearHidden`**（失败由 `commit` 移除）。VM 另用 `isDeleteInFlight` 覆盖整个 `deleteSelected`（含恢复/重开正文），入口即拒绝连按；`MailboxDeletion.isDeleting` 只覆盖网络 await。若 `openSelected()` 内部会 await 网络补拉，T-1114-17 必须拆出非等待的启动入口或把补拉 task 与 `commit` 分离；验收断言「正文补拉慢/失败不影响删除命令按时发出」。
-- `selectedMessage` 改从 `visibleMessages` 读取，临时隐藏的行不可被选中/打开；`messages` 仍是完整本地列表，不丢数据。`dwell` 在 `MailboxViewModel` 内标 `@ObservationIgnored`（计时状态由 VM 显式刷新驱动），`deletion` 保持 `@Observable`（`visibleMessages`/`deleteErrorText` 依赖它的隐藏集与错误）。删除失败恢复原邮件后，计时从新的 10 秒重新开始（不是继续旧计时）；若产品要求失败后也不计时，另加抑制标志，本批不做。
+- `selectedMessage` 改从 `visibleMessages` 读取，临时隐藏的行不可被选中/打开；`messages` 仍是完整本地列表，不丢数据。`dwell` 在 `MailboxViewModel` 内标 `@ObservationIgnored`（计时状态由 VM 显式刷新驱动），`deletion` 保持 `@Observable`（`visibleMessages`/`deleteErrorText` 依赖它的隐藏集与错误）。删除失败恢复原邮件后，计时从新的 3 秒重新开始（不是继续旧计时）；若产品要求失败后也不计时，另加抑制标志，本批不做。
 - 搜索模式：新增 `reloadCurrentList(autoSelect:)`——`selection.searchQuery` 非空时走 `read.search(query, limit:)`，否则走 `read.messages(folderID:)`；`loadCached`/自动刷新 `apply`/删除完成都改用它，避免在搜索结果里删一封或同步一次就切回文件夹列表。`select(folderID:)` 清空 `searchQuery`（视图 `searchText` 经既有 `onChange` 同步清空），让「文件夹列表 / 搜索结果」两种模式只有一个显式来源。`search(_:)` 先 trim 再写 `selection.searchQuery`，空白查询等同清空。**搜索模式下不计时**：`refreshDwell` 传入的 `isActive = isApplicationActive && searchQuery.isEmpty`，进入/停留在搜索都取消已读计时。
 - **列表身份（复核新增风险 R23）**：搜索模式的结果跨文件夹，`serverID` 只在集合内唯一（`messages` 主键含 `folder_id`）；`ForEach`/`List(selection:)`/`selectedMessage` 不得只用 `serverID` 作为身份。T-1114-17 先用跨文件夹同 `serverID` fixture 验证；若冲突，改用 `MessageRef`（folder + serverID）或等价复合键。若需要改 `Selection.messageID` 的公开类型/语义，按 P2 契约变更在 T-1114-17 前单独评审，不静默改。
 - 不变量：展示层不 import `MailStore`/`SyncEngine`；不判 `MailError` 分支（只用 `ErrorText`）；计时不放进 `ReadScene`；删除不发网络（只经场景）。
-- 测试：`MailboxViewModelTests` 补 10 秒触发/取消/后台/重载不重置/幂等/回写失败无错误；`MailboxDeletionTests`（或并入 VM 测试）补隐藏即现、连按只一次、失败恢复、切文件夹不强行恢复；O5 用「正文补拉慢/失败」断言删除命令按时发出；R23 用跨文件夹同 `serverID` fixture 断言选中/删除命中正确文件夹；`PresentationTests` 既有 28 例不回归。
+- 测试：`MailboxViewModelTests` 补 3 秒触发/取消/后台/重载不重置/幂等/回写失败无错误，并断言注入 sleep 收到 `.seconds(3)`；`MailboxDeletionTests`（或并入 VM 测试）补隐藏即现、连按只一次、失败恢复、切文件夹不强行恢复；O5 用「正文补拉慢/失败」断言删除命令按时发出；R23 用跨文件夹同 `serverID` fixture 断言选中/删除命中正确文件夹；`PresentationTests` 既有用例不回归。
 
-**实现（2026-11-14）**：新增 `MailboxDwell.swift`、`MailboxDeletion.swift`、`MailboxViewModel+Compose.swift`、`MailboxViewModel+Delete.swift`、`MailboxViewModel+Body.swift`；主 `MailboxViewModel.swift` **298 行**（目标 ≤380），Compose/Delete/Body 段已移出，`selectedMessage` 改从 `visibleMessages` 读取并过滤隐藏行。`PresentationTests` **52 例**绿：10 秒触发/切换/文件夹/搜索/删除取消、失活与回前台不足 10 秒、搜索模式进入与停留不计时、重载不重置、幂等、写响应 `Read=0` 不回翻本地、回写失败静默、删除即时隐藏/连按去重/失败恢复正文后重试/not-found 成功/非末条正文切换/R23 跨文件夹同 serverID/O5 慢正文不阻塞删除、隐藏行不可选中/打开。R23 用复合 `listKey`（folder + serverID）解决，未改 `Selection.messageID` 公开类型/语义。
+**实现（2026-11-14）**：新增 `MailboxDwell.swift`、`MailboxDeletion.swift`、`MailboxViewModel+Compose.swift`、`MailboxViewModel+Delete.swift`、`MailboxViewModel+Body.swift`；主 `MailboxViewModel.swift` **298 行**（目标 ≤380），Compose/Delete/Body 段已移出，`selectedMessage` 改从 `visibleMessages` 读取并过滤隐藏行。`PresentationTests` **52 例**绿：10 秒触发/切换/文件夹/搜索/删除取消、失活与回前台不足 10 秒、搜索模式进入与停留不计时、重载不重置、幂等、写响应 `Read=0` 不回翻本地、回写失败静默、删除即时隐藏/连按去重/失败恢复正文后重试/not-found 成功/非末条正文切换/R23 跨文件夹同 serverID/O5 慢正文不阻塞删除、隐藏行不可选中/打开。（2026-11-16 起连续停留改为 3 秒；此处 10 秒为当时实现记录，不追溯改写。）R23 用复合 `listKey`（folder + serverID）解决，未改 `Selection.messageID` 公开类型/语义。
 
 ## 设计增量：主题偏好（REQ-0016，2026-11-16，P2 已确认；实现 2026-11-16）
 
@@ -299,3 +302,42 @@ component: CMP-PRES
 - L2：`HeaderProbe`（编译生产视图 + 同源 Presentation 文件，离屏 `NSHostingView` 读可选中 `Text` 的 `NSTextField.stringValue`）覆盖渲染值、隐藏行、切换与占位；seam 已由设计探针验证，见 `task-spaces/20261116-212545/evidence/header-probe/`。
 - 自检：不改既有公开成员（纯新增，兼容）；不新增 `@Observable` 状态；无未登记 skip。
 - 实现（2026-11-16，T-1116-08）：`Sources/Presentation/MessageHeaderPresentation.swift`（56 行）与 `MailboxViewModel.headerPresentation` 已落地。`MessageHeaderPresentationTests` 6 例（完整/稀疏/空白/畸形日期/裁剪/相等）与 `MailboxViewModelTests` 新增 4 例（无选中与切文件夹、切换、跨文件夹同 `serverID`、读取不新增网关/正文工作）全绿；`./Scripts/swiftw test --filter PresentationTests` 67 例通过、架构 4 门通过；`MailboxViewModel` 304 行（≤400）。证据：`task-spaces/20261116-212545/evidence/t1116-08-tests.txt`。
+
+## 设计增量：远程图片放行与手动置读（REQ-0018 / REQ-0019 / REQ-0013，2026-11-16，P2 已确认）
+
+- 来源：`REQ-0018`（`accepted`）/ `SCN-0013`、`REQ-0019`（`accepted`）/ `SCN-0014`、`REQ-0013`（`accepted` 重开）/ `SCN-0008`（按 3 秒修订）。本增量只动 `CMP-PRES` 的视图状态与写路径归属；不改 `MailDomain`/`MailStore`/`MailGateway`/`Scenes` 契约、schema、协议、依赖或 target。
+- 新增 public 成员（**P2 契约增量，已按 `history/decisions/2026-11-16-remote-toolbar-mark-read.md` 确认**）：
+
+  ```swift
+  public private(set) var allowsRemoteContent: Bool      // 当前邮件临时放行；默认 false，不持久化
+  public var canAllowRemoteContent: Bool { get }         // 当前选中 + 正文确属该选中且 .loaded
+  public func setAllowsRemoteContent(_ allow: Bool)      // true 受 canAllowRemoteContent 守卫；false 总是允许
+  public var canMarkSelectedRead: Bool { get }           // 当前选中且 !isRead
+  public func markSelectedRead()                         // 本地先行 + 条件回写；归一后的错误写 markReadErrorText
+  public private(set) var markReadErrorText: String?     // 本地写失败的中文提示（来源必为 MailError）；成功/换选中清空
+  ```
+
+- 远程放行状态（`REQ-0018`）：
+  - 单一真源在 `MailboxViewModel`；`MessageBodyView` 不再有 `@State`，只接收 `allowRemoteContent: Bool` 并转交 `MessageWebView`。
+  - `selectedListKey` 的 `didSet` 在**选中身份变化**时把 `allowsRemoteContent` 重置为 `false`，并清空 `markReadErrorText`；同一封的列表重载/正文重渲染不重置。
+  - `setAllowsRemoteContent(true)` 先检查 `canAllowRemoteContent`：`selectedRef` 必须等于当前正文所属的 `openedBody` 或正在打开的 `openingRef`，且 `body` 为 `.loaded`；不满足则 no-op。这样旧正文尚未被新正文替换的短暂窗口不会把 A 的放行泄漏到 B。关闭（false）不受守卫限制。
+  - 不写 `UserDefaults`/Keychain/业务库；不触网；不新增偏好、每封记忆或全局白名单。
+- 手动置读（`REQ-0019`）：
+  - `markSelectedRead()` 只处理当前选中未读一封：清空 `markReadErrorText` → `performMarkRead(ref)`；已读/无选中/被隐藏时 no-op（入口应已禁用）。
+  - 本地失败注入：新增 internal `@ObservationIgnored var localMarkRead: (MessageRef) throws -> Bool`，public init 在 `self.read` 赋值后播种为 `{ try read.markReadLocally($0) }`；`performMarkRead` 调它。`@testable import Presentation` 的测试可覆盖为抛错闭包，验证本地失败分支，不依赖真实磁盘故障；该成员不是 public 契约。
+  - 错误归一（2026-11-16 第 2 轮，关闭评审 F1）：`performMarkRead(_ ref:) -> MailError?`（internal）是自动与手动共用的唯一写路径——internal `localMarkRead(ref)` → 成功则重载列表 + `refreshDwell()` → 仅 0→1 时后台 `Task { await read.writeBackMarkRead(ref) }`；本地失败在 `catch` 内返回 `normalizeMarkReadError(error)`，即 `(error as? MailError) ?? .storage(reason: String(describing: error))`。返回类型保证**非 nil 必为 `MailError`**，不会把 `MailStoreError`/GRDB `DatabaseError` 漏给视图；不重载、不回写。手动入口只把该 `MailError` 经 `ErrorText.text(for:)` 写入 `markReadErrorText`（`storage` 分支固定「本地存储失败：…」）；自动计时路径忽略。`ErrorText` 的全局非 `MailError` 兜底与 `ReadScene.markReadLocally` 的错误类型均不改。
+  - 回写失败语义与 `SCN-0008` 一致：不回滚、不弹错、不重试；`markReadErrorText` 不因回写失败设置。
+  - 幂等/并发：`@MainActor` 串行；第二次 `markReadLocally` 返回 false，不再回写；不新增 `pending_op`/`readDirty`/离线队列。
+- 计时器重构（`REQ-0013` 3 秒）：
+  - `MailboxDwell` 去掉 `ReadScene` 依赖与 `onMarked`，只保留 `sleep`、`update`、`cancel` 与 `onElapsed`；计时 3 秒。
+  - `MailboxViewModel` 在 init 中设置 `dwell.onElapsed = { [weak self] ref in _ = self?.performMarkRead(ref) }`；写/重载/回写只有一处。
+  - 这是行为保持的重构：SCN-0008 的触发/取消/本地先行/失败语义不变，仅时长 10→3 秒；实现后必须跑既有 `SCN-0008` 用例并新增 `.seconds(3)` 时长断言。
+- 状态栏提示：`MailboxView` 在 `deleteErrorText` 之后、同步状态之前显示 `markReadErrorText`（警告图标 + 单行中文）；文案只经 `ErrorText`。两个动作错误不合并成一个公开属性，避免把删除错误语义与置读错误混淆。
+- 尺寸/依赖：`MailboxViewModel` 304 → 预计约 365（≤400）；`MailboxDwell` 70 → 约 55；仍只 import `Foundation`/`MailDomain`/`Scenes`/`Observation`；`Presentation` 扇出不新增。
+- 测试计划（L1，`Tests/PresentationTests/MailboxViewModelTests.swift`）：
+  - 远程：默认 false；`setAllowsRemoteContent(true)` 在 `.loaded` + 当前正文时置 true；无选中/`.none`/`.loading`/`.failed` 时 no-op；选中 A→B 后 false；选中 B 但正文仍为 A 的 `.loaded` 时 no-op；关闭总是允许；无偏好写入。
+  - 手动置读：本地先行持久化、列表刷新、蓝点条件为假；只有一次 0→1 与一次写回、key 推进；已读/无选中 no-op 且不发网络；重复点击幂等；A→B 只影响 B；与 dwell 并发只写一次；回写失败 `markReadErrorText == nil`、本地仍已读；本地失败分两条注入 internal `localMarkRead` 抛错——`MailError.storage(reason:)` 与**非 `MailError`**（`MailStoreError.database("磁盘写入失败")`/`NSError`）——都断言 `markReadErrorText` 含中文（`storage` 前缀「本地存储失败」）、保持未读、零回写。非 `MailError` 走 `performMarkRead` 的同一 `catch` 归一分支，不是只测 `MailError` 的假绿。
+  - 错误归一纯函数：另加一条直接断言 `normalizeMarkReadError(.offline) == .offline`、`normalizeMarkReadError(MailStoreError.database("磁盘写入失败")) == .storage(reason: String(describing: ...))`，与行为测试互为防回归。
+  - 计时：注入 sleeper 记录 `Duration`，断言 `.seconds(3)`；既有触发/取消/后台/重载不重置/幂等用例按 3 秒更新。
+- P2 确认项（详见 `task-spaces/20261116-223645/design.md` §8.2）：D1 放行状态归 VM 与重置/守卫语义；D2 手动置读 API 名/返回/错误面；D3 `MailboxDwell` 仅计时的重构；D4 工具栏/控件形态（`CMP-APP`）。确认记录见 `doc/history/decisions/2026-11-16-remote-toolbar-mark-read.md`（`frozen`，D1–D8 按唯一建议答案确认，无收窄）。
+- 实现（2026-11-16，T-1116-12）：`MailboxViewModel` 新增 6 个 public 成员与 internal `performMarkRead -> MailError?`/`normalizeMarkReadError`/`localMarkRead`；`selectedListKey.didSet` 重置放行与错误；`MailboxDwell` 改为 3 秒纯计时并在 init 接 `onElapsed`。`MailboxViewModel.swift` 378 行（≤400）、`MailboxDwell.swift` 59 行（≤70）。`./Scripts/swiftw test --filter PresentationTests` 77 tests / 14 suites 通过（含 `remoteContentResetsOnSelectionChange`、`remoteContentCannotLeakToStaleBody`、`forcedRemoteAllowIsNoOpWhenUnavailable`、`manualMarkReadPersistsBeforeWriteBack`、`manualMarkReadIsIdempotentAndSelectionScoped`、`manualMarkReadRacesDwellOnce`、`manualMarkReadWriteBackFailureKeepsLocal`、`manualMarkReadLocalFailureReportsChinese`、`manualMarkReadNonMailErrorReportsChinese`、`normalizeMarkReadErrorWrapsNonMailError`、`dwellAsksForThreeSecondsAndMarks`）；架构 4 门通过。证据：`task-spaces/20261116-223645/evidence/t1116-12-presentation.txt`。

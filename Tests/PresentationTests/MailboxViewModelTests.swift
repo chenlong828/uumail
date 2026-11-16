@@ -413,16 +413,30 @@ struct MailboxDwellTests {
         )
     }
 
-    @Test("T-SCN-0008-01: a selected unread message becomes read after the dwell")
-    func dwellMarksSelectedUnreadAfterTenSeconds() async throws {
-        let fixture = try fixture(messages: [presentationMessage("1", isRead: false)], sleepMilliseconds: 20)
+    @Test("T-SCN-0008-01: the dwell asks for exactly three seconds and then marks read")
+    func dwellAsksForThreeSecondsAndMarks() async throws {
+        let sleeper = DwellSleeper()
+        let write = PresentationRecordingWriteGateway(delta: MessageDelta(
+            added: [], changed: [], removedServerIDs: [], syncKey: "3", moreAvailable: false
+        ))
+        let fixture = try makeMailboxFixture(
+            messages: ["13": [presentationMessage("1", isRead: false)]],
+            write: write,
+            dwellSleep: { duration in try await sleeper.sleep(duration) }
+        )
         fixture.viewModel.loadCached()
+        for _ in 0..<200 {
+            if await sleeper.count == 1 { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(await sleeper.durations == [.seconds(3)], "the timer must request exactly three seconds")
 
+        await sleeper.release()
         let marked = try await waitFor {
             try fixture.store.messages(account: fixture.account, folder: "13").first?.isRead == true
         }
         #expect(marked)
-        #expect(fixture.viewModel.deleteErrorText == nil)
+        #expect(fixture.viewModel.markReadErrorText == nil)
     }
 
     @Test("T-SCN-0008-02: switching selection cancels the old clock and starts a new one")
@@ -656,7 +670,7 @@ struct MailboxDwellTests {
         fixture.viewModel.setApplicationActive(true)
         try await Task.sleep(for: .milliseconds(80))
         #expect(try fixture.store.messages(account: fixture.account, folder: "13").first?.isRead == false,
-                "less than ten seconds after re-activation must not mark it read")
+                "less than three seconds after re-activation must not mark it read")
         #expect(await write.calls.isEmpty)
 
         let marked = try await waitFor {
@@ -695,6 +709,301 @@ struct MailboxDwellTests {
         #expect(try fixture.store.messages(account: fixture.account, folder: "13").first { $0.serverID == "2" }?.subject == "邻居-更新")
     }
 
+}
+
+// MARK: - Remote content / manual mark-read
+
+@Suite("MailboxViewModel remote content")
+@MainActor
+struct MailboxRemoteContentTests {
+    private func fixture(messages: [Message], bodies: [String: String]) throws -> MailboxFixture {
+        let fixture = try makeMailboxFixture(messages: ["13": messages])
+        for (id, html) in bodies {
+            try fixture.store.applyBody(account: fixture.account, folder: "13", serverID: id, html: html)
+        }
+        return fixture
+    }
+
+    private func loadBody(_ fixture: MailboxFixture, _ id: String) async throws {
+        fixture.viewModel.select(messageID: id)
+        for _ in 0..<200 {
+            if case .loaded = fixture.viewModel.body,
+               fixture.viewModel.selectedMessage?.serverID == id,
+               fixture.viewModel.canAllowRemoteContent {
+                return
+            }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+    }
+
+    @Test("T-SCN-0013-02/03: default off and a selection change resets the permission")
+    func remoteContentResetsOnSelectionChange() async throws {
+        let fixture = try fixture(
+            messages: [presentationMessage("1"), presentationMessage("2")],
+            bodies: ["1": "<p>A</p>", "2": "<p>B</p>"]
+        )
+        fixture.viewModel.loadCached()
+        try await loadBody(fixture, "1")
+        #expect(fixture.viewModel.canAllowRemoteContent)
+        #expect(!fixture.viewModel.allowsRemoteContent, "remote content starts off")
+
+        fixture.viewModel.setAllowsRemoteContent(true)
+        #expect(fixture.viewModel.allowsRemoteContent)
+
+        fixture.viewModel.select(messageID: "2")
+        #expect(!fixture.viewModel.allowsRemoteContent, "selecting B resets the permission immediately")
+        try await loadBody(fixture, "2")
+        #expect(fixture.viewModel.canAllowRemoteContent)
+        #expect(!fixture.viewModel.allowsRemoteContent, "B still starts blocked")
+
+        fixture.viewModel.select(messageID: "1")
+        #expect(!fixture.viewModel.allowsRemoteContent, "returning to A stays blocked (session-only)")
+    }
+
+    @Test("T-SCN-0013-03: a stale loaded body cannot inherit the new selection's permission")
+    func remoteContentCannotLeakToStaleBody() async throws {
+        let fixture = try fixture(
+            messages: [presentationMessage("1"), presentationMessage("2")],
+            bodies: ["1": "<p>A</p>", "2": "<p>B</p>"]
+        )
+        fixture.viewModel.loadCached()
+        try await loadBody(fixture, "1")
+        fixture.viewModel.setAllowsRemoteContent(true)
+        #expect(fixture.viewModel.allowsRemoteContent)
+
+        let second = try #require(fixture.viewModel.messages.first { $0.serverID == "2" })
+        // Simulate the window where selection already moved to B but A's loaded HTML is
+        // still on screen: the old permission must not carry over.
+        fixture.viewModel.selectedListKey = MailboxViewModel.listKey(for: second)
+        #expect(!fixture.viewModel.allowsRemoteContent)
+        #expect(!fixture.viewModel.canAllowRemoteContent)
+        fixture.viewModel.setAllowsRemoteContent(true)
+        #expect(!fixture.viewModel.allowsRemoteContent, "forced allow is a no-op on a stale body")
+        #expect(fixture.viewModel.body == .loaded(html: "<p>A</p>", truncated: false))
+    }
+
+    @Test("T-SCN-0013-04: unavailable states make a forced allow a no-op")
+    func forcedRemoteAllowIsNoOpWhenUnavailable() async throws {
+        let fixture = try fixture(
+            messages: [presentationMessage("1")],
+            bodies: ["1": "<p>A</p>"]
+        )
+        fixture.viewModel.loadCached()
+        try await loadBody(fixture, "1")
+        fixture.viewModel.setAllowsRemoteContent(true)
+        #expect(fixture.viewModel.allowsRemoteContent)
+        fixture.viewModel.setAllowsRemoteContent(false)
+
+        for state in [BodyPresentation.loading, .failed(text: "失败"), .none] {
+            fixture.viewModel.body = state
+            #expect(!fixture.viewModel.canAllowRemoteContent)
+            fixture.viewModel.setAllowsRemoteContent(true)
+            #expect(!fixture.viewModel.allowsRemoteContent, "forced allow must not fire in \(state)")
+        }
+
+        fixture.viewModel.body = .loaded(html: "<p>A</p>", truncated: false)
+        fixture.viewModel.selectedListKey = nil
+        fixture.viewModel.selection.messageID = nil
+        #expect(!fixture.viewModel.canAllowRemoteContent)
+        fixture.viewModel.setAllowsRemoteContent(true)
+        #expect(!fixture.viewModel.allowsRemoteContent, "no selection means no permission")
+    }
+}
+
+@Suite("MailboxViewModel manual mark-read")
+@MainActor
+struct MailboxManualMarkReadTests {
+    private func delta(key: String = "3") -> MessageDelta {
+        MessageDelta(added: [], changed: [], removedServerIDs: [], syncKey: key, moreAvailable: false)
+    }
+
+    private func waitForCalls(_ write: PresentationRecordingWriteGateway, _ count: Int) async throws {
+        for _ in 0..<300 {
+            if await write.calls.count == count { return }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+    }
+
+    @Test("T-SCN-0014-01: the local read lands before the background write-back")
+    func manualMarkReadPersistsBeforeWriteBack() async throws {
+        let write = PresentationRecordingWriteGateway(delta: delta())
+        let gate = WriteGate()
+        await write.setGate(gate)
+        let fixture = try makeMailboxFixture(
+            messages: ["13": [presentationMessage("1", isRead: false)]],
+            write: write
+        )
+        fixture.viewModel.loadCached()
+        #expect(fixture.viewModel.canMarkSelectedRead)
+
+        fixture.viewModel.markSelectedRead()
+
+        #expect(try fixture.store.messages(account: fixture.account, folder: "13").first?.isRead == true,
+                "the local read must be visible before the server write completes")
+        #expect(fixture.viewModel.visibleMessages.first?.isRead == true)
+        #expect(fixture.viewModel.markReadErrorText == nil)
+        for _ in 0..<300 {
+            if await write.calls.count == 1 { break }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        let calls = await write.calls
+        #expect(calls == [.markRead(collectionID: "13", serverID: "1", key: "2")], "calls=\(calls)")
+        await gate.open()
+        for _ in 0..<300 {
+            if try fixture.store.syncKey(account: fixture.account, collection: "13") == "3" { break }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        #expect(try fixture.store.syncKey(account: fixture.account, collection: "13") == "3")
+    }
+
+    @Test("T-SCN-0014-02: repeated marks and other selections never write twice or leak")
+    func manualMarkReadIsIdempotentAndSelectionScoped() async throws {
+        let write = PresentationRecordingWriteGateway(delta: delta())
+        let fixture = try makeMailboxFixture(
+            messages: ["13": [
+                presentationMessage("1", isRead: false),
+                presentationMessage("2", isRead: false),
+            ]],
+            write: write
+        )
+        fixture.viewModel.loadCached()
+        // The list auto-selects the newest row ("2"); explicitly start on "1".
+        fixture.viewModel.select(messageID: "1")
+
+        fixture.viewModel.markSelectedRead()
+        try await waitForCalls(write, 1)
+        fixture.viewModel.markSelectedRead()
+        try await Task.sleep(for: .milliseconds(30))
+        #expect(await write.calls.count == 1, "an already-read message must not write again")
+        #expect(try fixture.store.messages(account: fixture.account, folder: "13").first { $0.serverID == "1" }?.isRead == true)
+        #expect(try fixture.store.messages(account: fixture.account, folder: "13").first { $0.serverID == "2" }?.isRead == false)
+
+        fixture.viewModel.select(messageID: "2")
+        fixture.viewModel.markSelectedRead()
+        try await waitForCalls(write, 2)
+        #expect(try fixture.store.messages(account: fixture.account, folder: "13").allSatisfy(\.isRead))
+
+        let calls = await write.calls.count
+        fixture.viewModel.selectedListKey = nil
+        fixture.viewModel.selection.messageID = nil
+        fixture.viewModel.markSelectedRead()
+        try await Task.sleep(for: .milliseconds(30))
+        #expect(await write.calls.count == calls, "no selection means no local write and no network")
+    }
+
+    @Test("T-SCN-0014-03: manual and automatic mark-read share one write")
+    func manualMarkReadRacesDwellOnce() async throws {
+        let sleeper = DwellSleeper()
+        let write = PresentationRecordingWriteGateway(delta: delta())
+        let fixture = try makeMailboxFixture(
+            messages: ["13": [presentationMessage("1", isRead: false)]],
+            write: write,
+            dwellSleep: { duration in try await sleeper.sleep(duration) }
+        )
+        fixture.viewModel.loadCached()
+        for _ in 0..<200 {
+            if await sleeper.count == 1 { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(await sleeper.count == 1)
+
+        fixture.viewModel.markSelectedRead()
+        try await waitForCalls(write, 1)
+        for _ in 0..<200 {
+            if await sleeper.cancelled == 1 { break }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        await sleeper.release()
+        try await Task.sleep(for: .milliseconds(40))
+
+        #expect(await sleeper.cancelled == 1, "the manual write cancels the automatic clock")
+        #expect(await write.calls.count == 1, "only one 0→1 transition and one server write")
+        #expect(try fixture.store.messages(account: fixture.account, folder: "13").first?.isRead == true)
+    }
+
+    @Test("T-SCN-0014-04: a failed write-back keeps the local read and stays silent")
+    func manualMarkReadWriteBackFailureKeepsLocal() async throws {
+        let write = PresentationRecordingWriteGateway(delta: delta())
+        await write.setFailure(.offline)
+        let fixture = try makeMailboxFixture(
+            messages: ["13": [presentationMessage("1", isRead: false)]],
+            write: write
+        )
+        fixture.viewModel.loadCached()
+
+        fixture.viewModel.markSelectedRead()
+        try await waitForCalls(write, 1)
+        try await Task.sleep(for: .milliseconds(40))
+
+        #expect(try fixture.store.messages(account: fixture.account, folder: "13").first?.isRead == true)
+        #expect(fixture.viewModel.markReadErrorText == nil, "a server write failure is silent")
+        #expect(fixture.viewModel.sync.phase == .idle)
+    }
+
+    @Test("T-SCN-0014-04: a MailError local failure keeps the row unread and shows Chinese")
+    func manualMarkReadLocalFailureReportsChinese() async throws {
+        let write = PresentationRecordingWriteGateway(delta: delta())
+        let fixture = try makeMailboxFixture(
+            messages: ["13": [presentationMessage("1", isRead: false)]],
+            write: write
+        )
+        fixture.viewModel.loadCached()
+        fixture.viewModel.localMarkRead = { _ in throw MailError.storage(reason: "磁盘写入失败") }
+
+        fixture.viewModel.markSelectedRead()
+
+        #expect(fixture.viewModel.markReadErrorText == ErrorText.text(for: .storage(reason: "磁盘写入失败")))
+        #expect(fixture.viewModel.markReadErrorText?.hasPrefix("本地存储失败") == true)
+        #expect(try fixture.store.messages(account: fixture.account, folder: "13").first?.isRead == false)
+        #expect(await write.calls.isEmpty, "a failed local write must not start a server write")
+    }
+
+    @Test("T-SCN-0014-04: a non-MailError local failure is normalized before the UI")
+    func manualMarkReadNonMailErrorReportsChinese() async throws {
+        let write = PresentationRecordingWriteGateway(delta: delta())
+        let fixture = try makeMailboxFixture(
+            messages: ["13": [presentationMessage("1", isRead: false)]],
+            write: write
+        )
+        fixture.viewModel.loadCached()
+        fixture.viewModel.localMarkRead = { _ in throw MailStoreError.database("磁盘写入失败") }
+
+        fixture.viewModel.markSelectedRead()
+
+        #expect(fixture.viewModel.markReadErrorText?.hasPrefix("本地存储失败") == true)
+        #expect(fixture.viewModel.markReadErrorText?.contains("磁盘写入失败") == true)
+        #expect(try fixture.store.messages(account: fixture.account, folder: "13").first?.isRead == false)
+        #expect(await write.calls.isEmpty)
+
+        let second = try makeMailboxFixture(
+            messages: ["13": [presentationMessage("1", isRead: false)]],
+            write: write
+        )
+        second.viewModel.loadCached()
+        second.viewModel.localMarkRead = { _ in throw NSError(domain: "test", code: 1) }
+        second.viewModel.markSelectedRead()
+        #expect(second.viewModel.markReadErrorText?.hasPrefix("本地存储失败") == true)
+        #expect(try second.store.messages(account: second.account, folder: "13").first?.isRead == false)
+    }
+
+    @Test("F1: normalizeMarkReadError keeps MailError and wraps everything else as storage")
+    func normalizeMarkReadErrorWrapsNonMailError() {
+        #expect(MailboxViewModel.normalizeMarkReadError(MailError.offline) == .offline)
+        #expect(MailboxViewModel.normalizeMarkReadError(MailError.authFailed) == .authFailed)
+
+        let storeError = MailStoreError.database("磁盘写入失败")
+        #expect(
+            MailboxViewModel.normalizeMarkReadError(storeError)
+                == .storage(reason: String(describing: storeError))
+        )
+
+        let cocoaError = NSError(domain: "test", code: 1)
+        guard case .storage(let reason) = MailboxViewModel.normalizeMarkReadError(cocoaError) else {
+            Issue.record("a non-MailError must be normalized to .storage")
+            return
+        }
+        #expect(reason == String(describing: cocoaError))
+    }
 }
 
 // MARK: - Delete
@@ -997,6 +1306,7 @@ struct MailboxDeleteTests {
 actor DwellSleeper {
     private(set) var count = 0
     private(set) var cancelled = 0
+    private(set) var durations: [Duration] = []
     /// Continuations actually parked; `count` alone is set before the await, so tests
     /// that release the waiter must wait for this to be > 0.
     private(set) var pending = 0
@@ -1004,6 +1314,7 @@ actor DwellSleeper {
 
     func sleep(_ duration: Duration) async throws {
         count += 1
+        durations.append(duration)
         let id = UUID()
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in

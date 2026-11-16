@@ -18,7 +18,26 @@ public final class MailboxViewModel {
     public internal(set) var selection = Selection()
     /// Composite identity for the selected row. Search results span folders, where the
     /// server id alone is not unique (R23); the list and selection use this key.
-    public internal(set) var selectedListKey: String?
+    public internal(set) var selectedListKey: String? {
+        didSet {
+            // A selection change is the single reset point for both per-message states.
+            // Same-key reloads (sync, body refresh) must not reset them.
+            guard oldValue != selectedListKey else { return }
+            allowsRemoteContent = false
+            markReadErrorText = nil
+        }
+    }
+
+    /// Whether the current message may load remote images. Session-only: reset on every
+    /// selection change and never persisted (REQ-0018 / SCN-0013).
+    public private(set) var allowsRemoteContent = false
+    /// Chinese, user-visible text for a failed manual mark-read. Always derived from a
+    /// normalized `MailError`, never from a raw store/database error (REQ-0019 / F1).
+    public private(set) var markReadErrorText: String?
+
+    /// Test seam for the local half of mark-read. Production seeds it with the scene call
+    /// after `read` is assigned; it is internal and not part of the public contract.
+    @ObservationIgnored var localMarkRead: (MessageRef) throws -> Bool
 
     let read: ReadScene
     private let syncScene: SyncScene
@@ -50,12 +69,11 @@ public final class MailboxViewModel {
         self.composeScene = compose
         self.account = account
         self.onEnqueued = onEnqueued
-        self.dwell = MailboxDwell(read: read, sleep: dwellSleep)
+        self.localMarkRead = { try read.markReadLocally($0) }
+        self.dwell = MailboxDwell(sleep: dwellSleep)
         self.deletion = MailboxDeletion(read: read)
-        dwell.onMarked = { [weak self] _ in
-            guard let self else { return }
-            try? self.reloadCurrentList(autoSelect: false)
-            self.refreshDwell()
+        dwell.onElapsed = { [weak self] ref in
+            _ = self?.performMarkRead(ref)
         }
     }
 
@@ -96,6 +114,62 @@ public final class MailboxViewModel {
     var selectedRef: MessageRef? {
         guard let message = selectedMessage else { return nil }
         return ref(for: message)
+    }
+
+    // MARK: - Remote content / manual mark-read (REQ-0018 / REQ-0019)
+
+    /// True when the loaded body provably belongs to the selected message. The stale-body
+    /// window (selection moved on, old HTML still on screen) must not inherit permission.
+    public var canAllowRemoteContent: Bool {
+        guard let ref = selectedRef, case .loaded = body else { return false }
+        return openedBody == ref || openingRef == ref
+    }
+
+    /// Only the current, visible, unread message can be marked read.
+    public var canMarkSelectedRead: Bool {
+        guard let selectedMessage, selectedRef != nil else { return false }
+        return !selectedMessage.isRead
+    }
+
+    /// Enables/disables remote images for the current message. Enabling is guarded by the
+    /// current-body identity; disabling is always allowed so the UI can recover.
+    public func setAllowsRemoteContent(_ allow: Bool) {
+        if allow, !canAllowRemoteContent { return }
+        allowsRemoteContent = allow
+    }
+
+    /// Toolbar action: local write first, then a conditional background server write.
+    public func markSelectedRead() {
+        guard canMarkSelectedRead, let ref = selectedRef else { return }
+        markReadErrorText = nil
+        if let error = performMarkRead(ref) {
+            markReadErrorText = ErrorText.text(for: error)
+        }
+    }
+
+    /// The single mark-read write path shared by the dwell timer and the manual action.
+    /// Returns a normalized `MailError` on local failure; callers never see raw store errors.
+    @discardableResult
+    func performMarkRead(_ ref: MessageRef) -> MailError? {
+        do {
+            let changed = try localMarkRead(ref)
+            try? reloadCurrentList(autoSelect: false)
+            refreshDwell()
+            markReadErrorText = nil
+            // Only a real 0→1 transition starts the server write.
+            if changed {
+                Task { _ = await read.writeBackMarkRead(ref) }
+            }
+            return nil
+        } catch {
+            return Self.normalizeMarkReadError(error)
+        }
+    }
+
+    /// Marker for the raw scene/storage error surface. The public UI only ever sees the
+    /// resulting `MailError`, so `ErrorText` always produces Chinese (F1).
+    static func normalizeMarkReadError(_ error: Error) -> MailError {
+        (error as? MailError) ?? .storage(reason: String(describing: error))
     }
 
     func ref(for message: Message) -> MessageRef? {

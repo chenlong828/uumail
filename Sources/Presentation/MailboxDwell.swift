@@ -1,24 +1,26 @@
 import Foundation
 import Scenes
 
-/// 10-second dwell timer for the selected unread row. It is declaration-driven: the view
-/// model calls `update` after every selection/list/foreground change, and the same target
-/// does not restart the clock. Sleep is injected so tests do not wait ten real seconds.
+/// Three-second dwell timer for the selected unread row. It only counts time: the view
+/// model supplies the target and owns the write path, so the automatic timer and the
+/// manual toolbar action share one mark-read implementation. Sleep is injected so tests
+/// do not wait three real seconds.
 @MainActor
 final class MailboxDwell {
-    private let read: ReadScene
+    /// Fixed by REQ-0013; not configurable. The test sleeper asserts this exact value.
+    private static let interval: Duration = .seconds(3)
+
     private let sleep: @Sendable (Duration) async throws -> Void
 
-    /// Called after the local write attempt succeeds (including a false 0→1 result, so a
-    /// stale list is refreshed once). The view model reloads; it never shows write errors.
-    var onMarked: (@MainActor (MessageRef) -> Void)?
+    /// Called after the target stayed eligible for the full interval. The view model
+    /// performs the local write and the conditional server write-back.
+    var onElapsed: (@MainActor (MessageRef) -> Void)?
 
     private var target: MessageRef?
     private var task: Task<Void, Never>?
     private var generation = 0
 
-    init(read: ReadScene, sleep: @escaping @Sendable (Duration) async throws -> Void) {
-        self.read = read
+    init(sleep: @escaping @Sendable (Duration) async throws -> Void) {
         self.sleep = sleep
     }
 
@@ -37,14 +39,14 @@ final class MailboxDwell {
         task = Task { [weak self] in
             guard let self else { return }
             do {
-                try await self.sleep(.seconds(10))
+                try await self.sleep(Self.interval)
             } catch {
                 return
             }
             guard !Task.isCancelled, self.generation == current, self.target == target else { return }
             self.task = nil
             self.target = nil
-            self.fire(target)
+            self.onElapsed?(target)
         }
     }
 
@@ -53,18 +55,5 @@ final class MailboxDwell {
         task = nil
         target = nil
         generation += 1
-    }
-
-    private func fire(_ ref: MessageRef) {
-        do {
-            let changed = try read.markReadLocally(ref)
-            onMarked?(ref)
-            // Only a real 0→1 starts the server write; an already-read row must not write.
-            if changed {
-                Task { _ = await read.writeBackMarkRead(ref) }
-            }
-        } catch {
-            // Rare local storage failure: keep the row unread, no write-back, no UI error.
-        }
     }
 }
