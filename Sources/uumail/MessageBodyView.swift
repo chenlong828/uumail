@@ -118,47 +118,29 @@ struct MessageWebView: NSViewRepresentable {
         configuration.defaultWebpagePreferences.allowsContentJavaScript = false
         configuration.websiteDataStore = .nonPersistent()
         let webView = WKWebView(frame: .zero, configuration: configuration)
-        webView.setValue(false, forKey: "drawsBackground")
+        // The reading canvas is a constant, not a theme: keep it opaque and light so
+        // dark chrome never shows through and sender `prefers-color-scheme: dark`
+        // rules are evaluated as light (REQ-0015 / SCN-0010).
+        webView.setValue(true, forKey: "drawsBackground")
+        webView.underPageBackgroundColor = .white
+        webView.appearance = NSAppearance(named: .aqua)
         return webView
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
+        // SwiftUI/AppKit can reset the appearance after creation; reassert it before
+        // the render guard so a theme change never reloads the body (R24).
+        if webView.appearance?.name != .aqua {
+            webView.appearance = NSAppearance(named: .aqua)
+        }
         guard context.coordinator.lastRender != "\(allowRemoteContent)|\(html)" else { return }
         context.coordinator.lastRender = "\(allowRemoteContent)|\(html)"
-        webView.loadHTMLString(Self.sanitized(html, allowRemoteContent: allowRemoteContent), baseURL: nil)
+        webView.loadHTMLString(MessageBodyStyle.sanitized(html, allowRemoteContent: allowRemoteContent), baseURL: nil)
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     final class Coordinator {
         var lastRender: String?
-    }
-
-    /// Reading defaults applied only where the sender left them open: Outlook-style mail
-    /// carries its own inline styles, so this must stay a floor, not a theme.
-    private static let baseStyle = """
-        html, body { margin: 0; padding: 0; }
-        body {
-            font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
-            font-size: 13px; line-height: 1.55; color: #1d1d1f;
-            padding: 12px 16px; word-wrap: break-word; overflow-wrap: anywhere;
-        }
-        img { max-width: 100%; height: auto; }
-        table { max-width: 100%; }
-        pre { white-space: pre-wrap; }
-        """
-
-    static func sanitized(_ html: String, allowRemoteContent: Bool) -> String {
-        let policy = allowRemoteContent
-            ? "default-src 'none'; img-src data: https: http:; style-src 'unsafe-inline'; font-src data: https: http:;"
-            : "default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:;"
-        let head = "<meta http-equiv=\"Content-Security-Policy\" content=\"\(policy)\">"
-            + "<style>\(baseStyle)</style>"
-        if let open = html.range(of: "<head>", options: .caseInsensitive) {
-            var copy = html
-            copy.insert(contentsOf: head, at: open.upperBound)
-            return copy
-        }
-        return "<html><head>\(head)</head><body>\(html)</body></html>"
     }
 }
