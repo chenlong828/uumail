@@ -9,7 +9,7 @@ updated: 2026-11-16
 # 路线图
 
 只记里程碑、工序与依赖。需求状态看 `requirements/`，设计真相看 `design/`。
-首版范围已于 2026-11-09 确认：REQ-0001…0007 `accepted`（`history/decisions/2026-11-09-scope-baseline.md`）。2026-11-14 追加并交付：REQ-0012「全部回复的收件人与抄送预填」`delivered`（W-M2-03，任务表见本文 §W-M2-03 任务表）。2026-11-14 追加需求分析并纳入 W-M3-03：REQ-0013「列表停留自动已读」与 REQ-0014「列表键盘删除」已于 2026-11-15 交付（`SCN-0008`/`SCN-0009` `verified`、两需求 `delivered`）；设计已完成（P1 已确认并归档），任务拆分复核完成（2026-11-14），任务表见本文 §W-M3-03 任务表。2026-11-16 追加 W-M3-04：REQ-0015「深色阅读白底」与 REQ-0016「菜单主题切换」已 `accepted`；Q5/Q6/P2 已于 2026-11-16 确认（`history/decisions/2026-11-16-theme-appearance.md`），`SCN-0010`/`SCN-0011` 已落卡 `designed`，`T-1116-01`…`T-1116-06` 实现与验证完成，待评审与收尾翻转 `verified`/`delivered`；任务表见 §W-M3-04。
+首版范围已于 2026-11-09 确认：REQ-0001…0007 `accepted`（`history/decisions/2026-11-09-scope-baseline.md`）。2026-11-14 追加并交付：REQ-0012「全部回复的收件人与抄送预填」`delivered`（W-M2-03，任务表见本文 §W-M2-03 任务表）。2026-11-14 追加需求分析并纳入 W-M3-03：REQ-0013「列表停留自动已读」与 REQ-0014「列表键盘删除」已于 2026-11-15 交付（`SCN-0008`/`SCN-0009` `verified`、两需求 `delivered`）；设计已完成（P1 已确认并归档），任务拆分复核完成（2026-11-14），任务表见本文 §W-M3-03 任务表。2026-11-16 追加 W-M3-04 并完成交付：REQ-0015「深色阅读白底」与 REQ-0016「菜单主题切换」`delivered`；Q5/Q6/P2 已于 2026-11-16 确认（`history/decisions/2026-11-16-theme-appearance.md`），`SCN-0010`/`SCN-0011` 已由 `designed` 转 `verified`，`T-1116-01`…`T-1116-06` 已完成；任务表见 §W-M3-04。
 工序目录名沿用历史 `works/YYYY-MM-DD-<短名>/`；2026-11-14 起过程记录放工作区 `task-spaces/<run>/`，**任务表作为项目排期的一部分落在本文件**，不再只存在于某次运行的 brief 里。
 
 ## 里程碑
@@ -37,7 +37,7 @@ updated: 2026-11-16
 | W-M3-01 Ping 与通知 | M3 | W-M2-01 | CMP-SYNC、通知策略 | Ping 实测不支持 → 轮询；通知已落地（无过程记录，无独立场景卡） |
 | W-M3-02 本地搜索 | M3 | W-M1-03 | CMP-STORE | 已实现（无过程记录，无独立场景卡）；FTS 不扫正文列 |
 | W-M3-03 列表已读与键盘删除 | M3 | W-M1-04；REQ-0013/0014 已 delivered | CMP-PRES、CMP-APP、CMP-SCN-READ、CMP-SYNC、CMP-STORE、CMP-DOMAIN、CMP-EAS、CMP-EASADAPTER、CMP-ROOT | 已完成（2026-11-15）：设计完成（2026-11-14，T-1114-10 第 2 轮）；实现完成（2026-11-14，T-1114-11…18/21）：写端口、EAS 写命令、适配器、存储提交、FIFO 门、场景编排、计时/删除/视图接线落地；`T-1114-19`/`T-1114-20` 验证 8/8 例子全绿，`SCN-0008`/`SCN-0009` 转 `verified`、REQ-0013/REQ-0014 转 `delivered`；全量 239 tests / 44 suites×2、架构 4 门过；P1 frozen 记录与 R16 真机证据已归档，写响应 `MoreAvailable`/前台信号按实测修订；任务表见本文 §W-M3-03 任务表 |
-| W-M3-04 菜单主题与深色阅读白底 | M3 | W-M3-03；REQ-0015/0016 `accepted`；Q5/Q6/P2 已确认 | CMP-APP、CMP-PRES | 实现与验证完成（2026-11-16，T-1116-01…06）：Q5 A + Q6 A + P2 确认（`history/decisions/2026-11-16-theme-appearance.md`）；`SCN-0010`/`SCN-0011` 落卡 `designed`；`ThemePreferenceStoreTests` 5 例、`AppearanceProbe`/`ThemeProbe`、全量测试与架构 4 门通过；**待评审通过后由收尾翻转 `SCN-0010`/`SCN-0011` `verified`、REQ-0015/REQ-0016 `delivered`**；任务表见本文 §W-M3-04 任务表 |
+| W-M3-04 菜单主题与深色阅读白底 | M3 | W-M3-03；REQ-0015/0016 `delivered`；Q5/Q6/P2 已确认 | CMP-APP、CMP-PRES | 已完成（2026-11-16）：Q5 A + Q6 A + P2 确认（`history/decisions/2026-11-16-theme-appearance.md`）；`SCN-0010`/`SCN-0011` 落卡 `designed` 后转 `verified`；`ThemePreferenceStoreTests` 5 例、`AppearanceProbe`/`ThemeProbe`、全量 244 tests / 45 suites 与架构 4 门通过；REQ-0015/REQ-0016 已转 `delivered`；任务表见本文 §W-M3-04 任务表 |
 | W-SCN-REFACTOR 场景收口与分层重构 | M1/M2/M3 结构前置 | W-DOC-01、M4 结论 | 全仓 | 已完成（`history/works/2026-11-10-scene-refactor/`）：4 场景、9 库 + 2 可执行、159 测试、4 架构门 |
 
 ### W-SCN-REFACTOR 场景收口与分层重构（2026-11-14 完成）
@@ -134,18 +134,18 @@ P1 确认记录已归档为 `uumail/doc/history/decisions/2026-11-14-mail-write-
 
 ## W-M3-04 任务表（菜单主题与深色阅读白底）
 
-来源：`REQ-0015`/`REQ-0016`（`accepted`）、`SCN-0010`/`SCN-0011`（2026-11-16 已落卡并转 `designed`）、`design/components/CMP-APP/spec.md` 与 `CMP-PRES/spec.md` §设计增量、确认记录 `history/decisions/2026-11-16-theme-appearance.md`。
+来源：`REQ-0015`/`REQ-0016`（`delivered`）、`SCN-0010`/`SCN-0011`（2026-11-16 落卡 `designed` 后转 `verified`）、`design/components/CMP-APP/spec.md` 与 `CMP-PRES/spec.md` §设计增量、确认记录 `history/decisions/2026-11-16-theme-appearance.md`。
 
-**门已关闭，进入实现与验证**：Q5（文档树与菜单入口）按 A、Q6（白底范围）按 A、P2（本批设计与 public 类型）确认，均记录在 `history/decisions/2026-11-16-theme-appearance.md`。`T-1116-01` 已完成；`T-1116-02`…`T-1116-04` 按组件顺序落地，`T-1116-05`→`T-1116-06` 串行验证。若发起人后续否决任一 P2 子项或改选 B，按本节「条件与回退」重开设计，本表任务号不复用。拆分过程与判据见 `task-spaces/20261116-154416/split.md`。
+**门已关闭，实现与验证已完成**：Q5（文档树与菜单入口）按 A、Q6（白底范围）按 A、P2（本批设计与 public 类型）确认，均记录在 `history/decisions/2026-11-16-theme-appearance.md`。`T-1116-01` 已完成；`T-1116-02`…`T-1116-04` 按组件顺序落地，`T-1116-05`→`T-1116-06` 串行验证。若发起人后续否决任一 P2 子项或改选 B，按本节「条件与回退」重开设计，本表任务号不复用。拆分过程与判据见 `task-spaces/20261116-154416/split.md`。
 
 | 任务 | 类型 | 组件 | 规格锚点 | 依赖 | 状态 | 出口 |
 |---|---|---|---|---|---|---|
-| `T-1116-01` | `design` | SCN-0010 / SCN-0011（0 组件） | `REQ-0015`/`REQ-0016`；`scenario-proposal.md` §frontmatter/§入口/§运行序/§测试；`CMP-APP`/`CMP-PRES` §设计增量 | 人工确认 Q5/Q6/P2 | 进行中（设计收口完成，待评审） | 确认来源记入 `history/decisions/2026-11-16-theme-appearance.md` 与两份组件规格（`open-questions.md` 移除 Q5/Q6）；两卡落在确认后的路径并转 `designed`；两卡测试表 3 正 1 反与 `T-SCN-0010-01..04`/`T-SCN-0011-01..04` 一致；`CMP-APP`/`CMP-PRES` 增量从「待确认/未实现」改为确认记录；`git -C uumail status` 仅文档，无代码/测试/Package 改动 |
-| `T-1116-02` | `change` | `CMP-PRES` | `CMP-PRES/spec.md` §设计增量：主题偏好 | T-1116-01 | 进行中（实现与测试完成，待评审） | `ThemePreferenceStoreTests` 的 `defaultsToSystemWhenUnset`/`roundTripsEachPreference`/`invalidValueFallsBackToSystem`/`persistsAndRestoresAcrossInstances`/`repeatedSaveKeepsSingleValue` 全绿；`./Scripts/swiftw test --filter PresentationTests` 绿；公开面不含 `UserDefaults`/`defaultsKey`；`CMP-PRES` 增量改为已实现 |
-| `T-1116-03` | `change` | `CMP-APP` | `CMP-APP/spec.md` §设计增量：菜单主题与深色阅读白底（阅读白底段） | T-1116-01 | 进行中（实现与探针完成，待评审） | `AppearanceProbe`（L2）覆盖 `T-SCN-0010-01/03/04`：白色画布采样、作者样式保留/dark-media 抑制、畸形 HTML 仍得白底与 CSP；`./Scripts/swiftw build` 过；`MessageBodyStyle.swift` 承接 `baseCSS`/CSP/`sanitized`，`MessageBodyView` 不再持有；原始输出入 `task-spaces/<run>/evidence/`；`CMP-APP` 增量更新 |
-| `T-1116-04` | `change` | `CMP-APP` | `CMP-APP/spec.md` §设计增量：菜单主题与深色阅读白底（菜单主题段） | T-1116-02、T-1116-03 | 进行中（实现与测试完成，待评审） | `ThemeProbe`（L2）覆盖 `T-SCN-0011-01..04`：默认/损坏回退、三项即时切换、重开持久化、勾选在打开父菜单后刷新、切换不重建窗口/不重载正文，并覆盖 `T-SCN-0010-02` 的切主题不重载部分；`./Scripts/swiftw build` 与 `./Scripts/swiftw test` 绿；R25 写失败按设计限制只做代码审查与「不抛/不回滚」断言，不伪造注入；证据入 `evidence/` |
-| `T-1116-05` | `verify` | SCN-0011（0 组件） | `SCN-0011` §测试/§状态 | T-1116-04 | 进行中（待验证） | 按 `SCN-0011` 测试表逐例验证 `T-SCN-0011-01..04`（L1 + L2）全绿；`SCN-0010`/`SCN-0001`/`SCN-0006` 回归；`./Scripts/swiftw test` + `bash Scripts/check-architecture.sh` 4 门；证据入 `evidence/`，**不做截图/AX**；只建议翻转，不自行改状态。允许改范围：`Tests/`（仅补测试）+ `task-spaces/<run>/`；不改产品代码、不新增探针 |
-| `T-1116-06` | `verify` | SCN-0010（0 组件） | `SCN-0010` §测试/§状态 | T-1116-05 | 进行中（待验证） | 按 `SCN-0010` 测试表逐例验证 `T-SCN-0010-01..04`（L1 + L2）全绿；`SCN-0004` 回归；`./Scripts/swiftw test` + 架构 4 门；证据入 `evidence/`，**不做截图/AX**；只建议翻转，不自行改状态。允许改范围：`Tests/`（仅补测试）+ `task-spaces/<run>/`；不改产品代码、不新增探针 |
+| `T-1116-01` | `design` | SCN-0010 / SCN-0011（0 组件） | `REQ-0015`/`REQ-0016`；`scenario-proposal.md` §frontmatter/§入口/§运行序/§测试；`CMP-APP`/`CMP-PRES` §设计增量 | 人工确认 Q5/Q6/P2 | 已完成（2026-11-16） | 确认来源记入 `history/decisions/2026-11-16-theme-appearance.md` 与两份组件规格（`open-questions.md` 移除 Q5/Q6）；两卡落在确认后的路径并转 `designed`；两卡测试表 3 正 1 反与 `T-SCN-0010-01..04`/`T-SCN-0011-01..04` 一致；`CMP-APP`/`CMP-PRES` 增量从「待确认/未实现」改为确认记录；`git -C uumail status` 仅文档，无代码/测试/Package 改动 |
+| `T-1116-02` | `change` | `CMP-PRES` | `CMP-PRES/spec.md` §设计增量：主题偏好 | T-1116-01 | 已完成（2026-11-16） | `ThemePreferenceStoreTests` 的 `defaultsToSystemWhenUnset`/`roundTripsEachPreference`/`invalidValueFallsBackToSystem`/`persistsAndRestoresAcrossInstances`/`repeatedSaveKeepsSingleValue` 全绿；`./Scripts/swiftw test --filter PresentationTests` 绿；公开面不含 `UserDefaults`/`defaultsKey`；`CMP-PRES` 增量改为已实现 |
+| `T-1116-03` | `change` | `CMP-APP` | `CMP-APP/spec.md` §设计增量：菜单主题与深色阅读白底（阅读白底段） | T-1116-01 | 已完成（2026-11-16） | `AppearanceProbe`（L2）覆盖 `T-SCN-0010-01/03/04`：白色画布采样、作者样式保留/dark-media 抑制、畸形 HTML 仍得白底与 CSP；`./Scripts/swiftw build` 过；`MessageBodyStyle.swift` 承接 `baseCSS`/CSP/`sanitized`，`MessageBodyView` 不再持有；原始输出入 `task-spaces/<run>/evidence/`；`CMP-APP` 增量更新 |
+| `T-1116-04` | `change` | `CMP-APP` | `CMP-APP/spec.md` §设计增量：菜单主题与深色阅读白底（菜单主题段） | T-1116-02、T-1116-03 | 已完成（2026-11-16） | `ThemeProbe`（L2）覆盖 `T-SCN-0011-01..04`：默认/损坏回退、三项即时切换、重开持久化、勾选在打开父菜单后刷新、切换不重建窗口/不重载正文，并覆盖 `T-SCN-0010-02` 的切主题不重载部分；`./Scripts/swiftw build` 与 `./Scripts/swiftw test` 绿；R25 写失败按设计限制只做代码审查与「不抛/不回滚」断言，不伪造注入；证据入 `evidence/` |
+| `T-1116-05` | `verify` | SCN-0011（0 组件） | `SCN-0011` §测试/§状态 | T-1116-04 | 已完成（2026-11-16） | 按 `SCN-0011` 测试表逐例验证 `T-SCN-0011-01..04`（L1 + L2）全绿；`SCN-0010`/`SCN-0001`/`SCN-0006` 回归；`./Scripts/swiftw test` + `bash Scripts/check-architecture.sh` 4 门；证据入 `evidence/`，**不做截图/AX**；只建议翻转，不自行改状态。允许改范围：`Tests/`（仅补测试）+ `task-spaces/<run>/`；不改产品代码、不新增探针 |
+| `T-1116-06` | `verify` | SCN-0010（0 组件） | `SCN-0010` §测试/§状态 | T-1116-05 | 已完成（2026-11-16） | 按 `SCN-0010` 测试表逐例验证 `T-SCN-0010-01..04`（L1 + L2）全绿；`SCN-0004` 回归；`./Scripts/swiftw test` + 架构 4 门；证据入 `evidence/`，**不做截图/AX**；只建议翻转，不自行改状态。允许改范围：`Tests/`（仅补测试）+ `task-spaces/<run>/`；不改产品代码、不新增探针 |
 
 并行关系：`T-1116-02`（`CMP-PRES`）与 `T-1116-03`（`CMP-APP` 阅读白底）在 `T-1116-01` 后可并行；`T-1116-04` 同时依赖二者，且与 `T-1116-03` 同组件，按组件 WIP=1 串行；`T-1116-05`→`T-1116-06` 串行验证，不跳步，也不并行第二个 `CMP-APP` 任务。
 

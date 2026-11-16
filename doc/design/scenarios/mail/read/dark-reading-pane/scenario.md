@@ -2,7 +2,7 @@
 layer: design
 module: mail
 scope: project:uumail
-status: designed
+status: verified
 updated: 2026-11-16
 flow: mail/read
 scenario: SCN-0010
@@ -72,6 +72,6 @@ scenario: SCN-0010
 
 ## 状态
 
-`designed`（2026-11-16，T-1116-01 落卡）。Q6 已按 A 确认（只正文画布）；P2 已确认。四元素齐；`T-SCN-0010-01..04` 为 3 正 1 反可执行 ID。实现与验证完成后由收尾节点转 `verified`；本轮实现节点只建议翻转，不自行改状态。
+`verified`（2026-11-16，T-1116-06 验证，收尾按评审清单翻转）。原 `designed`（2026-11-16，T-1116-01 落卡）：Q6 已按 A 确认（只正文画布）；P2 已确认。四元素齐；`T-SCN-0010-01..04` 为 3 正 1 反可执行 ID。
 
-**已实现与验证（2026-11-16，T-1116-03/06）**：`MessageBodyStyle.swift` 已承接 `baseCSS`/CSP/`sanitized`，`MessageBodyView` 的 `WKWebView` 固定不透明浅色并在 `updateNSView` 复确认外观。`AppearanceProbe` 逐条通过 `T-SCN-0010-01`（深色下中心/下部 `rgba(255,255,255,1.00)`、CSP 默认 data-only）、`T-SCN-0010-02`（切主题导航增量 0、换邮件增量 1、复用后仍白）、`T-SCN-0010-03`（作者 body `#123456` 采样 `rgba(21,69,105,1.00)`、dark-media 采样白）、`T-SCN-0010-04`（畸形 HTML 仍得白底与 CSP、失败占位深色）。证据：`task-spaces/20261116-154416/evidence/AppearanceProbe.txt`、`full-test.txt`、`architecture.txt`。建议收尾翻转 `SCN-0010` 为 `verified`、`REQ-0015` 为 `delivered`。
+**已实现与验证（2026-11-16，T-1116-03/06）**：`MessageBodyStyle.swift` 已承接 `baseCSS`/CSP/`sanitized`，`MessageBodyView` 的 `WKWebView` 固定不透明浅色并在 `updateNSView` 复确认外观。`AppearanceProbe` 逐条通过 `T-SCN-0010-01`（深色下中心/下部 `rgba(255,255,255,1.00)`、CSP 默认 data-only）、`T-SCN-0010-02`（切主题导航增量 0、换邮件增量 1、复用后仍白）、`T-SCN-0010-03`（作者 body `#123456` 采样 `rgba(21,69,105,1.00)`、dark-media 采样白）、`T-SCN-0010-04`（畸形 HTML 仍得白底与 CSP、失败占位深色）。证据：`task-spaces/20261116-202956/evidence/n5-appearance-probe.txt`、`n5-chrome-review.txt`、`n5-targeted-theme-and-viewmodel.txt`、`n5-full-test.txt`、`n5-architecture.txt`；鉴定复跑 `n10-appearance-probe.txt`、`n10-full-test.txt`、`n10-architecture.txt`（`task-spaces/20261116-202956/test.md`、`review.md` §7）。此前实现证据见 `task-spaces/20261116-154416/evidence/`。`SCN-0010` 已转 `verified`、`REQ-0015` 已转 `delivered`。

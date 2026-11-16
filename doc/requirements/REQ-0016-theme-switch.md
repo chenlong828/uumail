@@ -2,7 +2,7 @@
 layer: requirements
 module: app
 scope: project:uumail
-status: accepted
+status: delivered
 updated: 2026-11-16
 ---
 
@@ -31,7 +31,7 @@ updated: 2026-11-16
   - 当前项勾选状态必须与实际生效值一致；重复选同一项不得重复写偏好或造成闪烁。
   - 与 REQ-0015 正交：强制深色/浅色时正文仍按 REQ-0015 白底兜底；主题只改应用 chrome。
 - **影响场景**：
-  - `SCN-0011`（已建，`doc/design/scenarios/settings/appearance/theme-switch/`，2026-11-16 转 `designed`）：本卡唯一验收证据。新增「默认跟随系统」「三项切换立即生效并持久化」「系统外观变化时跟随/停止跟随」正例与「无效偏好/写失败/重复选择」反例。
+  - `SCN-0011`（已建，`doc/design/scenarios/settings/appearance/theme-switch/`，2026-11-16 由 `designed` 转 `verified`）：本卡唯一验收证据。新增「默认跟随系统」「三项切换立即生效并持久化」「系统外观变化时跟随/停止跟随」正例与「无效偏好/写失败/重复选择」反例。
   - `SCN-0010`（已建，`doc/design/scenarios/mail/read/dark-reading-pane/`）：前置条件回归；主题切换后正文仍白，断言归 `SCN-0010`，本卡不重复认领。
   - `SCN-0001`（配置页）、`SCN-0004`（阅读）、`SCN-0006`（撰写）：外观回归，不新增本卡断言；配置页与撰写 sheet 必须随主题变化。
 - **澄清记录**：
@@ -43,5 +43,5 @@ updated: 2026-11-16
     - 与 `REQ-0015`：正文白底不受主题选择影响；「深色主题」只改应用 chrome，不改阅读画布。
     - 现状（2026-11-16 代码核对）：`UumailApp` 无 `.commands`、无 `preferredColorScheme`/`NSAppearance`/`UserDefaults`/`@AppStorage`；应用完全跟随系统，没有主题偏好与菜单入口。
   - 文档树结构（原 Q5）：已于 2026-11-16 按 A 确认——主题切换不属 mail 旅程，新增 `settings/appearance` 域/价值流，场景落 `doc/design/scenarios/settings/appearance/theme-switch/`；结论见 `history/decisions/2026-11-16-theme-appearance.md`。
-- **状态**：accepted（2026-11-16，需求分析；`SCN-0011` 已于 2026-11-16 落卡并转 `designed`；实现与验证完成后由收尾节点转 `delivered`）。
+- **状态**：delivered（2026-11-16，T-1116-05 验证）。`SCN-0011` 的 3 正 1 反全绿并转 `verified`（`task-spaces/20261116-202956/test.md`、`review.md` §7），`SCN-0010`/`SCN-0001`/`SCN-0006` 回归无退化；全量 244 tests / 45 suites、架构 4 门通过，卡内约束逐条无违反。
 - **验收归属**：`SCN-0011` 3 正 1 反全绿并转 `verified`；`SCN-0010` 回归不退化；`SCN-0001`/`SCN-0006` 外观回归不退化；卡内约束逐条无违反。

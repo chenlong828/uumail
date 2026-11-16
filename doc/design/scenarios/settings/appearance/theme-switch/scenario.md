@@ -2,7 +2,7 @@
 layer: design
 module: app
 scope: project:uumail
-status: designed
+status: verified
 updated: 2026-11-16
 flow: settings/appearance
 scenario: SCN-0011
@@ -72,6 +72,6 @@ scenario: SCN-0011
 
 ## 状态
 
-`designed`（2026-11-16，T-1116-01 落卡）。Q5 已按 A 确认（`settings/appearance/theme-switch` + 系统 View 菜单）；P2 已确认。四元素齐；`T-SCN-0011-01..04` 为 3 正 1 反可执行 ID。实现与验证完成后由收尾节点转 `verified`；本轮实现节点只建议翻转，不自行改状态。
+`verified`（2026-11-16，T-1116-05 验证，收尾按评审清单翻转）。原 `designed`（2026-11-16，T-1116-01 落卡）：Q5 已按 A 确认（`settings/appearance/theme-switch` + 系统 View 菜单）；P2 已确认。四元素齐；`T-SCN-0011-01..04` 为 3 正 1 反可执行 ID。
 
-**已实现与验证（2026-11-16，T-1116-02/04/05）**：`ThemePreference`/`ThemePreferenceStore` 已落地；`UumailApp` 持 `@State theme` + `preferredColorScheme` + `.commands`，`ThemeCommands` 为系统 View「主题」三项 Picker。`ThemePreferenceStoreTests` 5 例通过；`ThemeProbe` 逐条通过 `T-SCN-0011-01`（默认勾跟随系统）、`T-SCN-0011-02`（深/浅即时切换、窗口与 sheet 同步、持久化）、`T-SCN-0011-03`（跟随系统、强制值忽略系统、重复选择不二次变更）、`T-SCN-0011-04`（损坏值回退、窗口不重建、正文不重载、选中不丢）。证据：`task-spaces/20261116-154416/evidence/ThemeProbe.txt`、`presentation-tests.txt`、`full-test.txt`、`architecture.txt`。建议收尾翻转 `SCN-0011` 为 `verified`、`REQ-0016` 为 `delivered`。
+**已实现与验证（2026-11-16，T-1116-02/04/05）**：`ThemePreference`/`ThemePreferenceStore` 已落地；`UumailApp` 持 `@State theme` + `preferredColorScheme` + `.commands`，`ThemeCommands` 为系统 View「主题」三项 Picker。`ThemePreferenceStoreTests` 5 例通过；`ThemeProbe` 逐条通过 `T-SCN-0011-01`（默认勾跟随系统）、`T-SCN-0011-02`（深/浅即时切换、窗口与 sheet 同步、持久化）、`T-SCN-0011-03`（跟随系统、强制值忽略系统、重复选择不二次变更）、`T-SCN-0011-04`（损坏值回退、窗口不重建、正文不重载、选中不丢）。证据：`task-spaces/20261116-202956/evidence/n5-theme-probe-dark.txt`、`n5-theme-probe-light.txt`、`n5-theme-probe-seed-dark.txt`、`n5-theme-probe-seed-light.txt`、`n5-targeted-theme-and-viewmodel.txt`、`n5-full-test.txt`、`n5-architecture.txt`；鉴定复跑 `n10-theme-probe-*.txt`、`n10-full-test.txt`、`n10-architecture.txt`（`task-spaces/20261116-202956/test.md`、`review.md` §7）。此前实现证据见 `task-spaces/20261116-154416/evidence/`。`SCN-0011` 已转 `verified`、`REQ-0016` 已转 `delivered`。

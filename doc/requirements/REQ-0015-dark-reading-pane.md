@@ -2,7 +2,7 @@
 layer: requirements
 module: mail
 scope: project:uumail
-status: accepted
+status: delivered
 updated: 2026-11-16
 ---
 
@@ -27,7 +27,7 @@ updated: 2026-11-16
   - 不改 `FetchedBody`/`BodyPresentation` 的公共语义，不改 `MailDomain`/`MailStore`/`Scenes` 契约，不加依赖、不加 target、不改 schema。
   - 不新增 DB/Keychain/网络写入；主题偏好本身归 REQ-0016，不在本卡实现。
 - **影响场景**：
-  - `SCN-0010`（已建，`doc/design/scenarios/mail/read/dark-reading-pane/`，2026-11-16 转 `designed`）：本卡唯一验收证据。新增「深色主题下无背景正文 → 不透明白底 + 深色文字」「主题来回切换/换邮件后仍白」「作者显式样式保留」三组正例与畸形/深色作者样式反例。
+  - `SCN-0010`（已建，`doc/design/scenarios/mail/read/dark-reading-pane/`，2026-11-16 由 `designed` 转 `verified`）：本卡唯一验收证据。新增「深色主题下无背景正文 → 不透明白底 + 深色文字」「主题来回切换/换邮件后仍白」「作者显式样式保留」三组正例与畸形/深色作者样式反例。
   - `SCN-0004`（已建，`designed`）：回归打开、缓存正文、占位补拉、截断与 CSP；不新增本卡断言，避免重复认领。
   - `SCN-0011`（已建，`doc/design/scenarios/settings/appearance/theme-switch/`）：只作为前置条件回归；主题切换不得取消本卡白底，断言归本卡/`SCN-0010`。
 - **澄清记录**：
@@ -37,5 +37,5 @@ updated: 2026-11-16
     - 占位/加载/失败态不强制白，随应用主题；只有正文加载成功时白。
     - 与 `REQ-0004` 的归属：打开、缓存、补拉归 `REQ-0004`；本卡只负责深色主题下的阅读画布外观。`SCN-0004` 不重复认领。
     - 现状（2026-11-16 代码核对）：`MessageWebView` 设 `drawsBackground = false`，`baseStyle` 只有文字色、没有 `background-color`；深色主题下画布透明，纯文本邮件正文会透出深色窗口背景。
-- **状态**：accepted（2026-11-16，需求分析；`SCN-0010` 已于 2026-11-16 落卡并转 `designed`；实现与验证完成后由收尾节点转 `delivered`）。
+- **状态**：delivered（2026-11-16，T-1116-06 验证）。`SCN-0010` 的 3 正 1 反全绿并转 `verified`（`task-spaces/20261116-202956/test.md`、`review.md` §7），`SCN-0004` 回归无退化；全量 244 tests / 45 suites、架构 4 门通过，卡内约束逐条无违反。
 - **验收归属**：`SCN-0010` 3 正 1 反全绿并转 `verified`；`SCN-0004` 回归不退化；卡内约束逐条无违反。
