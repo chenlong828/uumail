@@ -9,7 +9,7 @@ updated: 2026-11-16
 # 路线图
 
 只记里程碑、工序与依赖。需求状态看 `requirements/`，设计真相看 `design/`。
-首版范围已于 2026-11-09 确认：REQ-0001…0007 `accepted`（`history/decisions/2026-11-09-scope-baseline.md`）。2026-11-14 追加并交付：REQ-0012「全部回复的收件人与抄送预填」`delivered`（W-M2-03，任务表见本文 §W-M2-03 任务表）。2026-11-14 追加需求分析并纳入 W-M3-03：REQ-0013「列表停留自动已读」与 REQ-0014「列表键盘删除」已于 2026-11-15 交付（`SCN-0008`/`SCN-0009` `verified`、两需求 `delivered`）；设计已完成（P1 已确认并归档），任务拆分复核完成（2026-11-14），任务表见本文 §W-M3-03 任务表。2026-11-16 追加 W-M3-04 并完成交付：REQ-0015「深色阅读白底」与 REQ-0016「菜单主题切换」`delivered`；Q5/Q6/P2 已于 2026-11-16 确认（`history/decisions/2026-11-16-theme-appearance.md`），`SCN-0010`/`SCN-0011` 已由 `designed` 转 `verified`，`T-1116-01`…`T-1116-06` 已完成；任务表见 §W-M3-04。
+首版范围已于 2026-11-09 确认：REQ-0001…0007 `accepted`（`history/decisions/2026-11-09-scope-baseline.md`）。2026-11-14 追加并交付：REQ-0012「全部回复的收件人与抄送预填」`delivered`（W-M2-03，任务表见本文 §W-M2-03 任务表）。2026-11-14 追加需求分析并纳入 W-M3-03：REQ-0013「列表停留自动已读」与 REQ-0014「列表键盘删除」已于 2026-11-15 交付（`SCN-0008`/`SCN-0009` `verified`、两需求 `delivered`）；设计已完成（P1 已确认并归档），任务拆分复核完成（2026-11-14），任务表见本文 §W-M3-03 任务表。2026-11-16 追加 W-M3-04 并完成交付：REQ-0015「深色阅读白底」与 REQ-0016「菜单主题切换」`delivered`；Q5/Q6/P2 已于 2026-11-16 确认（`history/decisions/2026-11-16-theme-appearance.md`），`SCN-0010`/`SCN-0011` 已由 `designed` 转 `verified`，`T-1116-01`…`T-1116-06` 已完成；任务表见 §W-M3-04。2026-11-16 追加 W-M3-05 并完成拆分：REQ-0017「阅读页信封头」`accepted`、`SCN-0012` `designed`；P2（D1–D8）已于 2026-11-16 确认（`history/decisions/2026-11-16-reading-pane-headers.md`），按 `T-1116-07`…`T-1116-10` 实施与验证；任务表见 §W-M3-05。
 工序目录名沿用历史 `works/YYYY-MM-DD-<短名>/`；2026-11-14 起过程记录放工作区 `task-spaces/<run>/`，**任务表作为项目排期的一部分落在本文件**，不再只存在于某次运行的 brief 里。
 
 ## 里程碑
@@ -19,7 +19,7 @@ updated: 2026-11-16
 | M0 协议探针 | 证明外网 EAS 通道可用，锁定线格式、设备身份与命令覆盖 | 命令行跑通 `OPTIONS → Provision → FolderSync → Sync → ItemOperations → SendMail`，实测状态码与能力矩阵成文 | 已完成（`history/works/2026-11-09-eas-probe/`） |
 | M1 只读客户端 | 账号接入、文件夹树、列表、正文、附件、离线缓存 | 五个只读场景（SCN-0001…0005）全部 `verified` | 进行中：账号、文件夹树、列表、正文已通；附件 02–04 未实现；场景卡待转 `verified` |
 | M2 发送与草稿 | Outbox、SendMail、回复/转发、草稿、Sent 镜像、全部回复 | send-message 场景 `verified`；离线发送可在联网后只发一次 | 进行中：Outbox 入队/冷投递/重试已实现；Sent 镜像与撰写附件未做；全部回复 `SCN-0007` `verified`（2026-11-14，T-1114-09，含真机 UI 冒烟），REQ-0012 `delivered`；其余场景卡待 `verified` |
-| M3 体验 | Ping、通知、本地搜索、错误恢复与空态 | 新邮件端到端 ≤ 60s 可见（Ping 或轮询）；搜索、通知场景 `verified`；W-M3-03 的 `SCN-0008`/`SCN-0009` `verified` | 进行中：Ping 不支持 → 5 分钟轮询；搜索与通知已落地，场景卡待 `verified`；W-M3-03 已交付（2026-11-15，T-1114-19/20 验证）：`SCN-0008`/`SCN-0009` `verified`、REQ-0013/REQ-0014 `delivered`；P1 frozen 记录与 R16 真机证据已归档 |
+| M3 体验 | Ping、通知、本地搜索、错误恢复与空态 | 新邮件端到端 ≤ 60s 可见（Ping 或轮询）；搜索、通知场景 `verified`；W-M3-03 的 `SCN-0008`/`SCN-0009` `verified` | 进行中：Ping 不支持 → 5 分钟轮询；搜索与通知已落地，场景卡待 `verified`；W-M3-03 已交付（2026-11-15，T-1114-19/20 验证）：`SCN-0008`/`SCN-0009` `verified`、REQ-0013/REQ-0014 `delivered`；P1 frozen 记录与 R16 真机证据已归档；W-M3-05（阅读页信封头）已拆分，待 P2 确认后启动（REQ-0017/`SCN-0012`） |
 | M4 加固 | 策略、限流、安全、性能 | 限流退避、缓存上限、安全审计、5k 性能基线已落 | 已完成（`history/works/2026-11-09-m4-hardening/`） |
 
 ## 工序
@@ -38,6 +38,7 @@ updated: 2026-11-16
 | W-M3-02 本地搜索 | M3 | W-M1-03 | CMP-STORE | 已实现（无过程记录，无独立场景卡）；FTS 不扫正文列 |
 | W-M3-03 列表已读与键盘删除 | M3 | W-M1-04；REQ-0013/0014 已 delivered | CMP-PRES、CMP-APP、CMP-SCN-READ、CMP-SYNC、CMP-STORE、CMP-DOMAIN、CMP-EAS、CMP-EASADAPTER、CMP-ROOT | 已完成（2026-11-15）：设计完成（2026-11-14，T-1114-10 第 2 轮）；实现完成（2026-11-14，T-1114-11…18/21）：写端口、EAS 写命令、适配器、存储提交、FIFO 门、场景编排、计时/删除/视图接线落地；`T-1114-19`/`T-1114-20` 验证 8/8 例子全绿，`SCN-0008`/`SCN-0009` 转 `verified`、REQ-0013/REQ-0014 转 `delivered`；全量 239 tests / 44 suites×2、架构 4 门过；P1 frozen 记录与 R16 真机证据已归档，写响应 `MoreAvailable`/前台信号按实测修订；任务表见本文 §W-M3-03 任务表 |
 | W-M3-04 菜单主题与深色阅读白底 | M3 | W-M3-03；REQ-0015/0016 `delivered`；Q5/Q6/P2 已确认 | CMP-APP、CMP-PRES | 已完成（2026-11-16）：Q5 A + Q6 A + P2 确认（`history/decisions/2026-11-16-theme-appearance.md`）；`SCN-0010`/`SCN-0011` 落卡 `designed` 后转 `verified`；`ThemePreferenceStoreTests` 5 例、`AppearanceProbe`/`ThemeProbe`、全量 244 tests / 45 suites 与架构 4 门通过；REQ-0015/REQ-0016 已转 `delivered`；任务表见本文 §W-M3-04 任务表 |
+| W-M3-05 阅读页信封头 | M3 | W-M3-04；REQ-0017 `accepted`；SCN-0012 `designed`；P2（D1–D8）已确认（`history/decisions/2026-11-16-reading-pane-headers.md`） | CMP-PRES、CMP-APP | 进行中：`T-1116-07`（P2 确认门）已落盘，`T-1116-08`→`T-1116-09` 实施中，再由 `T-1116-10` 验证；出口 = `SCN-0012` `verified`、`REQ-0017` `delivered`、`T-1116-07`…`T-1116-10` 完成；任务表见本文 §W-M3-05 任务表 |
 | W-SCN-REFACTOR 场景收口与分层重构 | M1/M2/M3 结构前置 | W-DOC-01、M4 结论 | 全仓 | 已完成（`history/works/2026-11-10-scene-refactor/`）：4 场景、9 库 + 2 可执行、159 测试、4 架构门 |
 
 ### W-SCN-REFACTOR 场景收口与分层重构（2026-11-14 完成）
@@ -165,6 +166,49 @@ P1 确认记录已归档为 `uumail/doc/history/decisions/2026-11-14-mail-write-
 | `T-1116-06` | `SCN-0010` §测试/§状态；`SCN-0004` 回归；探针输出 | ~1,600 行 | 证据入 `evidence/` |
 
 装载纪律：单任务 ≤2,000 行；若实现时发现必须跨第二个组件/契约或装载超限，先停下按批次纪律重拆，不静默扩大。本批 change 的出口另要求更新对应 `doc/design/components/<CMP>/spec.md` 的实现进度；未更新规格不算完成。
+
+## W-M3-05 任务表（阅读页信封头）
+
+来源：`REQ-0017`（`accepted`）、`SCN-0012`（`designed`）、`REQ-0004` 的 2026-11-16 归属澄清、`design/components/CMP-PRES/spec.md` 与 `CMP-APP/spec.md` §设计增量：阅读页信封头、设计评审 `task-spaces/20261116-212545/review.md`（pass，N1–N7）、拆分记录 `task-spaces/20261116-212545/split.md`。
+
+**门已关闭（2026-11-16）**：D1–D8 已按 `design.md` §9.2 的建议答案确认，确认记录见 `history/decisions/2026-11-16-reading-pane-headers.md`（`frozen`）。`T-1116-07` 完成后 `T-1116-08`→`T-1116-09` 可开工，再由 `T-1116-10` 复跑验证；本表不代签，也不把确认写成评审通过。
+
+| 任务 | 类型 | 组件 | 规格锚点 | 依赖 | 状态 | 出口 |
+|---|---|---|---|---|---|---|
+| `T-1116-07` | `design`（确认门） | SCN-0012（0 组件） | `SCN-0012` §入口/§测试/§状态；`CMP-PRES`/`CMP-APP` §设计增量：阅读页信封头；`design.md` §9.2 D1–D8 | —（人工确认先行） | 进行中（P2 确认已落盘，待评审） | `doc/history/decisions/2026-11-16-reading-pane-headers.md` 以 `frozen` 落盘，逐项覆盖 D1–D8 与结论，写明谁/何时/确认哪几项/影响；若 D1/D4 有收窄或改动，同批由设计节点同步 `CMP-PRES`/`CMP-APP` 增量与 `SCN-0012` 断言后再放行；`MessageHeaderPresentation`/`headerPresentation` 补进 `CMP-PRES` 模块卡公开契约摘要；`git -C uumail status` 只见文档，无 `Sources/`/`Tests/`/`Package.swift`；**人工门，不计 L1–L4** |
+| `T-1116-08` | `change` | `CMP-PRES` | `CMP-PRES/spec.md` §设计增量：阅读页信封头（`MessageHeaderPresentation`/`Row`、`MailboxViewModel.headerPresentation`、映射规则、L1 测试计划） | T-1116-07 | 待启动 | `MessageHeaderPresentationTests` 覆盖完整/稀疏/空白/畸形日期/行序/行上限全绿；`MailboxViewModelTests` 增补切换/无选中/`select(folderID:)`/跨文件夹同 `serverID`，并断言读取 `headerPresentation` 不新增网关/场景调用；`./Scripts/swiftw test --filter PresentationTests` + `bash Scripts/check-architecture.sh` 4 门；公开面与规格一致（或按 D1 确认收窄）；`MessageHeaderPresentation.swift` 约 70 行、`MailboxViewModel` ≤400；`CMP-PRES` 增量只追加实现进度行；证据入 `task-spaces/<run>/evidence/`；`L1（单元测试）` |
+| `T-1116-09` | `change` | `CMP-APP` | `CMP-APP/spec.md` §设计增量：阅读页信封头（`MessageHeaderView`、`MessageBodyView(header:)`、`MailboxView` 接线、R27、L2）；`SCN-0012` §测试载体 | T-1116-08 | 待启动 | `HeaderProbe`（L2）覆盖 `T-SCN-0012-01..04` 全 `PASS`：头部在正文状态机外、`.none` 两义、空字段隐藏、切换无残留、`.failed` 保留头部、清空后只剩占位；`.loaded` 段链生产 `MessageBodyView`/`MessageBodyStyle` + WebKit；R27 行数/≤170pt/正文 ≥150pt（320pt 面板）与头部在正文上方的坐标改成 `expect`，补长 Cc 夹具；探针编译生产路径而非 `seam-src/`；`./Scripts/swiftw build` + `./Scripts/swiftw test` + 架构 4 门；证据入 `task-spaces/<run>/evidence/header-probe/`；单文件预算：`MessageBodyView`/`MailboxView` ≤300、`MessageHeaderView` 约 45；`L2（无头探针）`（T-03 的 L1 段由 T-1116-08 覆盖） |
+| `T-1116-10` | `verify` | SCN-0012（0 组件） | `SCN-0012` §测试/§状态/§与相邻场景的边界；`SCN-0004`/`SCN-0010` §测试（回归） | T-1116-09 | 待启动 | 按 `SCN-0012` 逐例复跑 `T-SCN-0012-01..04`（3 正 1 反，L1+L2）全绿，含 `.loaded` 与 R27 断言；`SCN-0004` 的 02/04 与既有组件用例、`SCN-0010` 的 01..04 回归不退化（`SCN-0004` 的 01 性能/03 CSP 自动化属既有欠账，不纳入本批，也不得因本批新增失败）；`./Scripts/swiftw test` + `bash Scripts/check-architecture.sh` 4 门；证据入 `task-spaces/<run>/evidence/`；只建议翻转，不自行改状态；`L1（单元测试）+ L2（无头探针）` |
+
+任务边界（每个任务卡的可执行边界）：
+
+| 任务 | 允许改的范围 | 明确不做 |
+|---|---|---|
+| `T-1116-07` | `doc/history/decisions/` 新确认记录；确认结论要求时由设计节点同步两份组件增量与 `SCN-0012` 断言；`CMP-PRES` 模块卡公开契约摘要补索引 | 不写实现/测试；不代签；不自行选默认值当确认；不改 `REQ-0017` 范围 |
+| `T-1116-08` | `Sources/Presentation/MessageHeaderPresentation.swift`（新增）、`Sources/Presentation/MailboxViewModel.swift`、`Tests/PresentationTests/MessageHeaderPresentationTests.swift`（新增）、`Tests/PresentationTests/MailboxViewModelTests.swift`（增补）、`Tests/PresentationTests/Support.swift`（仅在夹具需要时）、`CMP-PRES` 增量实现进度行（只追加）、`task-spaces/<run>/` | 不改 `MailDomain`/`MailStore`/schema/协议/`DisplayFormat` API；不改场景卡/需求卡/决策记录/roadmap 门状态；不做 L2 探针；不碰 `CMP-APP` 文件 |
+| `T-1116-09` | `Sources/uumail/MessageHeaderView.swift`（新增）、`Sources/uumail/MessageBodyView.swift`、`Sources/uumail/MailboxView.swift`、`CMP-APP` 增量实现进度行（只追加）、`task-spaces/<run>/`（含 `dev.md` 与 `evidence/header-probe/`） | 不改 `MessageWebView` 的白底/CSP/禁 JS 语义、`MessageBodyStyle` 行为、`UumailApp`/主题菜单、列表/工具栏/搜索/附件条/远程开关/截断 banner；不改 `Package.swift`/新增 target/依赖；不改场景卡/需求卡/决策记录/roadmap 门状态；不做 L3 截图/OCR 或 L4 AX |
+| `T-1116-10` | `Tests/`（仅在测试缺口时补测试）、`task-spaces/<run>/evidence/`、本节点报告 | 不改产品代码；不新增探针 target；不改设计产物/需求/场景/门状态；不自行翻转 `verified`/`delivered`/任务完成 |
+
+共同约束：每个 change 一个实现 commit，message 带 `T-` 与 `SCN-`；规格实现进度行随实现 commit 只追加，若需改契约/形状/测试断言，回设计，不在任务里自行扩。越权清单按 `af-flow-rule` §4：改设计产物、自授权人工门、发布动作、出口外探针，发现即停手并在 `dev.md` 记「超出任务范围」。
+
+并行关系：**本批无可并行任务**。`T-1116-07`→`T-1116-08`→`T-1116-09`→`T-1116-10` 为单链：07 是人工门，未关闭前 change 不得启动；08 新增的 `MessageHeaderPresentation`/`headerPresentation` 是 09 的直接输入（共享公共契约必须串行）；09→10 是实现→验证，验证不跳步。组件级 WIP=1 自然满足：同一时刻只有一个 `CMP-PRES` 或 `CMP-APP` 任务在飞。
+
+**条件与回退**：P2 否决 D1/D2/D3/D5/D6/D7/D8 任一 → 回设计重评，`T-1116-07` 重新出结论，`T-1116-08`…`T-1116-10` 不复用本表边界硬做。D1 收窄 `Row` 公开面时，08 出口加「无多余 public API」核对，探针改用可构造夹具的替代，不重拆。D4 改行上限/R27 预算时，先由设计节点改 `SCN-0012` 断言与两份增量，再开工并重估 09 装载。若 08 发现必须改 `MailDomain.Message`/`DisplayFormat` 公共 API，或 09 发现 `MessageHeaderPresentation` 形状不足，停下回设计，不在任务里扩。若 `.loaded` 的生产视图在无头探针不可观察，先按 `SCN-0012` §测试载体换 seam；仍不可行则由场景卡声明 L3 并回设计改卡，**不得**静默降级或用 L1 冒充。
+
+本批统一验证命令：`./Scripts/swiftw test`、`bash Scripts/check-architecture.sh`；单任务过滤用 `./Scripts/swiftw test --filter PresentationTests`；`HeaderProbe` 的编译/复跑按 `SCN-0012` §测试载体执行，证据入 `task-spaces/<run>/evidence/`。
+
+**回归口径**：`SCN-0004` 只回归 `T-SCN-0004-02`/`04` 与既有组件用例；`T-SCN-0004-01`（1 万封 <1s P95）与 `03`（CSP 自动化断言）是既有欠账（`SCN-0004` §状态），本批不补、不算本批失败，也不得因本批新增失败。`SCN-0010` 已 `verified`，按 `T-SCN-0010-01..04` 回归。`SCN-0008`/`SCN-0009`/`SCN-0005` 不在本批场景回归清单；若实现意外触及，再按对应卡补回归并记录。
+
+### 装载清单（2026-11-16 W-M3-05 拆分）
+
+| 任务 | 必读 | 预计装载 | 备注 |
+|---|---|---|---|
+| `T-1116-07` | `SCN-0012`；`CMP-PRES`/`CMP-APP` §设计增量；`design.md` §9.2；`review.md` §3/§5；`history/decisions/` 格式参考 | ~500 行 | 人工确认；不代签 |
+| `T-1116-08` | `CMP-PRES` §设计增量；`Sources/Presentation/MessageHeaderPresentation.swift`（新）；`MailboxViewModel.swift`；`ErrorText.swift`；`PresentationTypes.swift`；`Tests/PresentationTests/MailboxViewModelTests.swift`、`Support.swift` | ~1,000 行 | 只加 public 类型/派生属性与 L1；不碰 `.loaded` |
+| `T-1116-09` | `CMP-APP` §设计增量；`MessageBodyView.swift`、`MailboxView.swift`、`MessageBodyStyle.swift`；`MessageWebView`（在 `MessageBodyView.swift` 内，只读）；`SCN-0012` §测试载体；设计探针 `HeaderProbe`/`probe-commands.txt` 基座 | ~1,500 行 | `.loaded` 链 WebKit；换生产路径 |
+| `T-1116-10` | `SCN-0012` §测试/§状态/§边界；`SCN-0004`/`SCN-0010` §测试；探针与测试输出 | ~1,700 行 | 3 正 1 反，复跑 + 回归；只建议翻转 |
+
+装载纪律：单任务 ≤2,000 行；若实现时发现必须跨第二个组件/契约或装载超限，先停下按批次纪律重拆，不静默扩大。所有任务另读 `doc/design/architecture.md` §2/§3 的相关段落（约 100 行）并核对依赖方向未变。
 
 ## 批次纪律
 

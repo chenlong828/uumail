@@ -37,11 +37,18 @@ updated: 2026-11-16
 | R24 | `WKWebView.appearance` 被未来 SwiftUI/AppKit 更新重置，正文画布重新跟随深色 | 深色主题下正文变黑/透明，作者 `prefers-color-scheme: dark` 变体重新生效；`AppearanceProbe` 回归红 | 阅读白底失效，REQ-0015 核心场景退化 | `MessageWebView.makeNSView` 设常量、`updateNSView` 在 `lastRender` guard 前复确认 `appearance`；实现后把像素探针纳入回归；若仍被重置，再评估 `NSView` 子类/fence | `design/components/CMP-APP/spec.md` 设计增量、`SCN-0010` |
 | R25 | `UserDefaults` 写失败没有可观察同步信号，REQ-0016 的写失败分支无法强制注入 | 偏好写入失败但 `save` 不抛；测试无法区分「写成功」与「写失败」 | 「写失败不回滚/不弹错」只能靠设计保证与代码审查，验收强度不足 | `save` 不抛/不回滚，会话外观由 `@State` 独立持有；测试覆盖损坏回退/持久化/幂等；若评审要求强制注入，另评最小存储协议或可失败存储替身，不本批预付 | `design/components/CMP-PRES/spec.md` 设计增量、`SCN-0011` |
 | R26 | SwiftUI 菜单勾选只在父级菜单打开时刷新；静止读取 `NSMenuItem.state` 得到旧值 | 自动化测试未打开父菜单就读状态，出现假红/假绿；评审误判勾选未生效 | `SCN-0011` 的勾选断言不可信，可能挡住真实回归或放过错误 | 测试先打开系统 View 菜单再读 `state`；真实 UX 已由 2026-11-16 菜单探针验证；把「必须打开父菜单」写入 `SCN-0011` 测试说明 | `design/components/CMP-APP/spec.md` 设计增量、`SCN-0011` |
+| R27 | 阅读页头部过长（超长主题/多收件人/长地址）把正文挤出可视区 | 头部占满右侧栏，正文需滚到头才能读，或头部截断吞掉关键信息 | 阅读体验反而变差，`REQ-0017` 的「补上常见信息」目标落空 | 头部换行/截断 + 正文区域可滚动；设计在 `CMP-APP` 增量写上限；`SCN-0012` 失败路径覆盖长头部 | `design/components/CMP-APP/spec.md` 设计增量、`SCN-0012` |
+| R28 | 切换邮件时头部与正文状态不同步 | 头部已显示 B，正文仍是 A；或正文 `.none` 空窗把头部清掉；快速切换/慢补拉时最明显 | 用户看错发件人/收件人，误判邮件归属 | 头部只以 `selectedMessage` 为唯一来源；`.none` 区分「无选中/已选中待正文」；`T-SCN-0012-03` 用慢正文/切换断言 | `design/components/CMP-PRES/spec.md`、`CMP-APP/spec.md` 设计增量、`SCN-0012` |
+| R29 | L2 无头探针读不到 SwiftUI 文本 | `NSHostingView` 无可访问文本节点，只能截图；评审无法按 L2 核对显示值 | `SCN-0012` 无法按 L2 验收，可能被迫升 L3 或退化成只测映射 | 设计落卡前先证 seam；预留纯映射 + 简单 `Text` 行/可探针宿主；不可行时由场景卡声明 L3，不静默降级、不用 L1 映射冒充显示 | `design/components/CMP-APP/spec.md` 设计增量、`SCN-0012` |
+| R30 | 发起人期望的「发送时间」是真实 `Sent`，不是 `DateReceived` | 上线后指出时间不对；或设计阶段要求新增 `Sent` 字段 | 需求口径不符，返工并可能牵出 EAS 探针 | `REQ-0017` 非目标与澄清记录已写明；要 `Sent` 另立需求并先证网关可达性，不改本卡 | `requirements/REQ-0017-reading-pane-headers.md`、`SCN-0012` |
+| R31 | L2 探针依赖 SwiftUI「可选中 `Text` 由 `NSTextField` 承载」的实现细节 | OS/SwiftUI 升级后可选文本不再出现或不再带 `stringValue`，探针读到 0 个字段 | `SCN-0012` 的 L2 断言全红；若把断言写成「有字段才比对」，则会假绿 | 探针先断言字段存在再比对值，承载方式变化时红而非静默通过；届时由 `SCN-0012` 声明 L3 或换 seam，不用 L1 映射冒充；设计探针证据见 `task-spaces/20261116-212545/evidence/header-probe/` | `design/components/CMP-APP/spec.md` 设计增量、`SCN-0012` |
 
 ## 风险等级口径
 
 - 高：直接使项目不可用或造成合规事故（R1、R2、R11）。
-- 中：影响关键旅程但可降级（R3、R4、R5、R6、R8、R12、R13、R18、R19、R21、R22、R23、R24）。
-- 低：局部体验或可回滚（R7、R9、R10、R15、R25、R26）。
+- 中：影响关键旅程但可降级（R3、R4、R5、R6、R8、R12、R13、R18、R19、R21、R22、R23、R24、R27、R28、R29、R31）。
+- 低：局部体验或可回滚（R7、R9、R10、R15、R25、R26、R30）。
 
-R14 已于 2026-11-14 关闭（T-1114-02：网关 Sync 信封实测返回 `Cc`）。R16/R17/R20 已于 2026-11-14 关闭（真机写命令、预算拆分、写响应语义）。
+R14 已于 2026-11-14 关闭（T-1114-02：网关 Sync 信封实测返回 `Cc`）。R16/R17/R20 已于 2026-11-14 关闭（真机写命令、预算拆分、写响应语义）。R27–R31 为 2026-11-16 阅读页信封头新增，**未关闭**；落点与缓解见各行。
+
+2026-11-16 设计探针（run `20261116-212545`）：R29 的 L2 可读 seam 已证实——无头 `NSHostingView` 下 SwiftUI 可选 `Text` 由 `NSTextField` 承载、`stringValue` 就是渲染文本（AX 树在无头宿主下读到 0 个元素，故放弃 AX 方案）；证据 `task-spaces/20261116-212545/evidence/header-probe/`。R27 的行数上限与 R28 的 `.none` 收口已写入 `CMP-APP`/`CMP-PRES` 设计增量；R29 收窄为受 R31 约束，仍需实现后回归。

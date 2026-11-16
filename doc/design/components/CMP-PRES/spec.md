@@ -23,8 +23,8 @@ component: CMP-PRES
   - `ComposeViewModel.send` 调 `ComposeScene.send`，成功即 `status = .queued` 并触发组合根的投递信号；失败保留编辑文本。
 - 拥有的数据：视图状态（选择、搜索词、加载态、编辑器文本），不持久化；另持有**主题偏好的本地镜像**（`UserDefaults["appearance.theme"]`，注入 store；不是业务数据，真源仍是 App 的 `@State`，见文末增量）。
 - 变化轴：窗口形态与交互；主题外观（2026-11-16 新增一档三态主题）。
-- 公开契约：`CMP-PRES#MailboxViewModel`（T-1114-10 设计新增 `#visibleMessages`、`#deleteErrorText`、`#setApplicationActive`、`#deleteSelected`（2026-11-14 已实现））、`#ComposeViewModel`、`#AccountSetupViewModel`、`#ErrorText`、`#DisplayFormat`、`#ThemePreference`、`#ThemePreferenceStore`（2026-11-16 新增 public，P2 已确认并实现）；`MailboxDwell`/`MailboxDeletion` 仍是模块内文件。
-- 入口：`Sources/Presentation/MailboxViewModel.swift#MailboxViewModel`、`ComposeViewModel.swift#ComposeViewModel`、`AccountSetupViewModel.swift#AccountSetupViewModel`、`ErrorText.swift#ErrorText`、`PresentationTypes.swift#BodyPresentation`、`ThemePreference.swift#ThemePreference/#ThemePreferenceStore`
+- 公开契约：`CMP-PRES#MailboxViewModel`（T-1114-10 设计新增 `#visibleMessages`、`#deleteErrorText`、`#setApplicationActive`、`#deleteSelected`（2026-11-14 已实现）；2026-11-16 新增 `#headerPresentation`）、`#ComposeViewModel`、`#AccountSetupViewModel`、`#ErrorText`、`#DisplayFormat`、`#ThemePreference`、`#ThemePreferenceStore`（2026-11-16 新增 public，P2 已确认并实现）、`#MessageHeaderPresentation`（2026-11-16 新增 public，P2 已确认，实现见文末增量）；`MailboxDwell`/`MailboxDeletion` 仍是模块内文件。
+- 入口：`Sources/Presentation/MailboxViewModel.swift#MailboxViewModel`、`ComposeViewModel.swift#ComposeViewModel`、`AccountSetupViewModel.swift#AccountSetupViewModel`、`ErrorText.swift#ErrorText`、`PresentationTypes.swift#BodyPresentation`、`ThemePreference.swift#ThemePreference/#ThemePreferenceStore`、`MessageHeaderPresentation.swift#MessageHeaderPresentation`（2026-11-16 新增）
 - 依赖：`Scenes`、`MailDomain`、`Observation`、`Foundation`（`UserDefaults`；不算新组件依赖）。扇出 1。
 - 冷热：热（主线程）；主题偏好读/写是低频冷路径，不与 VM 热路径共享状态。
 - 尺寸预算：单文件 ≤400 行；当前 `MailboxViewModel` **298**、`ComposeViewModel` 196、`AccountSetupViewModel` 100、`ThemePreference` 50；`Presentation` 共 1104 行（含 Body/Delete/Compose/Dwell/Deletion 拆分）。
@@ -241,3 +241,60 @@ component: CMP-PRES
   - 写失败不可强制注入：`UserDefaults.set` 无同步失败信号；设计以「不抛/不回滚 + 会话状态独立」保证，若评审要求强制注入，另评最小存储协议（本批不预付）。
 - 第 2 轮复核（2026-11-16，run `20261116-154416`）：与现状代码核对无结构性漂移；按 D4 收窄公开面（`UserDefaults` 与 key 转 internal），行为不变；`Presentation` 扇出按 `architecture.md` §2.5 仍为 1（`Scenes`；`MailDomain` 值类型不重复计）。
 - 确认与实现（2026-11-16，T-1116-01/02）：Q5 A + Q6 A + P2 确认（含 D4 公开面收窄）；`Sources/Presentation/ThemePreference.swift` 已落地 public `init()` + internal `init(defaults:)`，`load()`/`save(_:)` 按上述不变量实现；`Tests/PresentationTests/ThemePreferenceStoreTests.swift` 5 例通过，`PresentationTests` 共 57 例。`SCN-0011` 已落 `settings/appearance/theme-switch` 并转 `designed`；证据见 `task-spaces/20261116-154416/evidence/`。
+
+## 设计增量：阅读页信封头（REQ-0017 / SCN-0012，2026-11-16，P2 已确认、未实现）
+
+- 来源与边界：`REQ-0017`（`accepted`）唯一验收场景 `SCN-0012`（`design/scenarios/mail/read/message-headers/scenario.md`）。头部是纯表现层增量：本地 `Message` 已有 `subject`/`sender`/`recipients`/`cc`/`receivedRaw`，不改 schema、协议、同步、`MailGateway`/`Scenes` 契约，不新增依赖或 target。
+- P2 确认（2026-11-16，T-1116-07）：D1–D8 按 `design.md` §9.2 建议答案确认，确认记录见 `doc/history/decisions/2026-11-16-reading-pane-headers.md`；本增量形状不变，未收窄 `Row` 公开面。实现进度见文末追加行。
+- 新增 public 类型（**P2 契约增量**，已确认；本节点不代签、不写确认记录）：
+
+  ```swift
+  public struct MessageHeaderPresentation: Equatable, Sendable {
+      public struct Row: Equatable, Sendable, Identifiable {
+          public let label: String
+          public let value: String
+          public let lineLimit: Int   // 发件人 1 / 收件人 2 / 抄送 2 / 时间 1
+          public var id: String { label }
+          public init(label: String, value: String, lineLimit: Int)
+      }
+      public let subject: String
+      public let rows: [Row]
+      public init(message: Message)   // public：独立 L2 探针要在 Presentation 模块外构造夹具
+  }
+  ```
+
+- 映射规则（`init(message:)`，纯函数、无 I/O）：
+
+  | 源字段 | 展示 | 行上限 | 为空/缺失 | 格式 |
+  |---|---|---|---|---|
+  | `subject` | 标题行（无「主题」标签） | 2 | 「(无主题)」 | 去首尾空白 |
+  | `sender` | 行「发件人」 | 1 | 整行丢弃 | 去首尾空白，保留显示名与地址原文 |
+  | `recipients` | 行「收件人」 | 2 | 整行丢弃 | 同上（To） |
+  | `cc` | 行「抄送」 | 2 | 整行丢弃（空白也算空） | 同上 |
+  | `receivedRaw` | 行「时间」 | 1 | `messageDate` 返回空则整行丢弃 | `DisplayFormat.messageDate`（既有回退） |
+
+  - 行序固定为「发件人 → 收件人 → 抄送 → 时间」，`subject` 始终第一行；`Row.id = label`（标签集合固定且唯一）。
+  - 不新增 `DisplayFormat` 收件人/抄送 API：信封原文已带显示名，`AddressList` 归一化会丢显示名并把 `To`/`Cc` 变成纯地址串，不是头部要的展示值（取舍见设计记录）。
+  - 不新增 Bcc/Reply-To/Message-ID/会话/重要性/附件数行。
+
+- `MailboxViewModel` 新增 public 只读派生属性：
+
+  ```swift
+  public var headerPresentation: MessageHeaderPresentation? {
+      selectedMessage.map(MessageHeaderPresentation.init(message:))
+  }
+  ```
+
+- 不变量：
+  - 纯派生、无存储、无缓存；`headerPresentation == nil` **当且仅当** `selectedMessage == nil`；视图用这个条件区分「无选中」与「已选中但正文未开始」。
+  - 头部只读 `selectedMessage`，同一封邮件（含搜索跨文件夹的复合 `listKey`）唯一；选中/搜索/删除/重载后自动跟随，不存在第二份可陈旧的头部状态。
+  - 不新增场景调用、不触网、不写库、不写偏好、不写日志；不 import `MailStore`/`SyncEngine`/EAS/Composition。
+  - `Equatable`：同一 `Message` 派生相等，避免 SwiftUI 无谓刷新。
+- 尺寸/依赖：新文件 `Sources/Presentation/MessageHeaderPresentation.swift` 约 70 行；`MailboxViewModel.swift` 298 → 约 302（预算 ≤400）。仍只 import `Foundation`/`MailDomain`；`Presentation` 扇出不变（架构 §2.5 仍为 1）。
+- 测试计划（L1，`Tests/PresentationTests/MessageHeaderPresentationTests.swift`，`@testable import Presentation`）：
+  - 完整信封 → `subject` + 4 行，标签/值/行序/`lineLimit` 精确相等。
+  - 稀疏：无 `cc` → 无抄送行；`sender`/`recipients`/`cc` 为 nil 或空白 → 对应行不出现；`subject` nil/空白 → 「(无主题)」；`receivedRaw` 畸形 → `prefix(16)` 回退；`receivedRaw` nil → 无时间行。
+  - 值去首尾空白；空白 `cc` 不产生空行。
+  - `MailboxViewModelTests`：`headerPresentation` 跟随选中与切换、无选中为 nil、`select(folderID:)` 后为 nil、跨文件夹同 `serverID` 命中正确邮件（R23）。
+- L2：`HeaderProbe`（编译生产视图 + 同源 Presentation 文件，离屏 `NSHostingView` 读可选中 `Text` 的 `NSTextField.stringValue`）覆盖渲染值、隐藏行、切换与占位；seam 已由设计探针验证，见 `task-spaces/20261116-212545/evidence/header-probe/`。
+- 自检：不改既有公开成员（纯新增，兼容）；不新增 `@Observable` 状态；无未登记 skip。

@@ -95,3 +95,32 @@ component: CMP-APP
 - 第 2 轮复核（2026-11-16，run `20261116-154416`）：与现状代码逐项核对，无结构性漂移；补充 KVC 与采样夹具口径；实现后实测 CMP-APP 608 行，单文件最大 `MailboxView` 210 行，仍 ≤300。
 - 确认（2026-11-16，T-1116-01）：Q5 A（`settings/appearance/theme-switch` + 系统 View「主题」子菜单）、Q6 A（只正文画布）、P2 确认（白底机制 A、应用机制 A、偏好归属 B、菜单 A、测试载体 B′、`MessageBodyStyle` 抽文件，含 D1/D2/D4 与「作者 dark-media 变体不生效」）。确认来源见 `doc/history/decisions/2026-11-16-theme-appearance.md`；正式卡已落并转 `designed`，任务拆分见 `plan/roadmap.md` §W-M3-04。
 - 实现（2026-11-16，T-1116-02…04）：`Sources/Presentation/ThemePreference.swift`、`Sources/uumail/ThemeCommands.swift`、`Sources/uumail/MessageBodyStyle.swift`、`UumailApp.swift`、`MessageBodyView.swift` 已按本节落地；`ThemePreferenceStoreTests` 5 例、`AppearanceProbe`/`ThemeProbe` 探针通过，原始输出见 `task-spaces/20261116-154416/evidence/`。实测行数见本节末。
+
+## 设计增量：阅读页信封头（REQ-0017 / SCN-0012，2026-11-16，P2 已确认、未实现）
+
+- 来源：`REQ-0017`（`accepted`）/ `SCN-0012`；映射与格式化在 `CMP-PRES`（见其设计增量），本组件只渲染展示值。
+- P2 确认（2026-11-16，T-1116-07）：D1–D8 按 `design.md` §9.2 建议答案确认，确认记录见 `doc/history/decisions/2026-11-16-reading-pane-headers.md`；本增量形状不变。实现进度见文末追加行。
+- 新文件 `Sources/uumail/MessageHeaderView.swift`（internal，约 45 行，CMP-APP 内部，不新增 target/组件）：
+  - 入参 `header: MessageHeaderPresentation`；只读 `header.subject` 与 `header.rows`，不接触 `Message` 原始字段、不拼地址、不判空。
+  - 布局：`VStack(alignment: .leading, spacing: 4)`；主题 `.headline` + `.lineLimit(2)`；每行 `HStack`：`Text(label)` 固定宽 44pt、右对齐、`.secondary`；`Text(value)` 左对齐、`lineLimit(row.lineLimit)`、`.frame(maxWidth: .infinity, alignment: .leading)`；外边距水平 12pt / 垂直 8pt。
+  - `.textSelection(.enabled)` 只加在头部块上：用户可复制信封信息；这也是 L2 `HeaderProbe` 读取渲染文本的 seam（SwiftUI 可选中 `Text` 由 `NSTextField` 承载）。不提供复制按钮/地址菜单/按发件人搜索（非目标）。
+  - 不写强制前景/背景色，标签用 `secondary`，随应用主题；不读主题偏好。
+- `MessageBodyView` 变更（签名新增第一个入参，内部视图，无 public 契约）：
+
+  ```swift
+  struct MessageBodyView: View {
+      let header: MessageHeaderPresentation?
+      let bodyPresentation: BodyPresentation
+      …
+  }
+  ```
+
+  - 结构：`VStack(spacing: 0) { if let header { MessageHeaderView(header: header); Divider() }; bodyContent }` —— 头部**在正文状态 switch 之外**，`.loading`/`.loaded`/`.failed` 结构上共享，不靠各分支重复渲染（R28）。
+  - `.none` 两义收口：`header != nil`（已选中、正文任务未开始）归入「正在获取正文」分支（与 `.loading` 同一 `ProgressView("正在获取正文…")`）；`header == nil` 只显示占位 `ContentUnavailableView("选择一封邮件", systemImage: "envelope.open")`，并给它加 `.textSelection(.enabled)` 使占位可被 L2 探针读到（也允许用户选中文字）。
+  - `case .none where header == nil` 先判占位，其余 `.none` 与 `.loading` 合并；`.failed`/`.loaded` 分支内容不变（附件条、远程图片开关、截断 banner、`MessageWebView` 均在头部之下）。
+- `MailboxView`：`MessageBodyView(header: viewModel.headerPresentation, bodyPresentation: viewModel.body, …)`；不再新增字段读取、不判空、不拼文案。
+- 不改：`MessageWebView` 的 KVC 白底/`.aqua` 外观/CSP/禁 JS（`SCN-0010`）、附件条与下载、远程图片开关、截断 banner、工具栏、列表、搜索、主题菜单、`UumailApp`。
+- R27 上限：主题 ≤2 行，发件人/时间各 ≤1 行，收件人/抄送各 ≤2 行；头部文本块 ≤170pt；默认窗口下限 900×560 下正文区域仍 ≥300pt 且 WebView 自身可滚动。设计探针实测长值夹具（200 字主题 + 12 收件人，无 Cc）文本块 107pt、320pt 面板下方余 204pt；含 Cc 最坏约 130pt。
+- 预算：`MessageBodyView` 146 → 约 165、`MailboxView` 210 → 211、新文件约 45；单文件 ≤300、`Sources/uumail` 约 608 → 约 655。
+- 验证：L2 `HeaderProbe`（离屏 `NSHostingView`；设计阶段已证 `.none`/`.loading`/`.failed` 三种正文态下的头部渲染与占位）。`T-SCN-0012-03` 的 `.loaded` 一段需实现节点把探针面板换成生产 `MessageBodyView`/`MessageBodyStyle` 并链 WebKit（`SCN-0010` 的 `AppearanceProbe` 已有离屏 WKWebView 先例）；头部在 switch 之外，`.loaded` 复用同一渲染路径，但不因此免测。探针编译命令与限制见 `task-spaces/20261116-212545/evidence/header-probe/`。`SCN-0004`/`SCN-0010` 回归覆盖正文白底与 CSP。
+- 不做：可折叠/展开头部、每封布局切换、头像/发件人卡片、地址点击菜单、Bcc/Reply-To、真实 `Sent`。
