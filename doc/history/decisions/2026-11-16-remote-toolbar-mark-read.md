@@ -15,10 +15,9 @@ updated: 2026-11-16
 
 ## 确认来源与范围
 
-- 本记录由 W-M3-06 实现批次（run `20261116-223645`）在代码评审回退重跑时归档。
-- 确认来自任务发起人在本次 agent-flow 回退重跑中给出的执行指令：先回 confirm 阶段关闭 `T-1116-11`（按 `design.md` §8.2 确认 D1–D8，并落 `history/decisions/2026-11-16-remote-toolbar-mark-read.md`），再重跑开发 `T-1116-12`→`T-1116-13` 并补齐 `SCN-0008`/`SCN-0013`/`SCN-0014` 的 L1/L2 证据。
-- 发起人**未逐项改写** D1–D8；按 `design.md` §8.2 的**唯一建议答案**确认，无收窄、无改选。原始确认没有独立 IM/邮件原文；**本记录是唯一书面落点**，不把编排指令伪造成第三方签字。
-- 确认人：任务发起人（工作区所有者）；确认时间：2026-11-16（本次回退重跑指令）；确认项：D1–D8；影响范围：`REQ-0018` / `REQ-0019` / `REQ-0013` / `SCN-0013` / `SCN-0014` / `SCN-0008` 的 P2 实现与 L1/L2 验证，以及本批任务 `T-1116-11`…`T-1116-16`。
+- 确认人：任务发起人（工作区所有者）；确认时间：2026-11-16；确认方式：本次运行的发起指令；确认项：D1–D8；影响范围：`REQ-0018` / `REQ-0019` / `REQ-0013` / `SCN-0013` / `SCN-0014` / `SCN-0008` 的 P2 实现与 L1/L2 验证，以及本批任务 `T-1116-11`…`T-1116-16`。
+- 发起人按 `design.md` §8.2 的**唯一建议答案**逐项确认 D1–D8，无收窄、无改选；这是人工确认，不是节点自决。
+- 本记录由本次运行（run `20261117-060443`）按发起人指令代录，只记录确认事实与影响，不伪造第三方签字；原始确认以本次运行的发起指令为准，本记录是书面落点。
 
 ## 决定
 
@@ -57,4 +56,4 @@ updated: 2026-11-16
 - 规格：`doc/design/components/CMP-PRES/spec.md`、`CMP-APP/spec.md` 的 2026-11-16 增量（P2 状态改为已确认，实现后追加进度行）、`CMP-SCN-READ/spec.md` 的手动置读复用说明。
 - 排期：`doc/plan/roadmap.md` §W-M3-06（门行与 `T-1116-11` 状态）。
 - 实现：`Sources/Presentation/MailboxViewModel.swift`、`MailboxDwell.swift`、`Sources/uumail/MailboxToolbar.swift`（新）、`MailboxView.swift`、`MessageBodyView.swift`。
-- 测试/证据：`Tests/PresentationTests/MailboxViewModelTests.swift`；L1/L2 证据入 `task-spaces/20261116-223645/evidence/`。
+- 测试/证据：`Tests/PresentationTests/MailboxViewModelTests.swift`；L1/L2 证据入 `task-spaces/20261116-223645/evidence/` 与 `task-spaces/20261117-060443/evidence/`。
