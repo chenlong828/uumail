@@ -1,12 +1,20 @@
 import AppKit
 import Composition
+import Presentation
 import SwiftUI
 
 @main
 struct UumailApp: App {
     @State private var composition: AppComposition?
+    @State private var theme: ThemePreference
+    private let store: ThemePreferenceStore
 
     init() {
+        // Build the local store first: `self` is not fully initialised yet, so the
+        // preference has to be read through a local binding.
+        let store = ThemePreferenceStore()
+        self.store = store
+        _theme = State(initialValue: store.load())
         _composition = State(initialValue: AppComposition.make())
     }
 
@@ -33,6 +41,7 @@ struct UumailApp: App {
                 }
             }
             .frame(minWidth: 900, minHeight: 560)
+            .preferredColorScheme(theme.colorScheme)
             .task { composition?.start() }
             .onDisappear { composition?.stop() }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
@@ -40,6 +49,9 @@ struct UumailApp: App {
                 // refresh cadence and the delivery pump explicitly.
                 composition?.stop()
             }
+        }
+        .commands {
+            ThemeCommands(theme: $theme, store: store)
         }
     }
 }
