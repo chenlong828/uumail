@@ -2,8 +2,8 @@
 layer: design
 module: mail
 scope: project:uumail
-status: designed
-updated: 2026-11-16
+status: verified
+updated: 2026-11-17
 flow: mail/read
 scenario: SCN-0013
 ---
@@ -78,11 +78,11 @@ scenario: SCN-0013
 
 ## 状态
 
-`designed`（2026-11-16 设计落卡）。四元素：入口 `present`、运行序 `present`（含失败路径）、不可变引用 `present`、测试 `present`（3 正 1 反，`T-SCN-0013-01..04` 可执行，最低 L2）。
+`verified`（2026-11-17，T-1116-15 验证，收尾按 `review.md` §7 清单翻转）。原 `designed`（2026-11-16 设计落卡）。四元素：入口 `present`、运行序 `present`（含失败路径）、不可变引用 `present`、测试 `present`（3 正 1 反，`T-SCN-0013-01..04` 可执行，最低 L2）。
 
-本卡依赖 `CMP-PRES` 新增 public 状态/派生/方法，属 P2 契约增量；确认清单见 `task-spaces/20261116-223645/design.md` §8.2 与 `CMP-PRES` 设计增量。**本卡不代签确认记录**；P2 确认后才进入实现。
+本卡依赖 `CMP-PRES` 新增 public 状态/派生/方法，属 P2 契约增量；确认清单见 `task-spaces/20261116-223645/design.md` §8.2 与 `CMP-PRES` 设计增量。**本卡不代签确认记录**；P2 已于 2026-11-16 确认（`history/decisions/2026-11-16-remote-toolbar-mark-read.md`），实现见 `T-1116-12`/`T-1116-13`。
 
-`verified` 判据：`T-SCN-0013-01..04` 全 pass；`SCN-0004`/`SCN-0010` 回归不退化；无 skip（或有替身并登记）；工具栏在默认窗口下限 900×560 可见/可操作。设计阶段 L2 toolbar seam 已证，不等同于本卡验收。
+`verified` 判据：`T-SCN-0013-01..04` 全 pass；`SCN-0004`/`SCN-0010` 回归不退化；无 skip（或有替身并登记）；工具栏在默认窗口下限 900×560 可见/可操作。设计阶段 L2 toolbar seam 已证，不等同于本卡验收。本轮结果：4 条例子全 pass（L1 + L2，`evidence/t1116-15-scn-0013.txt`、`test.md` §2.2）；`SCN-0004`/`SCN-0010` 回归无新增失败，`SCN-0010` 2 条既有 SKIP 已登记（`review.md` H2）。
 
 ## 与相邻场景的边界
 

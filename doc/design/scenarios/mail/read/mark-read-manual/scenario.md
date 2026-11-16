@@ -2,8 +2,8 @@
 layer: design
 module: mail
 scope: project:uumail
-status: designed
-updated: 2026-11-16
+status: verified
+updated: 2026-11-17
 flow: mail/read
 scenario: SCN-0014
 ---
@@ -85,11 +85,11 @@ scenario: SCN-0014
 
 ## 状态
 
-`designed`（2026-11-16 设计落卡；同日第 2 轮按方案评审 F1 补本地置读错误归一化契约与非 `MailError` L1，四元素与 3 正 1 反结构不变）。四元素：入口 `present`、运行序 `present`（含失败路径）、不可变引用 `present`、测试 `present`（3 正 1 反，`T-SCN-0014-01..04` 可执行，最低 L1 + L2）。
+`verified`（2026-11-17，T-1116-16 验证，收尾按 `review.md` §7 清单翻转）。原 `designed`（2026-11-16 设计落卡；同日第 2 轮按方案评审 F1 补本地置读错误归一化契约与非 `MailError` L1，四元素与 3 正 1 反结构不变）。四元素：入口 `present`、运行序 `present`（含失败路径）、不可变引用 `present`、测试 `present`（3 正 1 反，`T-SCN-0014-01..04` 可执行，最低 L1 + L2）。
 
-本卡依赖 `CMP-PRES` 新增 public 方法/派生/错误状态，属 P2 契约增量；确认清单见 `task-spaces/20261116-223645/design.md` §8.2 与 `CMP-PRES` 设计增量。**本卡不代签确认记录**；P2 确认后才进入实现。
+本卡依赖 `CMP-PRES` 新增 public 方法/派生/错误状态，属 P2 契约增量；确认清单见 `task-spaces/20261116-223645/design.md` §8.2 与 `CMP-PRES` 设计增量。**本卡不代签确认记录**；P2 已于 2026-11-16 确认（`history/decisions/2026-11-16-remote-toolbar-mark-read.md`），实现见 `T-1116-12`/`T-1116-13`。
 
-`verified` 判据：`T-SCN-0014-01..04` 全 pass；`SCN-0008`（按 3 秒修订后）与 `SCN-0004` 回归不退化；无 skip（或有替身并登记）。
+`verified` 判据：`T-SCN-0014-01..04` 全 pass；`SCN-0008`（按 3 秒修订后）与 `SCN-0004` 回归不退化；无 skip（或有替身并登记）。本轮结果：4 条例子全 pass（L1 + L2，`evidence/t1116-16-scn-0014.txt`、`test.md` §2.3）；`SCN-0008`/`SCN-0004` 回归无退化；`T-SCN-0014-03` 的竞态注入保留项按非阻塞登记（`review.md` H1）。
 
 ## 与相邻场景的边界
 

@@ -2,8 +2,8 @@
 layer: design
 module: mail
 scope: project:uumail
-status: designed
-updated: 2026-11-16
+status: verified
+updated: 2026-11-17
 flow: mail/read
 scenario: SCN-0008
 ---
@@ -75,9 +75,9 @@ scenario: SCN-0008
 
 ## 状态
 
-`designed`（2026-11-16 设计修订：连续停留 10 秒 → 3 秒，并补「注入时钟收到 `.seconds(3)`」断言；`MailboxDwell` 改为仅计时、写路径移入 `MailboxViewModel.performMarkRead`）。四元素齐；3 正 1 反均给出可执行 ID。此前 10 秒版本于 2026-11-15 `verified`（T-1114-19，239 tests / 44 suites；原始证据 `task-spaces/20261114-232232/test.md`）；该历史证据不追溯删除。修订后由实现/验证节点重新执行 3 秒断言，评审通过后由收尾节点把 `status` 转回 `verified`；本设计节点不代判。
+`verified`（2026-11-17，T-1116-14 验证，收尾按 `review.md` §7 清单翻转）。原 `designed`（2026-11-16 设计修订：连续停留 10 秒 → 3 秒，并补「注入时钟收到 `.seconds(3)`」断言；`MailboxDwell` 改为仅计时、写路径移入 `MailboxViewModel.performMarkRead`）。四元素齐；3 正 1 反均给出可执行 ID。此前 10 秒版本于 2026-11-15 `verified`（T-1114-19，239 tests / 44 suites；原始证据 `task-spaces/20261114-232232/test.md`）；该历史证据不追溯删除。修订后已由 `T-1116-14` 重新执行 3 秒断言并转回 `verified`（`task-spaces/20261117-064420/test.md` §2.1）。
 
-`verified` 判据：`T-SCN-0008-01..04` 全 pass（含 `.seconds(3)` 时长断言）；`SCN-0003`/`SCN-0004` 回归不退化；无 skip 或 skip 有登记替身。
+`verified` 判据：`T-SCN-0008-01..04` 全 pass（含 `.seconds(3)` 时长断言）；`SCN-0003`/`SCN-0004` 回归不退化；无 skip 或 skip 有登记替身。本轮结果：4 条例子全 pass（`evidence/t1116-14-scn-0008.txt`、`test.md` §2.1），`SCN-0003`/`SCN-0004` 回归无退化，无 skip。
 
 ## 与相邻场景的边界
 
