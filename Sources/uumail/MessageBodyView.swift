@@ -4,6 +4,7 @@ import SwiftUI
 import WebKit
 
 struct MessageBodyView: View {
+    let header: MessageHeaderPresentation?
     let bodyPresentation: BodyPresentation
     let notice: BodyNotice?
     let attachments: [Attachment]
@@ -12,10 +13,24 @@ struct MessageBodyView: View {
     @State private var allowRemoteContent = false
 
     var body: some View {
+        VStack(spacing: 0) {
+            if let header {
+                MessageHeaderView(header: header)
+                Divider()
+            }
+            bodyContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    /// The header stays outside the body switch so every body state shares it (R28).
+    @ViewBuilder
+    private var bodyContent: some View {
         switch bodyPresentation {
-        case .none:
+        case .none where header == nil:
             ContentUnavailableView("选择一封邮件", systemImage: "envelope.open")
-        case .loading:
+                .textSelection(.enabled)
+        case .none, .loading:
             ProgressView("正在获取正文…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .failed(let message):

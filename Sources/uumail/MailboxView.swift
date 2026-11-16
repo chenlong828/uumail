@@ -80,6 +80,7 @@ struct MailboxView: View {
             }
         } detail: {
             MessageBodyView(
+                header: viewModel.headerPresentation,
                 bodyPresentation: viewModel.body,
                 notice: viewModel.bodyNotice,
                 attachments: viewModel.attachments,
