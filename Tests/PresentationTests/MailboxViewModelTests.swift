@@ -476,6 +476,56 @@ struct MailboxDwellTests {
         #expect(try fixture.store.messages(account: fixture.account, folder: "13").first { $0.serverID == "2" }?.isRead == false)
     }
 
+    @Test("T-SCN-0008-02: switching at two seconds cancels the old clock and only the new row marks")
+    func dwellTwoSecondsSwitchDoesNotMarkTheOldSelection() async throws {
+        let sleeper = DwellSleeper()
+        let write = PresentationRecordingWriteGateway(delta: MessageDelta(
+            added: [], changed: [], removedServerIDs: [], syncKey: "3", moreAvailable: false
+        ))
+        let fixture = try makeMailboxFixture(
+            messages: ["13": [presentationMessage("1", isRead: false), presentationMessage("2", isRead: false)]],
+            write: write,
+            dwellSleep: { duration in try await sleeper.sleep(duration) }
+        )
+        fixture.viewModel.loadCached()
+        for _ in 0..<200 {
+            let count = await sleeper.count
+            let pending = await sleeper.pending
+            if count == 1 && pending == 1 { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(await sleeper.durations == [.seconds(3)], "the timer must request exactly three seconds")
+        let firstTarget = try #require(fixture.viewModel.selectedMessage?.serverID)
+        #expect(firstTarget == "2", "loadCached auto-selects the newest row")
+
+        // Two seconds in, neither row may be read yet.
+        await sleeper.advance(by: .seconds(2))
+        try await Task.sleep(for: .milliseconds(20))
+        #expect(try fixture.store.messages(account: fixture.account, folder: "13").allSatisfy { !$0.isRead })
+
+        // Switch at the two-second mark: the old clock is cancelled, not allowed to elapse.
+        fixture.viewModel.select(messageID: "1")
+        for _ in 0..<200 {
+            let cancelled = await sleeper.cancelled
+            let count = await sleeper.count
+            let pending = await sleeper.pending
+            if cancelled == 1 && count == 2 && pending == 1 { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(await sleeper.cancelled == 1, "the two-second switch must cancel the first clock")
+        #expect(try fixture.store.messages(account: fixture.account, folder: "13").first { $0.serverID == "2" }?.isRead == false)
+        #expect(await write.calls.isEmpty)
+
+        // The new row only marks after its own full three seconds.
+        await sleeper.advance(by: .seconds(3))
+        let marked = try await waitFor {
+            try fixture.store.messages(account: fixture.account, folder: "13").first { $0.serverID == "1" }?.isRead == true
+        }
+        #expect(marked)
+        #expect(try fixture.store.messages(account: fixture.account, folder: "13").first { $0.serverID == "2" }?.isRead == false)
+        #expect(await write.calls == [.markRead(collectionID: "13", serverID: "1", key: "2")])
+    }
+
     @Test("T-SCN-0008-02: background pauses and returning to the foreground restarts a full dwell")
     func dwellPausesInBackgroundAndRestarts() async throws {
         let fixture = try fixture(messages: [presentationMessage("1", isRead: false)], sleepMilliseconds: 70)
@@ -808,6 +858,30 @@ struct MailboxRemoteContentTests {
         fixture.viewModel.setAllowsRemoteContent(true)
         #expect(!fixture.viewModel.allowsRemoteContent, "no selection means no permission")
     }
+
+    @Test("T-SCN-0013-04: a retry success is usable and still defaults to blocked")
+    func retrySuccessRestoresDefaultOffAndAvailability() async throws {
+        let fixture = try fixture(
+            messages: [presentationMessage("1")],
+            bodies: ["1": "<p>A</p>"]
+        )
+        fixture.viewModel.loadCached()
+        try await loadBody(fixture, "1")
+        #expect(!fixture.viewModel.allowsRemoteContent)
+
+        // A failed body disables the entry even if the old loaded HTML is still tracked.
+        fixture.viewModel.body = .failed(text: "失败")
+        #expect(!fixture.viewModel.canAllowRemoteContent)
+        fixture.viewModel.setAllowsRemoteContent(true)
+        #expect(!fixture.viewModel.allowsRemoteContent, "a forced allow must not fire while failed")
+
+        // Retry succeeds for the same selection: the entry is usable and still off.
+        fixture.viewModel.body = .loaded(html: "<p>A</p>", truncated: false)
+        #expect(fixture.viewModel.canAllowRemoteContent)
+        #expect(!fixture.viewModel.allowsRemoteContent, "a retry must not inherit a permission")
+        fixture.viewModel.setAllowsRemoteContent(true)
+        #expect(fixture.viewModel.allowsRemoteContent)
+    }
 }
 
 @Suite("MailboxViewModel manual mark-read")
@@ -891,6 +965,26 @@ struct MailboxManualMarkReadTests {
         #expect(await write.calls.count == calls, "no selection means no local write and no network")
     }
 
+    @Test("T-SCN-0014-02: a hidden selected row is a no-op for manual mark-read")
+    func manualMarkReadHiddenRowIsNoOp() async throws {
+        let write = PresentationRecordingWriteGateway(delta: delta())
+        let fixture = try makeMailboxFixture(
+            messages: ["13": [presentationMessage("1", isRead: false)]],
+            write: write
+        )
+        fixture.viewModel.loadCached()
+        let ref = MessageRef(folderID: "13", serverID: "1")
+        #expect(fixture.viewModel.deletion.begin(ref))
+        #expect(fixture.viewModel.selectedMessage == nil)
+
+        fixture.viewModel.markSelectedRead()
+        try await Task.sleep(for: .milliseconds(30))
+
+        #expect(try fixture.store.messages(account: fixture.account, folder: "13").first?.isRead == false)
+        #expect(await write.calls.isEmpty, "a hidden row must not start a local or server write")
+        #expect(fixture.viewModel.markReadErrorText == nil)
+    }
+
     @Test("T-SCN-0014-03: manual and automatic mark-read share one write")
     func manualMarkReadRacesDwellOnce() async throws {
         let sleeper = DwellSleeper()
@@ -940,6 +1034,25 @@ struct MailboxManualMarkReadTests {
         #expect(fixture.viewModel.sync.phase == .idle)
     }
 
+    @Test("T-SCN-0014-04: a 503 write-back keeps the local read and stays silent")
+    func manualMarkReadThrottledWriteBackKeepsLocal() async throws {
+        let write = PresentationRecordingWriteGateway(delta: delta())
+        await write.setFailure(.throttled(seconds: nil))
+        let fixture = try makeMailboxFixture(
+            messages: ["13": [presentationMessage("1", isRead: false)]],
+            write: write
+        )
+        fixture.viewModel.loadCached()
+
+        fixture.viewModel.markSelectedRead()
+        try await waitForCalls(write, 1)
+        try await Task.sleep(for: .milliseconds(40))
+
+        #expect(try fixture.store.messages(account: fixture.account, folder: "13").first?.isRead == true)
+        #expect(fixture.viewModel.markReadErrorText == nil, "503 is a silent write-back failure")
+        #expect(fixture.viewModel.sync.phase == .idle)
+    }
+
     @Test("T-SCN-0014-04: a MailError local failure keeps the row unread and shows Chinese")
     func manualMarkReadLocalFailureReportsChinese() async throws {
         let write = PresentationRecordingWriteGateway(delta: delta())
@@ -956,6 +1069,13 @@ struct MailboxManualMarkReadTests {
         #expect(fixture.viewModel.markReadErrorText?.hasPrefix("本地存储失败") == true)
         #expect(try fixture.store.messages(account: fixture.account, folder: "13").first?.isRead == false)
         #expect(await write.calls.isEmpty, "a failed local write must not start a server write")
+
+        // A repeated click after the local failure still treats the row as unread and does
+        // not fall through to a server write; the Chinese error stays visible.
+        fixture.viewModel.markSelectedRead()
+        #expect(try fixture.store.messages(account: fixture.account, folder: "13").first?.isRead == false)
+        #expect(await write.calls.isEmpty)
+        #expect(fixture.viewModel.markReadErrorText?.hasPrefix("本地存储失败") == true)
     }
 
     @Test("T-SCN-0014-04: a non-MailError local failure is normalized before the UI")
@@ -1302,7 +1422,8 @@ struct MailboxDeleteTests {
 }
 
 /// A controllable sleeper that counts clock starts. A reload that incorrectly restarts the
-/// dwell would request a second sleep.
+/// dwell would request a second sleep. Virtual time can be advanced without releasing a
+/// sleep whose full duration has not elapsed, so the 2-second switch negative case is real.
 actor DwellSleeper {
     private(set) var count = 0
     private(set) var cancelled = 0
@@ -1311,30 +1432,49 @@ actor DwellSleeper {
     /// that release the waiter must wait for this to be > 0.
     private(set) var pending = 0
     private var waiters: [UUID: CheckedContinuation<Void, Error>] = [:]
+    private var elapsed: Duration = .zero
+    private var deadlines: [UUID: Duration] = [:]
 
     func sleep(_ duration: Duration) async throws {
         count += 1
         durations.append(duration)
         let id = UUID()
+        let deadline = elapsed + duration
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                 pending += 1
                 waiters[id] = continuation
+                deadlines[id] = deadline
             }
         } onCancel: {
             Task { await self.cancel(id) }
         }
     }
 
+    /// Advances virtual time and resumes exactly the sleeps whose deadline is reached.
+    /// Advancing by 2 seconds therefore cannot release a 3-second dwell.
+    func advance(by delta: Duration) {
+        elapsed += delta
+        let due = deadlines.filter { $0.value <= elapsed }.map(\.key)
+        for id in due {
+            deadlines.removeValue(forKey: id)
+            guard let continuation = waiters.removeValue(forKey: id) else { continue }
+            pending -= 1
+            continuation.resume()
+        }
+    }
+
     func release() {
         let parked = waiters
         waiters.removeAll()
+        deadlines.removeAll()
         pending = 0
         for (_, continuation) in parked { continuation.resume() }
     }
 
     private func cancel(_ id: UUID) {
         guard let continuation = waiters.removeValue(forKey: id) else { return }
+        deadlines.removeValue(forKey: id)
         cancelled += 1
         pending -= 1
         continuation.resume(throwing: CancellationError())
