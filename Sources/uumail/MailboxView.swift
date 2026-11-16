@@ -43,37 +43,24 @@ struct MailboxView: View {
                 viewModel.setApplicationActive(false)
             }
             .toolbar {
-                ToolbarItemGroup(placement: .primaryAction) {
-                    Button {
-                        compose = viewModel.composeNew()
-                    } label: {
-                        Label("新建", systemImage: "square.and.pencil")
-                    }
-                    Button {
-                        compose = viewModel.composeReply()
-                    } label: {
-                        Label("回复", systemImage: "arrowshape.turn.up.left")
-                    }
-                    .disabled(viewModel.selectedMessage == nil)
-                    Button {
-                        compose = viewModel.composeReplyAll()
-                    } label: {
-                        Label("全部回复", systemImage: "arrowshape.turn.up.left.2")
-                    }
-                    .disabled(viewModel.selectedMessage == nil)
-                    Button {
-                        compose = viewModel.composeForward()
-                    } label: {
-                        Label("转发", systemImage: "arrowshape.turn.up.right")
-                    }
-                    .disabled(viewModel.selectedMessage == nil)
-                    Button {
-                        Task { await viewModel.refresh() }
-                    } label: {
-                        Label("刷新", systemImage: "arrow.clockwise")
-                    }
-                    .disabled(viewModel.sync.phase == .syncing)
-                }
+                MailboxToolbar(
+                    state: MailboxToolbar.State(
+                        hasSelection: viewModel.selectedMessage != nil,
+                        allowsRemoteContent: viewModel.allowsRemoteContent,
+                        canAllowRemoteContent: viewModel.canAllowRemoteContent,
+                        canMarkSelectedRead: viewModel.canMarkSelectedRead,
+                        isSyncing: viewModel.sync.phase == .syncing
+                    ),
+                    actions: MailboxToolbar.Actions(
+                        newMessage: { compose = viewModel.composeNew() },
+                        reply: { compose = viewModel.composeReply() },
+                        replyAll: { compose = viewModel.composeReplyAll() },
+                        forward: { compose = viewModel.composeForward() },
+                        setAllowRemoteContent: { viewModel.setAllowsRemoteContent($0) },
+                        markSelectedRead: { viewModel.markSelectedRead() },
+                        refresh: { Task { await viewModel.refresh() } }
+                    )
+                )
             }
             .sheet(item: $compose) { draft in
                 ComposeView(viewModel: draft, onClose: { compose = nil })
@@ -84,6 +71,7 @@ struct MailboxView: View {
                 bodyPresentation: viewModel.body,
                 notice: viewModel.bodyNotice,
                 attachments: viewModel.attachments,
+                allowRemoteContent: viewModel.allowsRemoteContent,
                 onRetry: { Task { await viewModel.openSelected() } },
                 onOpenAttachment: { attachment in
                     if let url = await viewModel.download(attachment) {
@@ -169,6 +157,9 @@ struct MailboxView: View {
             if let deleteError = viewModel.deleteErrorText {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                 Text(deleteError).lineLimit(1)
+            } else if let markReadError = viewModel.markReadErrorText {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                Text(markReadError).lineLimit(1)
             } else {
                 switch viewModel.sync.phase {
                 case .idle:

@@ -8,9 +8,11 @@ struct MessageBodyView: View {
     let bodyPresentation: BodyPresentation
     let notice: BodyNotice?
     let attachments: [Attachment]
+    /// Session-only permission owned by `MailboxViewModel`; the body view never owns it
+    /// (REQ-0018 / R33). It only forwards the value to the web view's CSP.
+    let allowRemoteContent: Bool
     let onRetry: () -> Void
     let onOpenAttachment: (Attachment) async -> Void
-    @State private var allowRemoteContent = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -60,14 +62,6 @@ struct MessageBodyView: View {
                     .padding(.horizontal, 12)
                     .padding(.top, 6)
                 }
-                HStack {
-                    Toggle("加载远程图片", isOn: $allowRemoteContent)
-                        .toggleStyle(.switch)
-                        .controlSize(.small)
-                    Spacer()
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
                 if let banner = banner(for: isTruncated) {
                     HStack(spacing: 6) {
                         Image(systemName: banner.symbol)

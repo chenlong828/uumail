@@ -14,7 +14,7 @@ component: CMP-APP
 - 单元：组件
 - 层 / 类型：L3；UI 外壳
 - 业务价值：让用户能看见并操作邮箱；没有它，同步能力只存在于命令行。
-- 负责 X：窗口与导航、文件夹选择、邮件列表渲染、正文 WebView、撰写/配置表单、空态与失败态展示；T-1114-10 设计新增列表焦点 Delete/Backspace、前台状态转发（实测后改用 `NSApplication` 通知）、状态栏删除错误（2026-11-14 已实现，T-1114-18）。
+- 负责 X：窗口与导航、窗口主工具栏（`MailboxToolbar`）、文件夹选择、邮件列表渲染、正文 WebView、撰写/配置表单、空态与失败态展示；T-1114-10 设计新增列表焦点 Delete/Backspace、前台状态转发（实测后改用 `NSApplication` 通知）、状态栏删除错误（2026-11-14 已实现，T-1114-18）。
 - 不负责 Y：业务编排、状态机、格式化规则、服务装配、网络与持久化。
 - 内部逻辑：
   - `UumailApp` 构造 `AppComposition`，按 `route` 显示 `MailboxView` 或 `AccountSetupView`；生命周期交给组合根。
@@ -23,10 +23,10 @@ component: CMP-APP
 - 拥有的数据：无；账号凭据归 `CredentialStore`，邮件数据归 `MailStore`。
 - 变化轴：窗口形态（单窗口 → 多窗口/菜单栏）、列表与阅读布局。
 - 公开契约：无对外契约；只依赖 `Presentation`（`UumailApp` 另依赖 `Composition`）。
-- 入口：`Sources/uumail/UumailApp.swift#UumailApp`、`MailboxView.swift#MailboxView`、`MessageBodyView.swift#MessageBodyView`、`ComposeView.swift#ComposeView`、`AccountSetupView.swift#AccountSetupView`
+- 入口：`Sources/uumail/UumailApp.swift#UumailApp`、`MailboxView.swift#MailboxView`、`MailboxToolbar.swift#MailboxToolbar`（2026-11-16 设计新增）、`MessageBodyView.swift#MessageBodyView`、`ComposeView.swift#ComposeView`、`AccountSetupView.swift#AccountSetupView`
 - 依赖：`Presentation`、`Composition`（仅 `UumailApp.swift`）、SwiftUI/AppKit/WebKit。扇出 2。
 - 冷热：热（读本地库）。
-- 尺寸预算：单文件 ≤300 行；当前 `uumail` 共 608 行（2026-11-16 实现后实测；旧记 493/528 为过期数字）。
+- 尺寸预算：单文件 ≤300 行；当前 `uumail` 共 655 行（2026-11-16 设计前实测；其中 `MailboxView` 211、`MessageBodyView` 161）；2026-11-16 设计预计 `MailboxView` 约 190、`MessageBodyView` 约 150、新 `MailboxToolbar` 约 85，总计约 710。
 - 单独运行：`./Scripts/make-app.sh && open dist/uumail.app`（release 构建，产物不入库）
 - 删除测试：删掉则只能命令行看信，对终端用户等于没有产品。
 
@@ -82,7 +82,7 @@ component: CMP-APP
 - 阅读白底（`REQ-0015`，`SCN-0010`）：
   - `MessageWebView.makeNSView` 把画布固定为不透明浅色：沿用现有 KVC `setValue(true, forKey: "drawsBackground")`（macOS 的 `WKWebView` 没有公开 `drawsBackground` 属性，不引入新的私有 API）、`underPageBackgroundColor = .white`、`appearance = NSAppearance(named: .aqua)`；`updateNSView` 在 `lastRender` guard 之前复确认 appearance（R24），`lastRender` 未变时不调用 `loadHTMLString`。
   - `MessageWebView.baseStyle` 与 `sanitized` 抽到新文件 `Sources/uumail/MessageBodyStyle.swift`（`enum MessageBodyStyle`，internal，无 SwiftUI/WebKit 依赖）；`baseCSS` 增 `html, body { background-color: #ffffff; color-scheme: light; }`；CSP 两档策略与注入顺序不变；`MessageBodyView` 只保留视图与占位/附件/banner。
-  - 范围只限正文画布；附件条、远程图片开关、截断提示、侧栏/列表/工具栏仍随主题（Q6 A，2026-11-16 确认）。
+  - 范围只限正文画布；附件条、截断提示、侧栏/列表/工具栏（含远程图片开关）仍随主题（Q6 A，2026-11-16 确认）。
   - 语义取舍：正文 `prefers-color-scheme` 固定 light，作者 dark-media 变体不生效；作者显式背景/文字色/表格/图片保留。若产品要保留暗色变体，先改 `REQ-0015`/`SCN-0010`。
 - 菜单主题（`REQ-0016`，`SCN-0011`）：
   - `UumailApp` 拥有 `@State theme: ThemePreference` 与 `private let store: ThemePreferenceStore`（`init` 先构造本地 store 再赋 `self.store`、`_theme = State(initialValue: store.load())`、`_composition`，不在 `self` 未初始化时调用 store），根视图 `.preferredColorScheme(theme.colorScheme)`，Scene `.commands { ThemeCommands(theme:store:) }`。
@@ -117,11 +117,60 @@ component: CMP-APP
 
   - 结构：`VStack(spacing: 0) { if let header { MessageHeaderView(header: header); Divider() }; bodyContent }` —— 头部**在正文状态 switch 之外**，`.loading`/`.loaded`/`.failed` 结构上共享，不靠各分支重复渲染（R28）。
   - `.none` 两义收口：`header != nil`（已选中、正文任务未开始）归入「正在获取正文」分支（与 `.loading` 同一 `ProgressView("正在获取正文…")`）；`header == nil` 只显示占位 `ContentUnavailableView("选择一封邮件", systemImage: "envelope.open")`，并给它加 `.textSelection(.enabled)` 使占位可被 L2 探针读到（也允许用户选中文字）。
-  - `case .none where header == nil` 先判占位，其余 `.none` 与 `.loading` 合并；`.failed`/`.loaded` 分支内容不变（附件条、远程图片开关、截断 banner、`MessageWebView` 均在头部之下）。
+  - `case .none where header == nil` 先判占位，其余 `.none` 与 `.loading` 合并；`.failed`/`.loaded` 分支内容不变（附件条、截断 banner、`MessageWebView` 均在头部之下；远程图片入口已移出正文，见文末 2026-11-16 增量）。
 - `MailboxView`：`MessageBodyView(header: viewModel.headerPresentation, bodyPresentation: viewModel.body, …)`；不再新增字段读取、不判空、不拼文案。
-- 不改：`MessageWebView` 的 KVC 白底/`.aqua` 外观/CSP/禁 JS（`SCN-0010`）、附件条与下载、远程图片开关、截断 banner、工具栏、列表、搜索、主题菜单、`UumailApp`。
+- 不改：`MessageWebView` 的 KVC 白底/`.aqua` 外观/CSP/禁 JS（`SCN-0010`）、附件条与下载、截断 banner、工具栏、列表、搜索、主题菜单、`UumailApp`（远程图片开关的位置由 `SCN-0013`/`REQ-0018` 的工具栏增量修改，不在本信封头增量）。
 - R27 上限：主题 ≤2 行，发件人/时间各 ≤1 行，收件人/抄送各 ≤2 行；头部文本块 ≤170pt；默认窗口下限 900×560 下正文区域仍 ≥300pt 且 WebView 自身可滚动。设计探针实测长值夹具（200 字主题 + 12 收件人，无 Cc）文本块 107pt、320pt 面板下方余 204pt；含 Cc 最坏约 130pt。
 - 预算：`MessageBodyView` 146 → 约 165、`MailboxView` 210 → 211、新文件约 45；单文件 ≤300、`Sources/uumail` 约 608 → 约 655。
 - 验证：L2 `HeaderProbe`（离屏 `NSHostingView`；设计阶段已证 `.none`/`.loading`/`.failed` 三种正文态下的头部渲染与占位）。`T-SCN-0012-03` 的 `.loaded` 一段需实现节点把探针面板换成生产 `MessageBodyView`/`MessageBodyStyle` 并链 WebKit（`SCN-0010` 的 `AppearanceProbe` 已有离屏 WKWebView 先例）；头部在 switch 之外，`.loaded` 复用同一渲染路径，但不因此免测。探针编译命令与限制见 `task-spaces/20261116-212545/evidence/header-probe/`。`SCN-0004`/`SCN-0010` 回归覆盖正文白底与 CSP。
 - 不做：可折叠/展开头部、每封布局切换、头像/发件人卡片、地址点击菜单、Bcc/Reply-To、真实 `Sent`。
 - 实现（2026-11-16，T-1116-09）：`Sources/uumail/MessageHeaderView.swift`（31 行）、`MessageBodyView.swift`（161 行，新增 `header:` 与 `.none` 两义收口）、`MailboxView.swift`（211 行，接线 `viewModel.headerPresentation`）已落地；`MessageWebView` 的白底/`.aqua`/CSP/禁 JS 未改。生产路径 `HeaderProbe` 覆盖 `T-SCN-0012-01..04` 与长 Cc 夹具，51 条断言全 `PASS`、`RESULT PASS`；R27 实测：完整头 96pt/正文 216pt（320pt）、默认窗口 900×560 下 96pt/456pt、长主题+12 收件人 107pt/204pt、长 Cc 127pt/184pt、`.loaded` 正文 194pt（320pt 面板）。`./Scripts/swiftw build`、`./Scripts/swiftw test`（254 tests / 47 suites）、架构 4 门通过。证据：`task-spaces/20261116-212545/evidence/header-probe/header-probe-prod.txt`、`evidence/t1116-09-build-test-arch.txt`。
+
+## 设计增量：工具栏归位、远程图片放行与手动置读（REQ-0018 / REQ-0019，2026-11-16，P2 已确认）
+
+- 来源：`REQ-0018` / `SCN-0013`、`REQ-0019` / `SCN-0014`。本增量只动 `CMP-APP` 的视图/工具栏；状态与写路径在 `CMP-PRES`（见其 2026-11-16 增量）；不改 `MessageWebView` 的 CSP/禁 JS/白底，不改 `MailDomain`/`MailStore`/`Scenes`，不新增 target/依赖。
+- 新文件 `Sources/uumail/MailboxToolbar.swift`（internal `ToolbarContent`，约 85 行；不新增组件/target）：
+
+  ```swift
+  struct MailboxToolbar: ToolbarContent {
+      struct State: Equatable {
+          var hasSelection: Bool
+          var allowsRemoteContent: Bool
+          var canAllowRemoteContent: Bool
+          var canMarkSelectedRead: Bool
+          var isSyncing: Bool
+      }
+      struct Actions {
+          var newMessage: () -> Void
+          var reply: () -> Void
+          var replyAll: () -> Void
+          var forward: () -> Void
+          var setAllowRemoteContent: (Bool) -> Void
+          var markSelectedRead: () -> Void
+          var refresh: () -> Void
+      }
+      let state: State
+      let actions: Actions
+      var body: some ToolbarContent { … }
+  }
+  ```
+
+  - 单一 `ToolbarItemGroup(placement: .primaryAction)`，顺序固定：新建 → 回复 → 全部回复 → 转发 → 加载远程图片 → 标记为已读 → 刷新。仍是**唯一**窗口工具栏，不新增第二条工具条/第二处入口。
+  - 远程图片入口用**带状态 Button**（`photo` / 开启时 `photo.fill`，`accessibilityLabel("加载远程图片")`、`accessibilityValue("已开启"/"已关闭")`、`.help` 动态文案），`!state.canAllowRemoteContent` 时禁用；点击 `actions.setAllowRemoteContent(!state.allowsRemoteContent)`。否决 `Toggle(.button)`：功能可行（设计探针也通过），但工具栏图标模式下按压态不如实心/描边图标直观；否决菜单项：隐藏入口、与「并列」不符。
+  - 「标记为已读」用 `Button`（`envelope.open`），`!state.canMarkSelectedRead` 时禁用，点击 `actions.markSelectedRead()`；只标已读，不做未读/批量/右键/快捷键。
+  - 既有动作的禁用条件不变：回复/全部回复/转发依赖 `hasSelection`，刷新依赖 `!isSyncing`，新建始终可用。
+  - 所有文案/图标集中在 `MailboxToolbar`；`MailboxView` 不读 `Message` 字段、不拼 CSP、不判业务。
+- `MailboxView` 变更：
+  - `.toolbar { MailboxToolbar(state: …, actions: …) }`；`state` 由 `viewModel` 派生（`hasSelection = selectedMessage != nil`、`allowsRemoteContent`、`canAllowRemoteContent`、`canMarkSelectedRead`、`isSyncing = sync.phase == .syncing`）。
+  - `actions` 只做接线：新建/回复/全部回复/转发设置 `compose`；刷新 `Task { await viewModel.refresh() }`；远程 `viewModel.setAllowsRemoteContent($0)`；置读 `viewModel.markSelectedRead()`。
+  - 状态栏：`deleteErrorText` 优先，其后显示 `markReadErrorText`（警告图标 + 单行中文），否则同步状态；不新增第二套文案。
+  - 阅读区传 `MessageBodyView(…, allowRemoteContent: viewModel.allowsRemoteContent)`；不新增 `@State`。
+- `MessageBodyView` 变更（internal 签名，无 public 契约）：
+  - 删除 `@State private var allowRemoteContent` 与 `.loaded` 分支里的 `Toggle("加载远程图片")` 行（R33 的结构修复：视图不再拥有放行状态）。
+  - 新增 `let allowRemoteContent: Bool`，只转交 `MessageWebView(html:allowRemoteContent:)`；正文状态机、附件条、截断 banner、头部均不变。`.loaded` 的远程入口行移除后，WebView 直接接在附件条/banner 之后。
+  - `MessageWebView` 的 `allowRemoteContent` 入参、`lastRender` guard、KVC 白底/`.aqua`/CSP 不变。
+- 尺寸：`MailboxView` 211 → 约 190（工具栏移出约 35 行、新增接线约 15 行）、`MessageBodyView` 161 → 约 150、新 `MailboxToolbar` 约 85；单文件 ≤300，`Sources/uumail` 655 → 约 710。
+- 验证：L2 工具栏探针（设计阶段已证：生产形状 `MailboxToolbar` + 离屏 `NSHostingController`，`NSToolbar.items` 可读 label/visible，`window.sendEvent` 可驱动/禁用，33 条断言 PASS；证据 `task-spaces/20261116-223645/evidence/toolbar-probe/`）。实现时把探针源换成生产 `Sources/uumail/MailboxToolbar.swift` 复跑 `RemoteContentToolbarProbe`/`ManualMarkReadProbe`（覆盖 `T-SCN-0013-01..04`/`T-SCN-0014-01..04` 的入口部分）；正文侧用 `RemoteContentBodyProbe` 编译生产 `MessageBodyView`/`MessageWebView`/`MessageBodyStyle`。不新增 `uumail` 测试 target。
+- 不改：工具栏以外的列表/侧栏/搜索/主题菜单/撰写/配置；`MessageWebView` 的白底/CSP/禁 JS；附件条/头部/banner；`UumailApp` 窗口下限（仍 900×560）。
+- P2 确认项：D4 工具栏形态/顺序；D5 远程入口用带状态 Button 而非 Toggle/菜单；D6 不可用时禁用而非隐藏；D7 L2 载体；D8 是否抽 `MailboxToolbar` 文件。详见 `task-spaces/20261116-223645/design.md` §8.2；确认记录见 `doc/history/decisions/2026-11-16-remote-toolbar-mark-read.md`（`frozen`，含 N6：`MailboxToolbar` 为 `CMP-APP` 内部文件、非新组件）。
+- 实现（2026-11-16，T-1116-13）：新 `Sources/uumail/MailboxToolbar.swift`（75 行，7 个紧凑图标入口，固定顺序）；`MailboxView.swift`（202 行）接入 `MailboxToolbar`、状态栏错误与阅读区放行参数；`MessageBodyView.swift`（155 行）删除正文 `@State` 与独立开关行，改为只读 `Bool`；`MessageWebView` 的 CSP/禁 JS/白底/`lastRender` 未改。`./Scripts/swiftw build` 通过，`./Scripts/swiftw test` 264 tests / 49 suites 通过，架构 4 门通过。L2 探针编译生产 `MailboxToolbar.swift`：`RemoteContentToolbarProbe` 28 PASS/0 FAIL、`ManualMarkReadProbe` 5 PASS/0 FAIL；`RemoteContentBodyProbe` 编译生产 `MessageBodyView`/`MessageWebView`/`MessageBodyStyle`，9 PASS/0 FAIL（正文无独立开关行、头部在开关前后保留、Bool→CSP 两档重载、CSP 精确值）。证据：`task-spaces/20261116-223645/evidence/t1116-13-build-test-arch.txt`、`evidence/t1116-13-toolbar/`。
