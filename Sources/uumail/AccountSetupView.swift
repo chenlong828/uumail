@@ -4,6 +4,7 @@ import SwiftUI
 struct AccountSetupView: View {
     @Bindable var viewModel: AccountSetupViewModel
     let onConnect: () async -> Void
+    @Environment(\.fontSizePreference) private var fontSize
 
     var body: some View {
         Form {
@@ -18,7 +19,7 @@ struct AccountSetupView: View {
             Section {
                 TextField("设备 ID", text: $viewModel.deviceID)
                 Text("必须是公司网关已登记并激活的设备 ID；未登记的设备会被网关静默丢弃。")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             } header: {
                 Text("设备身份（高级）")
@@ -26,7 +27,7 @@ struct AccountSetupView: View {
 
             if let errorText = viewModel.errorText {
                 Text(errorText)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.red)
             }
 
@@ -35,14 +36,31 @@ struct AccountSetupView: View {
                     ProgressView().controlSize(.small)
                 }
                 Spacer()
-                Button("连接") {
-                    Task { await onConnect() }
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(!viewModel.canConnect)
+                connectButton
             }
         }
         .formStyle(.grouped)
         .padding(24)
+    }
+
+    /// The string-title button ignores the environment font; keep it at 100% and scale
+    /// the label explicitly above 100%.
+    @ViewBuilder
+    private var connectButton: some View {
+        if fontSize == .percent100 {
+            Button("连接") {
+                Task { await onConnect() }
+            }
+            .keyboardShortcut(.defaultAction)
+            .disabled(!viewModel.canConnect)
+        } else {
+            Button {
+                Task { await onConnect() }
+            } label: {
+                Text("连接").font(fontSize.font(for: .body))
+            }
+            .keyboardShortcut(.defaultAction)
+            .disabled(!viewModel.canConnect)
+        }
     }
 }

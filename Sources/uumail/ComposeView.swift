@@ -4,6 +4,7 @@ import SwiftUI
 struct ComposeView: View {
     @Bindable var viewModel: ComposeViewModel
     let onClose: () -> Void
+    @Environment(\.fontSizePreference) private var fontSize
 
     var body: some View {
         VStack(spacing: 0) {
@@ -15,32 +16,66 @@ struct ComposeView: View {
             .padding(12)
             Divider()
             TextEditor(text: $viewModel.body)
-                .font(.body)
+                .scaledInheritedFont(.body)
                 .padding(8)
             Divider()
             HStack {
                 if let statusText = viewModel.statusText {
                     Label(statusText, systemImage: statusSymbol)
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(statusColor)
                         .lineLimit(1)
                 }
                 Spacer()
-                Button("存草稿") {
-                    if viewModel.saveDraft() { onClose() }
-                }
-                .disabled(viewModel.isSending)
-                Button("发送") {
-                    Task {
-                        if await viewModel.send() { onClose() }
-                    }
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(!viewModel.canSend)
+                saveDraftButton
+                sendButton
             }
             .padding(12)
         }
         .frame(minWidth: 640, minHeight: 460)
+    }
+
+    /// A string-title button ignores the environment font. Keep the production string
+    /// title at 100% (a custom label changes its height by 1pt) and scale the label
+    /// explicitly above 100%.
+    @ViewBuilder
+    private var saveDraftButton: some View {
+        if fontSize == .percent100 {
+            Button("存草稿") {
+                if viewModel.saveDraft() { onClose() }
+            }
+            .disabled(viewModel.isSending)
+        } else {
+            Button {
+                if viewModel.saveDraft() { onClose() }
+            } label: {
+                Text("存草稿").font(fontSize.font(for: .body))
+            }
+            .disabled(viewModel.isSending)
+        }
+    }
+
+    @ViewBuilder
+    private var sendButton: some View {
+        if fontSize == .percent100 {
+            Button("发送") {
+                Task {
+                    if await viewModel.send() { onClose() }
+                }
+            }
+            .keyboardShortcut(.defaultAction)
+            .disabled(!viewModel.canSend)
+        } else {
+            Button {
+                Task {
+                    if await viewModel.send() { onClose() }
+                }
+            } label: {
+                Text("发送").font(fontSize.font(for: .body))
+            }
+            .keyboardShortcut(.defaultAction)
+            .disabled(!viewModel.canSend)
+        }
     }
 
     private var statusSymbol: String {

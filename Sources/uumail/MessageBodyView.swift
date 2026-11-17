@@ -14,7 +14,27 @@ struct MessageBodyView: View {
     let onRetry: () -> Void
     let onOpenAttachment: (Attachment) async -> Void
 
+    @Environment(\.fontSizePreference) private var fontSize
+
+    /// 175% and 225% are the levels whose uncapped metadata region would leave less than
+    /// the 200pt reading floor (measured 164.5pt / 147.5pt at a conservative 480pt).
+    /// 120% and 145% measure 242.5pt / 205pt, so they keep their natural height and the
+    /// production nesting.
+    private var isCapped: Bool {
+        (fontSize == .percent175 || fontSize == .percent225) && header != nil
+    }
+
     var body: some View {
+        if isCapped {
+            capped
+        } else {
+            natural
+        }
+    }
+
+    /// 100/120/145%: the production nesting exactly — header, divider, then the body
+    /// switch. The outer frame stays where it was so the 100% layout is unchanged.
+    private var natural: some View {
         VStack(spacing: 0) {
             if let header {
                 MessageHeaderView(header: header)
@@ -25,61 +45,133 @@ struct MessageBodyView: View {
         }
     }
 
+    /// 175/225%: header + attachment strip + banner share one 220pt scrollable metadata
+    /// region; the WebView gets the remaining height (259pt at the conservative 480pt
+    /// content height, 339pt at 560pt).
+    private var capped: some View {
+        VStack(spacing: 0) {
+            ScrollView(.vertical) {
+                VStack(spacing: 0) {
+                    if let header {
+                        MessageHeaderView(header: header)
+                    }
+                    if case .loaded(_, let isTruncated) = bodyPresentation {
+                        attachmentStrip
+                        bannerRow(isTruncated: isTruncated)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 220)
+            Divider()
+            if case .loaded(let html, _) = bodyPresentation {
+                MessageWebView(
+                    html: html,
+                    allowRemoteContent: allowRemoteContent,
+                    fontSize: fontSize
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                bodyState
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+    }
+
     /// The header stays outside the body switch so every body state shares it (R28).
     @ViewBuilder
     private var bodyContent: some View {
+        if case .loaded(let html, let isTruncated) = bodyPresentation {
+            VStack(spacing: 0) {
+                attachmentStrip
+                bannerRow(isTruncated: isTruncated)
+                Divider()
+                MessageWebView(
+                    html: html,
+                    allowRemoteContent: allowRemoteContent,
+                    fontSize: fontSize
+                )
+            }
+        } else {
+            bodyState
+        }
+    }
+
+    @ViewBuilder
+    private var bodyState: some View {
         switch bodyPresentation {
         case .none where header == nil:
-            ContentUnavailableView("选择一封邮件", systemImage: "envelope.open")
-                .textSelection(.enabled)
+            EmptyState(title: "选择一封邮件", systemImage: "envelope.open", isSelectable: true)
         case .none, .loading:
             ProgressView("正在获取正文…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .failed(let message):
-            ContentUnavailableView {
-                Label("正文获取失败", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(message).font(.caption)
-            } actions: {
-                Button("重试", action: onRetry)
-            }
-        case .loaded(let html, let isTruncated):
-            VStack(spacing: 0) {
-                if !attachments.isEmpty {
-                    HStack(spacing: 8) {
-                        ForEach(attachments) { attachment in
-                            Button {
-                                Task { await onOpenAttachment(attachment) }
-                            } label: {
-                                Label(attachment.displayName, systemImage: "paperclip")
-                                    .lineLimit(1)
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                        }
-                        Spacer()
+            EmptyState(
+                title: "正文获取失败",
+                systemImage: "exclamationmark.triangle",
+                description: message,
+                descriptionStyle: .caption,
+                actionTitle: "重试",
+                action: onRetry
+            )
+        case .loaded:
+            EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private var attachmentStrip: some View {
+        if !attachments.isEmpty {
+            HStack(spacing: 8) {
+                ForEach(attachments) { attachment in
+                    Button {
+                        Task { await onOpenAttachment(attachment) }
+                    } label: {
+                        Label(attachment.displayName, systemImage: "paperclip")
+                            .scaledInheritedFont(.body)
+                            .lineLimit(1)
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.top, 6)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                 }
-                if let banner = banner(for: isTruncated) {
-                    HStack(spacing: 6) {
-                        Image(systemName: banner.symbol)
-                        Text(banner.text)
-                        if banner.allowsRetry {
-                            Button("重试", action: onRetry)
-                                .buttonStyle(.link)
-                        }
-                        Spacer()
-                    }
-                    .font(.caption)
-                    .foregroundStyle(banner.isProblem ? Color.orange : Color.secondary)
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 6)
-                }
-                Divider()
-                MessageWebView(html: html, allowRemoteContent: allowRemoteContent)
+                Spacer()
             }
+            .padding(.horizontal, 12)
+            .padding(.top, 6)
+        }
+    }
+
+    @ViewBuilder
+    private func bannerRow(isTruncated: Bool) -> some View {
+        if let banner = banner(for: isTruncated) {
+            HStack(spacing: 6) {
+                Image(systemName: banner.symbol)
+                Text(banner.text)
+                if banner.allowsRetry {
+                    retryButton
+                }
+                Spacer()
+            }
+            .scaledFont(.caption)
+            .foregroundStyle(banner.isProblem ? Color.orange : Color.secondary)
+            .padding(.horizontal, 12)
+            .padding(.bottom, 6)
+        }
+    }
+
+    /// Keep the production string-title button at 100% (a custom label changes the
+    /// button's intrinsic height by 1pt); above 100% the string title ignores the
+    /// environment font, so the label is scaled explicitly.
+    @ViewBuilder
+    private var retryButton: some View {
+        if fontSize == .percent100 {
+            Button("重试", action: onRetry)
+                .buttonStyle(.link)
+        } else {
+            Button(action: onRetry) {
+                Text("重试").font(fontSize.font(for: .caption))
+            }
+            .buttonStyle(.link)
         }
     }
 
@@ -121,6 +213,7 @@ struct MessageBodyView: View {
 struct MessageWebView: NSViewRepresentable {
     let html: String
     let allowRemoteContent: Bool
+    let fontSize: FontSizePreference
 
     func makeNSView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
@@ -133,6 +226,9 @@ struct MessageWebView: NSViewRepresentable {
         webView.setValue(true, forKey: "drawsBackground")
         webView.underPageBackgroundColor = .white
         webView.appearance = NSAppearance(named: .aqua)
+        // First frame already carries the preference, so the body does not render at
+        // 1.0 and then jump to the selected level.
+        webView.pageZoom = CGFloat(fontSize.scale)
         return webView
     }
 
@@ -141,6 +237,11 @@ struct MessageWebView: NSViewRepresentable {
         // the render guard so a theme change never reloads the body (R24).
         if webView.appearance?.name != .aqua {
             webView.appearance = NSAppearance(named: .aqua)
+        }
+        // Font size changes only the render zoom; it must stay outside the render guard
+        // so the document is never reloaded (REQ-0020 immediate effect).
+        if webView.pageZoom != CGFloat(fontSize.scale) {
+            webView.pageZoom = CGFloat(fontSize.scale)
         }
         guard context.coordinator.lastRender != "\(allowRemoteContent)|\(html)" else { return }
         context.coordinator.lastRender = "\(allowRemoteContent)|\(html)"

@@ -13,6 +13,7 @@ struct MailboxView: View {
         NavigationSplitView {
             List(viewModel.folders, id: \.serverID, selection: folderSelection) { folder in
                 Label(folder.displayName, systemImage: icon(for: folder.type))
+                    .scaledInheritedFont(.body)
                     .tag(folder.serverID)
             }
             .navigationSplitViewColumnWidth(min: 180, ideal: 220)
@@ -114,16 +115,17 @@ struct MailboxView: View {
                         .frame(width: 6, height: 6)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(message.subject ?? "(无主题)")
+                            .scaledInheritedFont(.body)
                             .fontWeight(message.isRead ? .regular : .semibold)
                             .lineLimit(1)
                         Text(DisplayFormat.senderName(message.sender))
-                            .font(.caption)
+                            .scaledFont(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
                     Spacer()
                     Text(DisplayFormat.messageDate(message.receivedRaw))
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
                 .padding(.vertical, 2)
@@ -144,8 +146,8 @@ struct MailboxView: View {
         }
         .overlay {
             if viewModel.visibleMessages.isEmpty {
-                ContentUnavailableView(
-                    viewModel.sync.phase == .syncing ? "正在同步…" : "没有邮件",
+                EmptyState(
+                    title: viewModel.sync.phase == .syncing ? "正在同步…" : "没有邮件",
                     systemImage: "tray"
                 )
             }
@@ -174,8 +176,10 @@ struct MailboxView: View {
             }
             Spacer()
             Text("\(viewModel.visibleMessages.count) 封")
+                // 225% truncates the status text; the count must stay visible.
+                .layoutPriority(1)
         }
-        .font(.caption)
+        .scaledFont(.caption)
         .foregroundStyle(.secondary)
         .padding(.horizontal, 12)
         .padding(.vertical, 6)

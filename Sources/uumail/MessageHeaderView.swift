@@ -6,18 +6,21 @@ import SwiftUI
 /// `MessageHeaderPresentation`).
 struct MessageHeaderView: View {
     let header: MessageHeaderPresentation
+    @Environment(\.fontSizePreference) private var fontSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(header.subject)
-                .font(.headline)
+                .scaledFont(.headline)
                 .lineLimit(2)
             ForEach(header.rows) { row in
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(row.label)
+                        .scaledInheritedFont(.body)
                         .foregroundStyle(.secondary)
-                        .frame(width: 44, alignment: .trailing)
+                        .frame(width: 44 * fontSize.scaleFactor, alignment: .trailing)
                     Text(row.value)
+                        .scaledInheritedFont(.body)
                         .lineLimit(row.lineLimit)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
