@@ -64,4 +64,35 @@ public enum DisplayFormat {
         formatter.dateFormat = "MM-dd HH:mm"
         return formatter.string(from: date)
     }
+
+    /// The line above a quoted reply: `2026年11月9日 20:11，Playasia <…> 写道：`.
+    /// The HTML document escapes it; this function only formats the text.
+    public static func quoteHeader(sender: String?, receivedRaw: String?) -> String {
+        let date = longDate(receivedRaw)
+        let who = sender?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        switch (date.isEmpty, who.isEmpty) {
+        case (false, false): return "\(date)，\(who) 写道："
+        case (false, true): return "\(date) 写道："
+        case (true, false): return "\(who) 写道："
+        case (true, true): return "原邮件"
+        }
+    }
+
+    /// `2026年11月9日 20:11` in the user's time zone; empty when the raw value is absent
+    /// or unparseable.
+    public static func longDate(_ raw: String?) -> String {
+        guard let raw, !raw.isEmpty else { return "" }
+        let parser = ISO8601DateFormatter()
+        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        var date = parser.date(from: raw)
+        if date == nil {
+            parser.formatOptions = [.withInternetDateTime]
+            date = parser.date(from: raw)
+        }
+        guard let date else { return "" }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "yyyy年M月d日 HH:mm"
+        return formatter.string(from: date)
+    }
 }

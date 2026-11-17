@@ -207,3 +207,13 @@ component: CMP-APP
 - 不改：`MailboxToolbar` 的 7 个动作与顺序、主题菜单三项、`MessageBodyStyle` 的 100% `baseCSS`、`MessageWebView` 的 CSP/白底/禁 JS、`lastRender` 键、窗口下限、`MailDomain`/`MailStore`/`Scenes` 契约、schema/协议/依赖/target。
 - P2 默认确认项（未经人工）：D1 界面机制；D2 正文 pageZoom；D3 偏好形态；D4 菜单/相邻；D5 100% 恒等；D6 225% 预算；D7 空态/按钮；D8 测试载体；D9 回归口径；D10 级别。详见 `task-spaces/20261117-071134/design.md` §10.2；确认记录见 `doc/history/decisions/2026-11-17-font-size.md`。
 - 实现状态：**未实现**（本节点只落设计）。实现后按 `SCN-0015` 的 `T-SCN-0015-01..04` 验证；不翻转 `verified`/`delivered`。
+
+## 设计增量：HTML 撰写 sheet、格式栏、取消与等宽（REQ-0021，2026-11-17）
+
+- `ComposeView`（172 行）重写：标题（新邮件/回复/全部回复/转发）+ 右上 `xmark`；收件人/抄送/主题 `Form`；`ComposeFormatBar`；`ComposeEditor`；底部「取消 / 状态 / 存草稿 / 发送」。发送/存草稿/取消前先 `await editor.capture()` 并 `setEditorHTML`；取消用 `hasEdits` 决定直接关闭或 `confirmationDialog("放弃这封邮件？")`；`.interactiveDismissDisabled()`；成功发送/存草稿后 `onClose()`。按钮沿用「100% 字符串标题、>100% 显式缩放 label」的字号基线规则。
+- `ComposeEditor`（173 行）/`ComposeEditorHandle`：WKWebView、`allowsContentJavaScript = true`、非持久数据仓库、白底、`pageZoom = fontSize.scale`；`didFinish` 把光标放到 `uumail-reply-start` 并滚到顶部，再 `outerHTML` → `ComposeDocument.emailHTML(fromEditorDocument:)` 作为 `editorDidLoad` 基线；`capture()` 用 continuation 回读；`perform(_:)` 先让 WebView 成为 first responder 再注入 `ComposeFormatCommand`（`execCommand` + Range 字号）。`updateNSView` 只更新 `pageZoom`，不重载文档。
+- `ComposeFormatBar`（75 行）：加粗/斜体/下划线/删除线、字号（13/16/20/24pt）、左/中/右对齐、项目符号/编号、清除格式；按钮 `.focusable(false)` 保留 WebView 选区；横向 ScrollView 适配窄 sheet。
+- `MailboxView`：`@State readingPaneSize`；detail 列 `GeometryReader` 的 `onAppear`/`onChange` 更新；`ComposeView(preferredWidth:preferredHeight:)` 宽 = `max(detailWidth, 480)`、高 = `460…820`，sheet 居中。阅读区/窗口最小尺寸不变。
+- 安全/不变：编辑器 CSP 无 `script-src`，发件人脚本不执行；格式命令由 app 注入；发送内容不含编辑器 CSP/样式/contenteditable；远程图片沿用阅读区开关。
+- 测试：`PresentationTests/ComposeDocumentTests` + `ComposeViewModelTests`（L1）；L2 真实 App 冒烟：sheet `1441×820`、detail `1440×987`（等宽）、「取消」/格式栏/抬头/全宽正文可见（`task-spaces/20261117-1140-html-reply/evidence/ui-smoke.md`）；WebKit 探针：contenteditable/`execCommand`/outerHTML/CSP（`evidence/webkit-smoke.txt`）。
+- 尺寸：`Sources/uumail` 新增两个文件 248 行，`ComposeView` 172、`ComposeEditor` 173、`ComposeFormatBar` 75，单文件均 ≤300；无新增 target/依赖。

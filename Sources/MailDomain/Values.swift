@@ -177,7 +177,12 @@ public struct Draft: Equatable, Sendable {
     public var to: String
     public var cc: String?
     public var subject: String
+    /// Plain-text alternative. Always present; when `bodyHTML` is set it is the
+    /// readable fallback for clients that cannot render HTML.
     public var body: String
+    /// Full HTML document for the outgoing mail. `nil` keeps the plain-text-only MIME
+    /// shape (compatible extension: old rows and CLI drafts read back as `nil`).
+    public var bodyHTML: String?
     public var inReplyTo: String?
     public var references: String?
     public var isDraft: Bool
@@ -189,12 +194,14 @@ public struct Draft: Equatable, Sendable {
         body: String,
         inReplyTo: String? = nil,
         references: String? = nil,
-        isDraft: Bool = false
+        isDraft: Bool = false,
+        bodyHTML: String? = nil
     ) {
         self.to = to
         self.cc = cc
         self.subject = subject
         self.body = body
+        self.bodyHTML = bodyHTML
         self.inReplyTo = inReplyTo
         self.references = references
         self.isDraft = isDraft
@@ -208,6 +215,8 @@ public struct OutboxItem: Equatable, Sendable {
     public var cc: String?
     public var subject: String
     public var body: String
+    /// HTML alternative stored with the row; `nil` for pre-v10 rows and plain drafts.
+    public var bodyHTML: String?
     public var inReplyTo: String?
     public var references: String?
     public var state: String
@@ -227,13 +236,15 @@ public struct OutboxItem: Equatable, Sendable {
         state: String,
         attempts: Int,
         lastError: String?,
-        nextAttemptAt: Date? = nil
+        nextAttemptAt: Date? = nil,
+        bodyHTML: String? = nil
     ) {
         self.id = id
         self.to = to
         self.cc = cc
         self.subject = subject
         self.body = body
+        self.bodyHTML = bodyHTML
         self.inReplyTo = inReplyTo
         self.references = references
         self.state = state

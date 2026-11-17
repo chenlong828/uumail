@@ -100,3 +100,15 @@ component: CMP-SCN-COMPOSE
 - 不变：`replySeed` 与 `forwardSeed` 的行为（单回复仍只填发件人、Cc 空；转发收件人为空）；`send`/`saveDraft` 的入队语义。
 - 尺寸：`ComposeScene.swift` 127 → 152 行（新增 25 行，含注释）；未把解析逻辑搬进 `Scenes`。
 - 测试：`ScenesTests/ComposeSceneTests.swift` 6 → 9 例，新增「正常发件人+To+Cc」「畸形头/重复/自己」「账号不可读不排除」；正常例同时断言 `Re:` 与引用规则，账号不可读例断言既有 `RE:` 前缀不重复。
+
+## 设计增量：HTML 引用种子与 quotedHeader（REQ-0021，2026-11-17）
+
+- 公开签名扩展（兼容，默认参数）：
+  ```swift
+  public func replySeed(to message: Message, bodyHTML: String?, quotedHeader: String? = nil) -> Draft
+  public func replyAllSeed(to message: Message, bodyHTML: String?, account: AccountID, quotedHeader: String? = nil) -> Draft
+  public func forwardSeed(from message: Message, bodyHTML: String?, quotedHeader: String? = nil) -> Draft
+  ```
+- 行为：`HTMLText.quotedEmail(header:originalHTML:)` 生成完整 HTML 文档（`uumail-reply-start` 空行、全宽引文容器、12px 灰字抬头、清洗后的原正文）；`body` 由 `HTMLText.plainText(from:)` 同源生成。`quotedHeader` 由 `Presentation.DisplayFormat.quoteHeader` 传入（日期+发件人+写道：）；nil 时回退 `原邮件`，转发回退 `---------- 转发邮件 ----------`。不缩进、不用 `<blockquote>`/`margin-left`。`replyAllSeed` 只把 `bodyHTML` 带过去，地址规则不动。
+- 不变：`send` 只入队、`saveDraft` 不入队、主题前缀规则、`In-Reply-To`/`References` 既有行为；不新增依赖。
+- 测试：`ScenesTests/ComposeSceneTests.replySeedRules`、`.replySeedSanitisesOriginal`、`.forwardSeedRules`、`.replyAllFillsSenderAndOriginalRecipients`、`.replyAllUsesBackfilledCc`（旧行 nil）；全量 292 tests / 51 suites。

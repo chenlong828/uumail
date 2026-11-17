@@ -157,5 +157,11 @@ enum MailStoreMigrations {
             try db.execute(sql: "ALTER TABLE messages ADD COLUMN cc TEXT")
             try db.execute(sql: "UPDATE sync_state SET sync_key = '0' WHERE collection <> 'folders'")
         }
+        // Outbox v3 (REQ-0021 / SCN-0016): an optional HTML alternative next to the
+        // plain-text body. Additive and forward-only: old rows keep NULL and still
+        // deliver as text/plain.
+        migrator.registerMigration("v10_outbox_html") { db in
+            try db.execute(sql: "ALTER TABLE outbox ADD COLUMN body_html TEXT")
+        }
     }
 }

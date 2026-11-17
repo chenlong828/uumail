@@ -68,16 +68,52 @@ struct ComposeSceneTests {
         #expect(await gateway.sendCalls == 0)
     }
 
-    @Test("reply seed uses Re:, the sender address and the quote marker")
+    @Test("reply seed carries the original HTML at full width and a dated header")
     func replySeedRules() throws {
         let scene = try makeSceneWithoutStore()
         let message = Message(serverID: "m1", subject: "周报", sender: "\"张三\" <z@corp.com>")
 
-        let draft = scene.replySeed(to: message, bodyHTML: "<p>第一行<br>第二行</p>")
+        let draft = scene.replySeed(
+            to: message,
+            bodyHTML: "<p>第一行<br>第二行</p>",
+            quotedHeader: "2026年11月9日 20:11，张三 <z@corp.com> 写道："
+        )
 
         #expect(draft.to == "z@corp.com")
         #expect(draft.subject == "Re: 周报")
-        #expect(draft.body == "\n\n--- 原邮件 ---\n第一行\n第二行")
+        let html = try #require(draft.bodyHTML)
+        #expect(html.hasPrefix("<!DOCTYPE html>"))
+        #expect(html.contains("2026年11月9日 20:11"))
+        #expect(html.contains("张三 &lt;z@corp.com&gt; 写道："))
+        #expect(html.contains("<p>第一行<br>第二行</p>"), "the original markup is kept")
+        #expect(!html.lowercased().contains("<blockquote"), "the quote is not indented")
+        #expect(!html.lowercased().contains("margin-left"), "no left offset on the quote")
+        #expect(draft.body.contains("2026年11月9日 20:11"))
+        #expect(draft.body.contains("第一行\n第二行"))
+    }
+
+    @Test("reply seed drops scripts, iframes and event handlers from the quoted original")
+    func replySeedSanitisesOriginal() throws {
+        let scene = try makeSceneWithoutStore()
+        let message = Message(serverID: "m1", subject: "周报", sender: "z@corp.com")
+
+        let draft = scene.replySeed(
+            to: message,
+            bodyHTML: """
+            <p onclick="steal()">safe</p>
+            <script>alert(1)</script>
+            <iframe src="https://tracker.test"></iframe>
+            <a href="javascript:alert(2)">link</a>
+            """
+        )
+
+        let html = try #require(draft.bodyHTML)
+        #expect(!html.lowercased().contains("<script"))
+        #expect(!html.lowercased().contains("<iframe"))
+        #expect(!html.lowercased().contains("onclick"))
+        #expect(!html.lowercased().contains("javascript:"))
+        #expect(html.contains("safe"))
+        #expect(html.contains(">link<"))
     }
 
     @Test("forward seed uses Fwd: and keeps the message body quoted")
@@ -89,7 +125,9 @@ struct ComposeSceneTests {
 
         #expect(draft.to.isEmpty, "forward starts without a recipient")
         #expect(draft.subject == "Fwd: Re: 周报")
-        #expect(draft.body == "\n\n--- 转发邮件 ---\n原文")
+        #expect(try #require(draft.bodyHTML).contains("---------- 转发邮件 ----------"))
+        #expect(draft.body.contains("---------- 转发邮件 ----------"))
+        #expect(draft.body.contains("原文"))
     }
 
     @Test("existing prefixes and empty subjects follow the old rules")
@@ -108,7 +146,8 @@ struct ComposeSceneTests {
         )
         #expect(noSubject.subject == "Re: (无主题)")
         #expect(noSubject.to.isEmpty)
-        #expect(noSubject.body == "\n\n--- 原邮件 ---\n")
+        #expect(noSubject.body == "原邮件")
+        #expect(try #require(noSubject.bodyHTML).contains("原邮件"))
     }
 
     @Test("replyAll seeds the sender and original To/Cc, deduplicated and excluding the account")
@@ -131,7 +170,9 @@ struct ComposeSceneTests {
         #expect(draft.to == "z@corp.test; a@corp.test; b@corp.test")
         #expect(draft.cc == "c@corp.test", "z@ is already in To and must not repeat in Cc")
         #expect(draft.subject == "Re: 周报")
-        #expect(draft.body == "\n\n--- 原邮件 ---\n第一行\n第二行")
+        #expect(draft.body.contains("原邮件"))
+        #expect(draft.body.contains("第一行\n第二行"))
+        #expect(try #require(draft.bodyHTML).contains("<p>第一行<br>第二行</p>"))
     }
 
     @Test("replyAll reads the Cc written by the post-migration backfill")
@@ -149,6 +190,8 @@ struct ComposeSceneTests {
         let migrated = try #require(try store.messages(account: account, folder: "13").first)
         #expect(migrated.serverID == "101")
         #expect(migrated.cc == nil)
+        let legacyDraft = try #require(try store.outboxItem(account: account, id: OutboxID("old-outbox")))
+        #expect(legacyDraft.bodyHTML == nil, "pre-v10 rows read back as plain text only")
         #expect(try store.syncKey(account: account, collection: "13") == "0")
 
         // The next sync re-pulls the same message as `changed`; the Cc is coalesced in.
@@ -210,7 +253,7 @@ struct ComposeSceneTests {
         #expect(emptyDraft.to.isEmpty)
         #expect(emptyDraft.cc == nil)
         #expect(emptyDraft.subject == "Re: (无主题)")
-        #expect(emptyDraft.body == "\n\n--- 原邮件 ---\n")
+        #expect(emptyDraft.body == "原邮件")
     }
 
     @Test("replyAll keeps every address when the stored account cannot be read")
@@ -233,7 +276,8 @@ struct ComposeSceneTests {
         #expect(draft.to == "z@corp.test; a@corp.test")
         #expect(draft.cc == "me@corp.test", "without a readable account address nothing is excluded")
         #expect(draft.subject == "RE: 周报", "the existing Re: prefix is not duplicated")
-        #expect(draft.body == "\n\n--- 原邮件 ---\n原文")
+        #expect(draft.body.contains("原文"))
+        #expect(try #require(draft.bodyHTML).contains("<div>原文</div>"))
     }
 
     /// Seed rules need no mail data; this keeps those tests from sharing fixtures.
@@ -316,6 +360,30 @@ private func makePreV9Database(at path: String) throws {
             CREATE VIRTUAL TABLE messages_fts USING fts5(
                 subject, sender, body, tokenize='trigram'
             );
+
+            CREATE TABLE outbox (
+                id TEXT PRIMARY KEY,
+                account_id TEXT NOT NULL,
+                to_recipients TEXT NOT NULL,
+                cc TEXT,
+                subject TEXT NOT NULL,
+                body TEXT NOT NULL,
+                in_reply_to TEXT,
+                refs TEXT,
+                is_draft INTEGER NOT NULL DEFAULT 0,
+                state TEXT NOT NULL,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                last_error TEXT,
+                created_at REAL NOT NULL,
+                updated_at REAL NOT NULL,
+                sending_since REAL,
+                next_attempt_at REAL
+            );
+
+            INSERT INTO outbox (id, account_id, to_recipients, cc, subject, body, is_draft, state,
+                                attempts, created_at, updated_at)
+            VALUES ('old-outbox', 'account-1', 'a@corp.test', NULL, '旧草稿', '旧正文', 1, 'draft',
+                    0, 1700000000, 1700000000);
 
             INSERT INTO accounts (id, display_name, address, host, state, created_at)
             VALUES ('account-1', 'J Doe', 'jdoe@corp.test', 'mail.corp.test', 'ready', 1700000000);

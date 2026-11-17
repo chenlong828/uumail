@@ -472,12 +472,13 @@ public final class MailStore: @unchecked Sendable {
             try db.execute(
                 sql: """
                     INSERT INTO outbox (id, account_id, to_recipients, cc, subject, body,
-                                        in_reply_to, refs, is_draft, state, attempts,
+                                        body_html, in_reply_to, refs, is_draft, state, attempts,
                                         created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
                     """,
                 arguments: [outboxID, id.raw, draft.to, draft.cc ?? "", draft.subject, draft.body,
-                            draft.inReplyTo, draft.references, draft.isDraft ? 1 : 0, state, now, now]
+                            draft.bodyHTML, draft.inReplyTo, draft.references,
+                            draft.isDraft ? 1 : 0, state, now, now]
             )
         }
         return outboxID
@@ -489,8 +490,8 @@ public final class MailStore: @unchecked Sendable {
             try Row.fetchAll(
                 db,
                 sql: """
-                    SELECT id, to_recipients, cc, subject, body, in_reply_to, refs, state,
-                           attempts, last_error, next_attempt_at
+                    SELECT id, to_recipients, cc, subject, body, body_html, in_reply_to, refs,
+                           state, attempts, last_error, next_attempt_at
                     FROM outbox
                     WHERE account_id = ?
                       AND state IN ('queued', 'sending', 'failed_retryable', 'failed_permanent')
@@ -529,7 +530,7 @@ public final class MailStore: @unchecked Sendable {
                           ORDER BY created_at, id
                           LIMIT 1
                       )
-                    RETURNING id, to_recipients, cc, subject, body, in_reply_to, refs,
+                    RETURNING id, to_recipients, cc, subject, body, body_html, in_reply_to, refs,
                               state, attempts, last_error, next_attempt_at
                     """,
                 arguments: [stamp, stamp, id.raw, id.raw, stamp, expiredBefore]
@@ -620,8 +621,8 @@ public final class MailStore: @unchecked Sendable {
             try Row.fetchOne(
                 db,
                 sql: """
-                    SELECT id, to_recipients, cc, subject, body, in_reply_to, refs, state,
-                           attempts, last_error, next_attempt_at
+                    SELECT id, to_recipients, cc, subject, body, body_html, in_reply_to, refs,
+                           state, attempts, last_error, next_attempt_at
                     FROM outbox WHERE account_id = ? AND id = ?
                     """,
                 arguments: [id.raw, outboxID.raw]
@@ -635,7 +636,8 @@ public final class MailStore: @unchecked Sendable {
             id: row["id"], to: row["to_recipients"], cc: row["cc"], subject: row["subject"],
             body: row["body"], inReplyTo: row["in_reply_to"], references: row["refs"],
             state: row["state"], attempts: row["attempts"], lastError: row["last_error"],
-            nextAttemptAt: nextAttempt.map(Date.init(timeIntervalSince1970:))
+            nextAttemptAt: nextAttempt.map(Date.init(timeIntervalSince1970:)),
+            bodyHTML: row["body_html"]
         )
     }
 

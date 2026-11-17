@@ -85,7 +85,9 @@ struct ComposeViewModelTests {
         #expect(reply?.to == "zhang@corp.test")
         #expect(reply?.subject == "Re: 周报")
         #expect(reply?.body.contains("hello") == true)
-        #expect(reply?.body.contains("原邮件") == true)
+        #expect(reply?.body.contains("写道：") == true)
+        #expect(reply?.bodyHTML.contains("<p>hello</p>") == true)
+        #expect(reply?.bodyHTML.lowercased().contains("<blockquote") == false)
     }
 
     @Test("forward prefixes Fwd: and does not address anyone")
@@ -185,5 +187,60 @@ struct ComposeViewModelTests {
 
         compose.to = "a@corp.test"
         #expect(compose.canSend)
+    }
+
+    @Test("sending an HTML draft stores both the HTML and a readable text alternative")
+    func sendCarriesHTML() async throws {
+        let fixture = try makeMailboxFixture()
+        let compose = fixture.viewModel.composeNew()
+        compose.to = "a@b.c"
+        compose.subject = "hi"
+        let html = "<!DOCTYPE html><html><body><p>hello <b>world</b></p></body></html>"
+        compose.editorDidLoad(html)
+        compose.setEditorHTML(html)
+
+        #expect(await compose.send())
+        let pending = try #require(try fixture.store.pendingOutbox(account: fixture.account).first)
+        #expect(pending.bodyHTML == html)
+        #expect(pending.body == "hello world", "the plain-text part is derived from the edited HTML")
+    }
+
+    @Test("cancel compares against the editor's normalised baseline, not the seed string")
+    func cancelBaseline() throws {
+        let fixture = try makeMailboxFixture()
+        let compose = fixture.viewModel.composeNew()
+        #expect(!compose.hasEdits)
+
+        let empty = "<!DOCTYPE html><html><body><div><br></div></body></html>"
+        compose.editorDidLoad(empty)
+        #expect(!compose.hasEdits)
+
+        compose.setEditorHTML("<!DOCTYPE html><html><body><div>hi</div></body></html>")
+        #expect(compose.hasEdits)
+
+        compose.setEditorHTML(empty)
+        #expect(!compose.hasEdits)
+
+        compose.to = "a@b.c"
+        #expect(compose.hasEdits, "an address change is an edit too")
+    }
+
+    @Test("a freshly opened reply is not dirty after the editor normalises its HTML")
+    func replyNormalisedSeedIsNotDirty() throws {
+        let fixture = try makeMailboxFixture()
+        let message = presentationMessage("1", subject: "周报", sender: "z@corp.test")
+        let reply = ComposeViewModel(
+            replyTo: message,
+            bodyHTML: "<p>hello</p>",
+            scene: fixture.composeScene,
+            account: fixture.account
+        )
+
+        let editor = ComposeDocument.editorDocument(emailHTML: reply.bodyHTML, allowRemoteContent: false)
+        reply.editorDidLoad(ComposeDocument.emailHTML(fromEditorDocument: editor))
+
+        #expect(!reply.hasEdits)
+        reply.setEditorHTML(reply.bodyHTML + "<p>more</p>")
+        #expect(reply.hasEdits)
     }
 }

@@ -86,3 +86,10 @@ component: CMP-OUT
 
 - 失败件保留上限 24h / 100 条（T11）尚无清理实现；行会保留到成功、取消或手动重试。
 - UI 尚无 pending/failed 角标（`plan/risks.md` R13）。
+
+## 设计增量：multipart/alternative MIME（REQ-0021，2026-11-17）
+
+- `MimeBuilder.build`：`draft.bodyHTML` 非空白时输出 `Content-Type: multipart/alternative; boundary="uumail-<UUID>"`，第一段 `text/plain; charset=utf-8`、第二段 `text/html; charset=utf-8`，两段 `Content-Transfer-Encoding: base64`、76 列换行，末尾 `--boundary--`；无 HTML/空白时保持原单段 `text/plain` 逐字节形状。
+- 纯文本段来自 `Draft.body`（`ComposeViewModel` 从编辑 HTML 生成），HTML 段来自 `Draft.bodyHTML`；`Outbox.deliver` 从 `OutboxItem.bodyHTML` 重建 `Draft`，不丢 HTML。
+- 不变量：`send` 仍只入队、`ClientId = outboxID`、租约/退避/永久失败/取消状态机不变；`Cc:`/`In-Reply-To`/`References`/`Message-ID` 规则不变；MIME 仍是 opaque 字节交给 `MailGateway.send`。
+- 测试：`OutboxTests/OutboxMimeTests.mimeMultipart`（双段、base64、boundary 闭合）、`.blankHTMLFallsBack`（空白 HTML 回单段）、`OutboxDeliveryTests.deliversHTML`（outbox 行与投递 MIME 带 HTML）；既有 `mimeShape`/`deliversOnce` 不回归。

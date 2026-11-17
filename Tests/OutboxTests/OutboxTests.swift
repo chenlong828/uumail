@@ -62,6 +62,27 @@ struct OutboxDeliveryTests {
         #expect(mime.contains("@mail.corp.test>"))
     }
 
+    @Test("enqueue keeps bodyHTML and delivery sends a multipart alternative")
+    func deliversHTML() async throws {
+        let (store, account, gateway, _, outbox) = try fixture()
+        let html = "<!DOCTYPE html><html><body><p>hello</p></body></html>"
+        let draft = MailDraft(
+            to: "a@b.c", cc: nil, subject: "hi", body: "hello", bodyHTML: html
+        )
+        let id = try await outbox.enqueue(draft, account: account)
+
+        let stored = try #require(try store.outboxItem(account: account, id: id))
+        #expect(stored.bodyHTML == html)
+        #expect(stored.body == "hello")
+
+        let outcome = await outbox.flushOnce(account: account)
+        #expect(outcome == .sent(id))
+        let mime = String(decoding: await gateway.sentMIME[0], as: UTF8.self)
+        #expect(mime.contains("multipart/alternative"))
+        #expect(mime.contains("Content-Type: text/html; charset=utf-8"))
+        #expect(mime.contains(Data(html.utf8).base64EncodedString(options: [.lineLength76Characters])))
+    }
+
     @Test("flushOnce returns nil when nothing is deliverable")
     func nothingToDo() async throws {
         let (_, account, gateway, _, outbox) = try fixture()
@@ -349,5 +370,45 @@ struct OutboxMimeTests {
         #expect(text.contains("References: <id@x>"))
         #expect(text.contains("Content-Transfer-Encoding: base64"))
         #expect(text.contains(Data("line1\nline2".utf8).base64EncodedString(options: [.lineLength76Characters])))
+    }
+
+    @Test("an HTML body becomes multipart/alternative with both base64 payloads")
+    func mimeMultipart() {
+        let html = "<!DOCTYPE html><html><body><p>hello</p></body></html>"
+        let draft = Draft(
+            to: "a@b.c", cc: nil, subject: "hi", body: "hello\n", bodyHTML: html
+        )
+        let text = String(
+            decoding: MimeBuilder.build(from: "me@corp.test", draft: draft, messageID: "new@corp.test"),
+            as: UTF8.self
+        )
+
+        #expect(text.contains("Content-Type: multipart/alternative; boundary=\"uumail-"))
+        #expect(text.contains("Content-Type: text/plain; charset=utf-8"))
+        #expect(text.contains("Content-Type: text/html; charset=utf-8"))
+        #expect(text.contains(Data("hello\n".utf8).base64EncodedString(options: [.lineLength76Characters])))
+        #expect(text.contains(Data(html.utf8).base64EncodedString(options: [.lineLength76Characters])))
+        let marker = "boundary=\""
+        let start = text.range(of: marker)?.upperBound
+        let end = start.flatMap { text[$0...].firstIndex(of: "\"") }
+        let boundary = start.flatMap { start in end.map { String(text[start..<$0]) } }
+        #expect(boundary != nil)
+        if let boundary {
+            #expect(text.contains("--\(boundary)--"), "the multipart boundary is closed")
+        }
+    }
+
+    @Test("blank HTML keeps the plain-text-only MIME shape")
+    func blankHTMLFallsBack() {
+        let draft = Draft(
+            to: "a@b.c", cc: nil, subject: "hi", body: "text", bodyHTML: "   "
+        )
+        let text = String(
+            decoding: MimeBuilder.build(from: "me@corp.test", draft: draft, messageID: "new@corp.test"),
+            as: UTF8.self
+        )
+
+        #expect(text.contains("Content-Type: text/plain; charset=utf-8"))
+        #expect(!text.contains("multipart/alternative"))
     }
 }

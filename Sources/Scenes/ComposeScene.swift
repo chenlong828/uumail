@@ -17,14 +17,17 @@ public struct ComposeScene: Sendable {
     // MARK: - Seeds
 
     /// Reply seed: subject gets a `Re:` prefix (unless already present), the sender address
-    /// becomes the recipient, and the original body is quoted below the editor's cursor.
-    public func replySeed(to message: Message, bodyHTML: String?) -> Draft {
+    /// becomes the recipient, and the original mail is appended at full width under a
+    /// date/sender header. `quotedHeader` is formatted by Presentation; a missing one
+    /// falls back to the neutral `原邮件` marker.
+    public func replySeed(to message: Message, bodyHTML: String?, quotedHeader: String? = nil) -> Draft {
         let cleanSubject = Self.cleanSubject(message.subject)
-        return Draft(
+        return Self.seed(
             to: Self.address(from: message.sender),
             cc: nil,
             subject: cleanSubject.lowercased().hasPrefix("re:") ? cleanSubject : "Re: \(cleanSubject)",
-            body: "\n\n--- 原邮件 ---\n\(Self.plainText(from: bodyHTML ?? ""))"
+            header: quotedHeader ?? "原邮件",
+            bodyHTML: bodyHTML
         )
     }
 
@@ -33,8 +36,13 @@ public struct ComposeScene: Sendable {
     /// are parsed and de-duplicated by `AddressList`, the current account is excluded, and
     /// Cc drops anything already in To. A missing or unreadable account only disables
     /// self-exclusion; it is not an error here.
-    public func replyAllSeed(to message: Message, bodyHTML: String?, account: AccountID) -> Draft {
-        let reply = replySeed(to: message, bodyHTML: bodyHTML)
+    public func replyAllSeed(
+        to message: Message,
+        bodyHTML: String?,
+        account: AccountID,
+        quotedHeader: String? = nil
+    ) -> Draft {
+        let reply = replySeed(to: message, bodyHTML: bodyHTML, quotedHeader: quotedHeader)
         let ownAddress: String?
         do {
             ownAddress = try store.account(account)?.address
@@ -49,18 +57,24 @@ public struct ComposeScene: Sendable {
             to: recipients.text,
             cc: cc.isEmpty ? nil : cc.text,
             subject: reply.subject,
-            body: reply.body
+            body: reply.body,
+            bodyHTML: reply.bodyHTML
         )
     }
 
-    /// Forward seed: `Fwd:` subject prefix and the `--- 转发邮件 ---` quoting marker.
-    public func forwardSeed(from message: Message, bodyHTML: String?) -> Draft {
+    /// Forward seed: `Fwd:` subject prefix and the same full-width quoting layout.
+    public func forwardSeed(
+        from message: Message,
+        bodyHTML: String?,
+        quotedHeader: String? = nil
+    ) -> Draft {
         let cleanSubject = Self.cleanSubject(message.subject)
-        return Draft(
+        return Self.seed(
             to: "",
             cc: nil,
             subject: cleanSubject.lowercased().hasPrefix("fwd:") ? cleanSubject : "Fwd: \(cleanSubject)",
-            body: "\n\n--- 转发邮件 ---\n\(Self.plainText(from: bodyHTML ?? ""))"
+            header: quotedHeader ?? "---------- 转发邮件 ----------",
+            bodyHTML: bodyHTML
         )
     }
 
@@ -132,18 +146,17 @@ public struct ComposeScene: Sendable {
         return sender.trimmingCharacters(in: .whitespaces)
     }
 
-    /// Very small HTML-to-text conversion for quoting; the reading pane keeps the HTML.
-    private static func plainText(from html: String) -> String {
-        var text = html
-        for tag in ["<br>", "<br/>", "<br />", "</p>", "</div>", "</tr>"] {
-            text = text.replacingOccurrences(of: tag, with: "\n", options: .caseInsensitive)
-        }
-        while let open = text.firstIndex(of: "<"), let close = text[open...].firstIndex(of: ">") {
-            text.removeSubrange(open...close)
-        }
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-        return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    /// Builds the HTML document and its plain-text alternative from the same quoted
+    /// content, so the two MIME parts never disagree about what was included.
+    private static func seed(to: String, cc: String?, subject: String, header: String, bodyHTML: String?) -> Draft {
+        let html = HTMLText.quotedEmail(header: header, originalHTML: bodyHTML)
+        return Draft(
+            to: to,
+            cc: cc,
+            subject: subject,
+            body: HTMLText.plainText(from: html),
+            bodyHTML: html
+        )
     }
 
     private static func classify(_ error: Error) -> MailError {

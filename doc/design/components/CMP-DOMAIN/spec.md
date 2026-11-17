@@ -162,3 +162,10 @@ component: CMP-DOMAIN
 - 契约测试：`MailDomainTests` 只做编译期端口遵循；`EASAdapterTests`/`SyncEngineTests`/`MailStoreTests` 覆盖行为。
 
 **实现（2026-11-14）**：`Ports.swift` 的 `MailWriteGateway` 两方法已落地；`SyncStore` 增三方法，`MailStore` 实现并由 `SyncStoreConformance` 转发。`MailDomainTests` 的测试替身只覆盖端口形状；`MailWriteGateway` 未进入生产 target 的 nil/默认退化路径。全量 239 tests / 44 suites 绿（2026-11-14 回退重跑复测）。
+
+## 设计增量：Draft/OutboxItem 的 HTML 正文（REQ-0021，2026-11-17）
+
+- `Draft` 新增 `public var bodyHTML: String?`（init 末尾可选，默认 nil）；`OutboxItem` 同样新增可选 `bodyHTML`。语义：`body` 始终是纯文本替代（有 HTML 时由编辑器内容生成），`bodyHTML` 是完整 HTML 文档；`nil` 保持旧的纯文本 MIME 形状。
+- 兼容性：可选 + 默认 nil，既有 `Draft(...)` 调用、CLI `send`、旧 outbox 行（v10 前读出 nil）全部不破；`Equatable` 对旧值仍相等。`bodyHTML` 为 nil 或纯空白时 `MimeBuilder` 走单段 `text/plain`。
+- 不新增端口/错误类型；`MailDomain` 仍只 import Foundation。`body`/`bodyHTML` 的生成与清洗在 `Scenes.HTMLText`/`ComposeScene`，本组件只承载值。
+- 验证：编译期由 `ScenesTests`/`PresentationTests`/`OutboxTests` 构造带 HTML 的 `Draft` 覆盖；旧构造调用不回归（全量 292 tests / 51 suites）。

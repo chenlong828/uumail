@@ -129,7 +129,8 @@ public actor Outbox {
             subject: item.subject,
             body: item.body,
             inReplyTo: item.inReplyTo,
-            references: item.references
+            references: item.references,
+            bodyHTML: item.bodyHTML
         )
         let mime = MimeBuilder.build(
             from: storedAccount.address,

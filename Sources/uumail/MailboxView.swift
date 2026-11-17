@@ -7,6 +7,8 @@ struct MailboxView: View {
     @Bindable var viewModel: MailboxViewModel
     @State private var compose: ComposeViewModel?
     @State private var searchText = ""
+    /// The reading pane's current size; the compose sheet matches it (REQ-0021).
+    @State private var readingPaneSize = CGSize(width: 720, height: 560)
     @FocusState private var messageListFocused: Bool
 
     var body: some View {
@@ -64,22 +66,32 @@ struct MailboxView: View {
                 )
             }
             .sheet(item: $compose) { draft in
-                ComposeView(viewModel: draft, onClose: { compose = nil })
+                ComposeView(
+                    viewModel: draft,
+                    preferredWidth: readingPaneSize.width,
+                    preferredHeight: readingPaneSize.height,
+                    allowRemoteContent: viewModel.allowsRemoteContent,
+                    onClose: { compose = nil }
+                )
             }
         } detail: {
-            MessageBodyView(
-                header: viewModel.headerPresentation,
-                bodyPresentation: viewModel.body,
-                notice: viewModel.bodyNotice,
-                attachments: viewModel.attachments,
-                allowRemoteContent: viewModel.allowsRemoteContent,
-                onRetry: { Task { await viewModel.openSelected() } },
-                onOpenAttachment: { attachment in
-                    if let url = await viewModel.download(attachment) {
-                        NSWorkspace.shared.open(url)
+            GeometryReader { proxy in
+                MessageBodyView(
+                    header: viewModel.headerPresentation,
+                    bodyPresentation: viewModel.body,
+                    notice: viewModel.bodyNotice,
+                    attachments: viewModel.attachments,
+                    allowRemoteContent: viewModel.allowsRemoteContent,
+                    onRetry: { Task { await viewModel.openSelected() } },
+                    onOpenAttachment: { attachment in
+                        if let url = await viewModel.download(attachment) {
+                            NSWorkspace.shared.open(url)
+                        }
                     }
-                }
-            )
+                )
+                .onAppear { readingPaneSize = proxy.size }
+                .onChange(of: proxy.size) { _, size in readingPaneSize = size }
+            }
             .navigationTitle("阅读")
         }
     }

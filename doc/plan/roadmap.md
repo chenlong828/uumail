@@ -40,6 +40,7 @@ updated: 2026-11-17
 | W-M3-04 菜单主题与深色阅读白底 | M3 | W-M3-03；REQ-0015/0016 `delivered`；Q5/Q6/P2 已确认 | CMP-APP、CMP-PRES | 已完成（2026-11-16）：Q5 A + Q6 A + P2 确认（`history/decisions/2026-11-16-theme-appearance.md`）；`SCN-0010`/`SCN-0011` 落卡 `designed` 后转 `verified`；`ThemePreferenceStoreTests` 5 例、`AppearanceProbe`/`ThemeProbe`、全量 244 tests / 45 suites 与架构 4 门通过；REQ-0015/REQ-0016 已转 `delivered`；任务表见本文 §W-M3-04 任务表 |
 | W-M3-05 阅读页信封头 | M3 | W-M3-04；REQ-0017 `delivered`；SCN-0012 `verified`；P2（D1–D8）已确认（`history/decisions/2026-11-16-reading-pane-headers.md`） | CMP-PRES、CMP-APP | 已完成（2026-11-16）：`T-1116-07`（P2 确认门）已落盘，`T-1116-08`→`T-1116-09` 实现完成，`T-1116-10` 验证通过；出口达成：`SCN-0012` `verified`、`REQ-0017` `delivered`、`T-1116-07`…`T-1116-10` 完成；任务表见本文 §W-M3-05 任务表 |
 | W-M3-06 远程开关归位、手动置读与 3 秒自动已读 | M3 | W-M3-05；REQ-0013/REQ-0018/REQ-0019 `delivered`；SCN-0008/SCN-0013/SCN-0014 `verified`；P2（D1–D8）已确认（`history/decisions/2026-11-16-remote-toolbar-mark-read.md`） | CMP-PRES、CMP-APP | 已完成（2026-11-17）：确认门 `T-1116-11` 于 2026-11-16 落盘，`T-1116-12`/`T-1116-13` 实现完成，`T-1116-14`…`T-1116-16` 逐例验证通过（12/12 例子）；全量 269 tests / 49 suites、架构 4 门、三份 L2 探针 32/5/16 通过；`SCN-0008`/`SCN-0013`/`SCN-0014` 转 `verified`、`REQ-0013`/`REQ-0018`/`REQ-0019` 转 `delivered`；任务表见本文 §W-M3-06 |
+| W-M3-08 HTML 回复撰写 | M3 | W-M3-07；REQ-0021 `delivered`；SCN-0016 `verified`；P2（D1–D8）已登记（`history/decisions/2026-11-17-html-compose.md`） | CMP-DOMAIN、CMP-STORE、CMP-OUT、CMP-SCN-COMPOSE、CMP-PRES、CMP-APP | 已完成（2026-11-17）：`T-1117-20`…`T-1117-27`；`Draft/OutboxItem.bodyHTML`、outbox v10 `body_html`、`multipart/alternative`、全宽 HTML 引文、`ComposeDocument`、WKWebView 编辑器/格式栏/取消确认/sheet 等宽落地；`SCN-0016` 转 `verified`、`REQ-0021` 转 `delivered`；全量 292 tests / 51 suites、架构 4 门；真实 App UI 冒烟 sheet 1441pt = detail 1440pt；任务表见本文 §W-M3-08 任务表 |
 | W-SCN-REFACTOR 场景收口与分层重构 | M1/M2/M3 结构前置 | W-DOC-01、M4 结论 | 全仓 | 已完成（`history/works/2026-11-10-scene-refactor/`）：4 场景、9 库 + 2 可执行、159 测试、4 架构门 |
 
 ### W-SCN-REFACTOR 场景收口与分层重构（2026-11-14 完成）
@@ -259,6 +260,26 @@ P1 确认记录已归档为 `uumail/doc/history/decisions/2026-11-14-mail-write-
 | `T-1116-16` | `SCN-0014` §测试/§状态/§与相邻场景的边界；`SCN-0008`/`SCN-0004` 回归；探针输出 | ~1,800 行 | L1+L2；非 `MailError` 必须覆盖 |
 
 装载纪律：单任务 ≤2,000 行；若实现时发现必须跨第二个组件/契约或装载超限，先停下按批次纪律重拆，不静默扩大。所有 change 另读 `doc/design/architecture.md` §2/§3 的相关段落（约 100 行）并核对依赖方向未变。
+
+
+## W-M3-08 任务表（HTML 回复撰写）
+
+来源：`REQ-0021`（`delivered`）、`SCN-0016`（`verified`）、`history/decisions/2026-11-17-html-compose.md`（D1–D8）、`design/components/{CMP-DOMAIN,CMP-STORE,CMP-OUT,CMP-SCN-COMPOSE,CMP-PRES,CMP-APP}/spec.md` §2026-11-17 增量。
+
+**门已确认（2026-11-17，发起人对话）**：D1 `multipart/alternative`、D2 有改动二次确认、D3 回复/全部回复/转发/新邮件统一 HTML。D4–D8 为实现期默认，已登记在决策记录；P2 变更（public 可选字段、非核心表字段、跨模块 UI）按本记录放行。
+
+| 任务 | 类型 | 组件 | 规格锚点 | 状态 | 出口 |
+|---|---|---|---|---|---|
+| `T-1117-20` | `design` | 0 | `REQ-0021`；`SCN-0016`；六份组件增量；决策记录 | 已完成 | 需求/场景/契约/决策落盘；P2 三项人工确认 + 五项默认登记 |
+| `T-1117-21` | `change` | `CMP-DOMAIN` | `CMP-DOMAIN` §设计增量 | 已完成 | `Draft.bodyHTML`/`OutboxItem.bodyHTML` 可选默认 nil；既有构造/CLI 不回归；`./Scripts/swiftw test --filter ScenesTests` 绿 |
+| `T-1117-22` | `change` | `CMP-STORE` | `CMP-STORE` §设计增量 | 已完成 | v10 `body_html`、enqueue/select/map、旧行 nil；pre-v9 fixture 可迁移；`--filter MigrationTests`/`OutboxTests` 绿 |
+| `T-1117-23` | `change` | `CMP-OUT` | `CMP-OUT` §设计增量 | 已完成 | `multipart/alternative` 双段/base64/boundary；空白 HTML 回单段；`--filter OutboxTests` 绿 |
+| `T-1117-24` | `change` | `CMP-SCN-COMPOSE` | `CMP-SCN-COMPOSE` §设计增量 | 已完成 | `quotedHeader`、`HTMLText.quotedEmail`/`plainText`/清洗；全宽无缩进；`--filter ScenesTests` 绿 |
+| `T-1117-25` | `change` | `CMP-PRES` | `CMP-PRES` §设计增量 | 已完成 | `bodyHTML`/`editorDidLoad`/`setEditorHTML`/`hasEdits`、`ComposeDocument`、`quoteHeader`；`--filter PresentationTests` 绿 |
+| `T-1117-26` | `change` | `CMP-APP` | `CMP-APP` §设计增量 | 已完成 | `ComposeView`/`ComposeEditor`/`ComposeFormatBar`、取消确认、`GeometryReader` 等宽；`./Scripts/swiftw build` 绿 |
+| `T-1117-27` | `verify` | `SCN-0016` | `SCN-0016` §测试/§状态 | 已完成 | 3 正 1 反 L1 全绿；292 tests / 51 suites；架构 4 门；L2 UI 冒烟与 WebKit 探针登记；`SCN-0016` `verified`、`REQ-0021` `delivered` |
+
+边界：`T-1117-21`…`26` 各自只改一个组件；`T-1117-27` 只补测试/证据，不改产品代码。回退 = 按提交反向回退；schema 为 additive，回退后旧行 `body_html` 列保留但代码不读，下一次正常迁移可继续；不删除用户邮件数据。
 
 ## 批次纪律
 

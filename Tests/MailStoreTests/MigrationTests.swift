@@ -201,6 +201,25 @@ private func makePreV9Database(at path: String) throws {
                 created_at REAL NOT NULL
             );
 
+            CREATE TABLE outbox (
+                id TEXT PRIMARY KEY,
+                account_id TEXT NOT NULL,
+                to_recipients TEXT NOT NULL,
+                cc TEXT,
+                subject TEXT NOT NULL,
+                body TEXT NOT NULL,
+                in_reply_to TEXT,
+                refs TEXT,
+                is_draft INTEGER NOT NULL DEFAULT 0,
+                state TEXT NOT NULL,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                last_error TEXT,
+                created_at REAL NOT NULL,
+                updated_at REAL NOT NULL,
+                sending_since REAL,
+                next_attempt_at REAL
+            );
+
             CREATE TABLE folders (
                 account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
                 server_id TEXT NOT NULL,

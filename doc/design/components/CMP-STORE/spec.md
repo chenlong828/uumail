@@ -131,3 +131,10 @@ component: CMP-STORE
 - 测试：`MailStoreTests` 补「只改目标行」「已读幂等」「commit 与 key 同事务」「rollback 不推进 key」「重复软删幂等」「正文/附件表不动」「partial echo 不清空目标 subject/sender/date」；`MigrationTests` 不新增（无 schema 变更）。
 
 **实现（2026-11-14）**：`applySyncBatch` 与两个 `commit*` 共用 `applyDelta`；目标 `serverID` 的 `added/changed` 在写路径被排除，`removedServerIDs` 仍应用；`markRead` 只改目标未读行。`MailStoreTests` 48 例绿（写路径 6 例），组件总量 1000 行。
+
+## 设计增量：outbox v10 body_html（REQ-0021，2026-11-17）
+
+- 新增迁移 `v10_outbox_html`：`ALTER TABLE outbox ADD COLUMN body_html TEXT`。additive、forward-only；旧行保持 `NULL`，读出为 `OutboxItem.bodyHTML == nil`，投递仍走单段 `text/plain`。
+- 写路径：`enqueueOutbox` 的 INSERT 增加 `body_html`（来自 `Draft.bodyHTML`，可为 NULL）；`pendingOutbox`/`claimOutbox RETURNING`/`outboxItem`/`outboxItem(row:)` 全部带该列。`saveDraft` 复用同一写路径，草稿行同样保留 HTML。
+- 不变量：`body` 列仍必填；`body_html` 只在有 HTML 时写；schema 变更不改 `messages`/`message_bodies`/FTS/附件；不新增第二写入口。
+- 测试：`ScenesTests/ComposeSceneTests.replyAllUsesBackfilledCc` 的 pre-v9/v10 fixture 读到旧草稿 `bodyHTML == nil`；`OutboxTests/OutboxDeliveryTests.deliversHTML` 验证入队读出 HTML 并投递；`MigrationTests` pre-v9 fixture 已补 outbox 表，v10 在旧库上可执行。
