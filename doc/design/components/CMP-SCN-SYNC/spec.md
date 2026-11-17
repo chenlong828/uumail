@@ -2,7 +2,7 @@
 layer: design
 module: scenes
 status: active
-updated: 2026-11-14
+updated: 2026-11-17
 component: CMP-SCN-SYNC
 ---
 
@@ -43,13 +43,13 @@ component: CMP-SCN-SYNC
 
 - 前置：`SyncEngine` 已绑定账号；`startAutoRefresh` 重复调用先停旧循环。
 - 后置：`refresh` 返回时同步已结束（成功则库已提交）；`startAutoRefresh` 立即产出一个结果，之后每个间隔一个，直到暂停或消费者取消。
-- 不变量：单飞（并发调用共享同一结果）；通知失败不影响同步结果；`authFailed/deviceNotRegistered/policyBlocked` 后自动刷新流结束，手动刷新仍可走。
+- 不变量：单飞（并发调用共享同一结果）；通知失败不影响同步结果；`authFailed/policyBlocked` 后自动刷新流结束，手动刷新仍可走；`deviceNotRegistered` **不再**结束自动刷新流（2026-11-17：该信号与「sync 状态不可用」同形，一次误判会永久停掉唯一能自愈的循环；真实设备未放行仍每轮报同一文案）。
 - 错误模式：`RefreshOutcome.error` 透传 `MailError`；非 `MailError` 归为 `.offline`（`performRefresh` 的兜底）。
 - 幂等 / 顺序 / 并发：同一时刻只有一次 `syncOnce`；`startAutoRefresh` 可停止后重启。
 - 超时 / 取消：消费者取消 `AsyncStream` 即停止自动刷新任务；`stopAutoRefresh` 取消循环。
 - 一致性：`RefreshOutcome.at` 是发起时间；成功返回后读库即可见。
 - 兼容性：`SyncEngine.start/stop/stateStream` **未实现**，本场景只包 `syncOnce`；进度态可由 `SyncEngine.currentState()` 另读。
-- 契约测试：`ScenesTests/SyncSceneTests.swift` 4 例。
+- 契约测试：`ScenesTests/SyncSceneTests.swift` 5 例。
 
 ## 实现进度（2026-11-14）
 
@@ -58,6 +58,7 @@ component: CMP-SCN-SYNC
 | `refresh` 单飞 | ✅ | 「two concurrent refreshes share one SyncEngine run」 |
 | 通知条件（added>0、授权一次） | ✅ | 「new mail asks for permission once and posts the added count」「a refresh with no new mail posts nothing」 |
 | auth 失败暂停自动刷新、手动仍可 | ✅ | 「an auth failure is reported and pauses automatic refresh」 |
+| 设备未放行**不**停自动刷新、下一轮自愈 | ✅（2026-11-17） | 「a device rejection does not end the automatic refresh loop」 |
 | `stopAutoRefresh` / 取消 | ✅ | 随 `MailboxViewModel.stopAutoRefresh` 与流终止；未单列断言 |
 
 ## 验证计划

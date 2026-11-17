@@ -74,7 +74,7 @@ actor FakeGateway: MailGateway {
     private let bodyResult: FetchedBody?
     private let bodyError: MailError?
     private let probeError: MailError?
-    private let provisionError: MailError?
+    private var provisionError: MailError?
     private let folderError: MailError?
     private let attachmentData: Data?
     private let attachmentError: MailError?
@@ -102,6 +102,11 @@ actor FakeGateway: MailGateway {
         self.attachmentData = attachmentData
         self.attachmentError = attachmentError
         self.provisionDelay = provisionDelay
+    }
+
+    /// Lets a test flip a rejection off mid-stream (automatic-refresh recovery).
+    func setProvisionError(_ error: MailError?) {
+        provisionError = error
     }
 
     func probe() async throws -> ServerCapabilities {

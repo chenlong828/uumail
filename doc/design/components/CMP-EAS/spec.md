@@ -2,7 +2,7 @@
 layer: design
 module: eas
 status: active
-updated: 2026-11-14
+updated: 2026-11-17
 component: CMP-EAS
 ---
 
@@ -16,7 +16,7 @@ component: CMP-EAS
 - 业务价值：把 EAS 的 WBXML、HTTP、状态码、版本差异与网关怪癖收在一层。没有它，协议细节会渗进适配层与场景。
 - 负责 X：HTTP 传输与超时、查询参数与身份头、WBXML 编解码、命令组装、状态码 → `EASError`、协议版本与 PolicyKey 生命周期、限流前置判断。
 - 不负责 Y：业务状态机、存储、UI、重试预算与退避策略（调用方决定）；不直接实现 `MailGateway`（由 `EASAdapter` 负责）。
-- 内部逻辑：每次调用固定拼 `Cmd/User/DeviceId/DeviceType` 与 `X-MS-PolicyKey`；`OPTIONS` 走裸 URL；空 `200` 视为网关吞请求并映射为设备未登记；`Provision` 为两步握手，策略项不解析（T9）。
+- 内部逻辑：每次调用固定拼 `Cmd/User/DeviceId/DeviceType` 与 `X-MS-PolicyKey`；`OPTIONS` 走裸 URL；空 `200` 视为网关吞请求，**按命令分义**：`Sync` 的空响应/缺 `Collection/Status` 视为同步状态不可用（`syncKeyInvalid`，由调用方重建），无状态的读（`FolderSync`/`ItemOperations`）仍映射为设备未登记；`Provision` 为两步握手，策略项不解析（T9）。
 - 拥有的数据：`device_profiles`（设备身份，由组合根/配置构造）；PolicyKey 只存在 `EASClient` 实例内（`private var policyKey`），**不持久化**，新进程首命令前重新握手。
 - 变化轴：服务器实现（Exchange 2016/2019、第三方网关）、协议版本（16.1 → 14.1 → 14.0）。认证固定 Basic + TLS，不做 OAuth/Graph 抽象（T13）。
 - 公开契约：`EASClient` 的协议方法（见能力清单）；上层只通过 `EASAdapter` 的 `MailGateway` 使用。
@@ -73,6 +73,9 @@ component: CMP-EAS
   | HTTP 401（读） | `authFailed` | 否 |
   | Sync 写命令 401 | `deviceNotRegistered` | 否 |
   | `SendMail` 401 | `authFailed` | 否（既有 pinned 行为，本批不改） |
+  | `200` 空 body（`FolderSync`/`ItemOperations`） | `deviceNotRegistered` | 否 |
+  | `200` 空 body（`Sync` 读或写） | `syncKeyInvalid` | 是（重建，2026-11-17 实测） |
+  | Sync 响应缺 `Collection/Status` | `syncKeyInvalid` | 是（重建，2026-11-17 实测） |
   | HTTP 449 / 策略拒绝 | `policyRequired` | 否（先 Provision） |
   | Sync `Status=3/4` | `syncKeyInvalid` | 是（重建） |
   | HTTP 503 + `Retry-After` | `throttled` | 是 |
@@ -86,6 +89,15 @@ component: CMP-EAS
 - 一致性 / 可见性：只做单次请求语义。
 - 兼容性：协议版本按 `16.1 → 14.1 → 14.0` 降级并持久化；PolicyKey 不持久化（见模块卡）。
 - 契约测试：`EASClientTests` 21 例 + `WBXMLTests` 6 例（golden 字节、错误映射表、401/449/503/空 200/坏 body、截断重取）。
+
+## 设计增量（2026-11-17，T-1117-02）
+
+真机实测（`Sync` 与 `FolderSync` 同会话同一 PolicyKey）：`FolderSync` 回 `200`/699B，紧随其后的 `Sync` 回 **`200`/0B**，而用同一 PolicyKey 的 `ItemOperations` 正常；同一 key 数分钟后再发，回 `200`/35B、`Collection/Status=3`。即「0 字节 200」在本网关上同时是「请求被吞（含 sync 状态不可用）」与「设备未放行」的答案，客户端无法从响应本身区分。
+
+据此收窄判定（不改网关）：
+
+- `EASClient.sync` 的 `200` 空 body 与「缺 `Collection/Status`」都抛 `syncKeyInvalid`，走 `SyncEngine` 既有的 `resetCollection` → key `0` 重建；`FolderSync`/`ItemOperations`/`Provision` 的空 body 仍抛 `deviceNotRegistered`，设备级信号由每次 `syncOnce` 的第一条命令 `FolderSync` 保证先后顺序。
+- 同一设备并发两条 `Sync` 时实测一条正常、另一条回 12 字节残缺体（无 `Collection/Status`）；该残缺体的归类同上，由重建吸收。
 
 ## 实现进度（2026-11-14）
 

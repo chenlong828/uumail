@@ -2,7 +2,7 @@
 layer: design
 module: mail
 status: designed
-updated: 2026-11-14
+updated: 2026-11-17
 flow: mail/receive
 scenario: SCN-0003
 ---
@@ -33,6 +33,7 @@ scenario: SCN-0003
 
 - 批次失败 → 整批回滚，key 不推进，退避后重试；
 - `Sync/Status=3/4` → `syncKeyInvalid`：`resetCollection` 后按 key `0` 重建；
+- `Sync` 回 `200` 空 body 或缺 `Collection/Status` → 同 `syncKeyInvalid`（2026-11-17 实测：网关对「请求被吞」也回 0 字节 `200`，不能当成设备未登记，见 `CMP-EAS` 设计增量）；
 - `503` + `Retry-After` → `SyncEngine` 等一次后重试一次，仍失败则本次失败；
 - 正文缺失 → 占位，转 `SCN-0004` 的补拉路径。
 
@@ -49,6 +50,7 @@ scenario: SCN-0003
 | `T-SCN-0003-02` | 正 | 服务器新增 1 封 → 增量同步只拉 1 条，旧信不重复 |
 | `T-SCN-0003-03` | 正 | 同一批响应重复投递 → 行数不变（幂等 upsert） |
 | `T-SCN-0003-04` | 反 | 批次写库中途失败 → key 保持旧值，下次同步能取回该批，不丢信 |
+| `T-SCN-0003-05` | 反 | `Sync` 回 `200`/0B 或 12 字节残缺体 → 判 `syncKeyInvalid`、重置重建，**不**判设备未登记、不停自动刷新（真机复现 2026-11-17） |
 
 ## 状态
 
@@ -62,5 +64,6 @@ scenario: SCN-0003
 | `T-SCN-0003-02` | 通过（组件级）：`SyncEngineTests`「incremental sync resumes from the stored key」 |
 | `T-SCN-0003-03` | 通过（组件级）：`MailStoreTests`「re-applying the same batch keeps one row per server id」 |
 | `T-SCN-0003-04` | 通过（组件级）：`MailStoreTests`「a failed batch does not advance the key」 |
+| `T-SCN-0003-05` | 通过（组件级，2026-11-17）：`EASClientTests` 空 `Sync` 读/写与缺 `Collection/Status` 三条 + `SyncSceneTests`「a device rejection does not end the automatic refresh loop」；`FolderSync` 空 body 仍判 `deviceNotRegistered`（pin 住不回归） |
 
 未转 `verified` 的原因：四项都有组件级断言，但场景要求的「列表条数 / UI 可见」没有场景级测试；`stateStream` 未实现，进度态只有 `currentState()`。

@@ -135,12 +135,17 @@ public actor SyncScene {
         await notifier.requestAuthorization()
     }
 
-    /// These three cannot be fixed by retrying: only the user can act on them (spec §4.8).
+    /// Credential and policy rejections cannot be fixed by retrying: only the user can act
+    /// on them (spec §4.8). `deviceNotRegistered` is deliberately excluded (measured
+    /// 2026-11-17): this gateway answers a stale SyncKey with the same `200`/zero-byte body
+    /// it uses for a swallowed request, so a single occurrence must not end the only loop
+    /// that can recover. A genuinely unregistered device still shows its text on every tick.
     private static func pausesAutoRefresh(_ error: MailError) -> Bool {
         switch error {
-        case .authFailed, .deviceNotRegistered, .policyBlocked:
+        case .authFailed, .policyBlocked:
             return true
-        case .syncKeyInvalid, .throttled, .offline, .unsupported, .storage, .invalidInput:
+        case .deviceNotRegistered, .syncKeyInvalid, .throttled, .offline, .unsupported,
+             .storage, .invalidInput:
             return false
         }
     }

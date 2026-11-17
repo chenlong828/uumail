@@ -140,6 +140,42 @@ struct EASClientTests {
         }
     }
 
+    @Test("a zero-byte Sync read is a broken sync state, not a dead device")
+    func emptySyncBodyIsStaleKey() async {
+        // Measured 2026-11-17: the gateway answers a stale SyncKey with the same zero-byte
+        // 200 it uses for a swallowed request, while FolderSync/ItemOperations stay healthy.
+        let stub = StubTransport(responses: [EASHTTPResponse(status: 200, headers: [:], body: Data())])
+        let client = EASClient(configuration: makeConfiguration(), transport: stub, policyKey: "1")
+        await #expect(throws: EASError.syncKeyInvalid) {
+            _ = try await client.sync(collectionID: "13", syncKey: "42")
+        }
+    }
+
+    @Test("a zero-byte Sync write is a broken sync state too")
+    func emptySyncWriteBodyIsStaleKey() async {
+        let stub = StubTransport(responses: [EASHTTPResponse(status: 200, headers: [:], body: Data())])
+        let client = EASClient(configuration: makeConfiguration(), transport: stub, policyKey: "1")
+        await #expect(throws: EASError.syncKeyInvalid) {
+            _ = try await client.sync(collectionID: "13", syncKey: "42", change: .delete(serverID: "1"))
+        }
+    }
+
+    @Test("a Sync answer without Collection/Status is a broken sync state, not an unsupported server")
+    func syncWithoutCollectionStatusIsStaleKey() async {
+        // The degenerate 12-byte answer measured under two concurrent Syncs (2026-11-17).
+        let stub = StubTransport(responses: [
+            EASHTTPResponse(
+                status: 200,
+                headers: [:],
+                body: try! WBXMLCodec.standard().encode(.children("Sync", [.children("Collections", [])]))
+            )
+        ])
+        let client = EASClient(configuration: makeConfiguration(), transport: stub, policyKey: "1")
+        await #expect(throws: EASError.syncKeyInvalid) {
+            _ = try await client.sync(collectionID: "13", syncKey: "42")
+        }
+    }
+
     @Test("error mapping table")
     func errorMapping() async {
         let cases: [(Int, [String: String], EASError)] = [

@@ -73,6 +73,30 @@ struct SyncSceneTests {
         #expect(notifier.posts.isEmpty)
     }
 
+    @Test("a device rejection does not end the automatic refresh loop")
+    func deviceRejectionKeepsTheLoopAlive() async throws {
+        // Measured 2026-11-17: a stale SyncKey reaches the app as `200`/zero bytes, i.e. as
+        // the same signal as a swallowed request. One occurrence must not kill the loop that
+        // is the only thing able to recover; the next tick has to run and clear the text.
+        let gateway = FakeGateway(
+            folders: FolderListing(folders: [inboxFolder], syncKey: "7"),
+            deltas: makeSyncDeltas(added: 1),
+            provisionError: .deviceNotRegistered
+        )
+        let scene = makeScene(gateway: gateway)
+
+        let stream = await scene.startAutoRefresh(every: .milliseconds(1))
+        var iterator = stream.makeAsyncIterator()
+        let first = await iterator.next()
+        #expect(first?.error == .deviceNotRegistered)
+        #expect(first?.report == nil)
+
+        await gateway.setProvisionError(nil)
+        let second = await iterator.next()
+        #expect(second?.report?.added == 1, "the next tick recovers instead of the loop dying")
+        await scene.stopAutoRefresh()
+    }
+
     @Test("an auth failure is reported and pauses automatic refresh")
     func authFailurePausesAutoRefresh() async throws {
         let gateway = FakeGateway(

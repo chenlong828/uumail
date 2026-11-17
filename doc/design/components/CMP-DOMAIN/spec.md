@@ -2,7 +2,7 @@
 layer: design
 module: domain
 status: active
-updated: 2026-11-14
+updated: 2026-11-17
 component: CMP-DOMAIN
 ---
 
@@ -50,7 +50,9 @@ component: CMP-DOMAIN
   | 来源 | `MailError` | 可重试 |
   |---|---|---|
   | `401` 读 | `authFailed` | 否 |
-  | `200` 空 body（读） | `deviceNotRegistered` | 否 |
+  | `200` 空 body（`FolderSync`/`ItemOperations`） | `deviceNotRegistered` | 否 |
+  | `200` 空 body（`Sync` 读或写） | `syncKeyInvalid` | 是（重建；2026-11-17 实测，见 `CMP-EAS` 设计增量） |
+  | Sync 响应缺 `Collection/Status` | `syncKeyInvalid` | 是（重建） |
   | `SendMail` 401 | `authFailed` | 否（既有 pinned 行为，本批不改） |
   | Sync 写命令 401 | `deviceNotRegistered` | 否（T-1114-10 设计，2026-11-14 已实现） |
   | `449` / 策略拒绝 | `policyBlocked` | 否 |

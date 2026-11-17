@@ -403,14 +403,20 @@ public actor EASClient {
                 ]),
             ]))
         }
-        let response = try await call("Sync", body: body, isWrite: change != nil)
+        // A swallowed Sync is measured as HTTP 200 with zero bytes on this gateway
+        // (2026-11-17), so it joins the stale-key path: reset and rebuild, never "device dead".
+        let response = try await call(
+            "Sync", body: body, isWrite: change != nil, emptyBodyError: .syncKeyInvalid
+        )
         let document = try decode(response)
 
+        // A Sync answer that carries no `Collection/Status` cannot say whether the state is
+        // intact; the only recovery is the same one a stale key takes (reset + rebuild).
         guard let syncNode = document.child("Sync"),
               let collection = syncNode.path("Collections", "Collection"),
               let status = collection.child("Status")?.stringValue()
         else {
-            throw EASError.malformedResponse("Sync: missing Collection/Status")
+            throw EASError.syncKeyInvalid
         }
         switch status {
         case "1":
@@ -673,13 +679,16 @@ public actor EASClient {
 
     // MARK: Transport plumbing
 
+    /// `emptyBodyError` classifies a `200` with a zero-byte body. It is the caller's call
+    /// because the same wire signal means different things per command (see `ensureSuccess`).
     private func call(
         _ command: String,
         body: Data,
         policyKey overrideKey: String? = nil,
         extraParameters: [String: String] = [:],
         treatEmptyBodyAsSuccess: Bool = false,
-        isWrite: Bool = false
+        isWrite: Bool = false,
+        emptyBodyError: EASError = .deviceNotRegistered
     ) async throws -> EASHTTPResponse {
         var components = URLComponents(url: configuration.endpoint, resolvingAgainstBaseURL: false)!
         var items = [
@@ -703,7 +712,8 @@ public actor EASClient {
             elapsed: elapsed,
             command: command,
             treatEmptyBodyAsSuccess: treatEmptyBodyAsSuccess,
-            isWrite: isWrite
+            isWrite: isWrite,
+            emptyBodyError: emptyBodyError
         )
         return response
     }
@@ -753,12 +763,16 @@ public actor EASClient {
         }
     }
 
+    /// A zero-byte `200` is the gateway's generic "request swallowed" answer, so the caller
+    /// names its meaning: for `Sync` the sync state cannot be trusted (reset and rebuild),
+    /// for state-free reads it still means the device was not let through.
     private func ensureSuccess(
         _ response: EASHTTPResponse,
         elapsed: TimeInterval,
         command: String,
         treatEmptyBodyAsSuccess: Bool = false,
-        isWrite: Bool = false
+        isWrite: Bool = false,
+        emptyBodyError: EASError = .deviceNotRegistered
     ) throws {
         switch response.status {
         case 200:
@@ -766,7 +780,7 @@ public actor EASClient {
                 // OPTIONS never carries a body; everything else must — except SendMail,
                 // whose success contract is exactly "200 with zero bytes".
                 if command != "OPTIONS" && !treatEmptyBodyAsSuccess {
-                    throw EASError.deviceNotRegistered
+                    throw emptyBodyError
                 }
             }
             return
