@@ -1085,6 +1085,30 @@ struct MailboxManualMarkReadTests {
         #expect(fixture.viewModel.sync.phase == .idle)
     }
 
+    @Test("T-SCN-0014-05: a successful sync retires the mark-read warning")
+    func successfulSyncClearsMarkReadError() async throws {
+        let write = PresentationRecordingWriteGateway(delta: delta())
+        let gateway = PresentationFakeGateway(
+            folders: FolderListing(folders: [presentationInbox], syncKey: "1"),
+            deltas: ["2": MessageDelta(added: [], changed: [], removedServerIDs: [], syncKey: "3", moreAvailable: false)]
+        )
+        let fixture = try makeMailboxFixture(
+            gateway: gateway,
+            messages: ["13": [presentationMessage("1", isRead: false)]],
+            write: write
+        )
+        fixture.viewModel.loadCached()
+        fixture.viewModel.localMarkRead = { _ in throw MailError.storage(reason: "磁盘写入失败") }
+
+        fixture.viewModel.markSelectedRead()
+        #expect(fixture.viewModel.markReadErrorText != nil)
+
+        await fixture.viewModel.refresh()
+
+        #expect(fixture.viewModel.sync.phase == .idle)
+        #expect(fixture.viewModel.markReadErrorText == nil)
+    }
+
     @Test("T-SCN-0014-04: a MailError local failure keeps the row unread and shows Chinese")
     func manualMarkReadLocalFailureReportsChinese() async throws {
         let write = PresentationRecordingWriteGateway(delta: delta())
@@ -1232,6 +1256,33 @@ struct MailboxDeleteTests {
         #expect(fixture.viewModel.selectedListKey == keyBefore)
         #expect(fixture.viewModel.deleteErrorText?.contains("网络") == true)
         #expect(try fixture.store.messages(account: fixture.account, folder: "13").count == 2)
+    }
+
+    @Test("T-SCN-0009-05: a successful sync retires the delete warning")
+    func successfulSyncClearsDeleteError() async throws {
+        let write = PresentationRecordingWriteGateway(delta: deleteDelta(removed: ["1"]))
+        await write.setFailure(.offline)
+        let gateway = PresentationFakeGateway(
+            folders: FolderListing(folders: [presentationInbox], syncKey: "1"),
+            deltas: ["2": MessageDelta(added: [], changed: [], removedServerIDs: [], syncKey: "3", moreAvailable: false)]
+        )
+        let fixture = try makeMailboxFixture(
+            gateway: gateway,
+            messages: ["13": [presentationMessage("1")]],
+            write: write
+        )
+        fixture.viewModel.loadCached()
+
+        await fixture.viewModel.deleteSelected()
+        #expect(fixture.viewModel.deleteErrorText?.contains("网络") == true, "the failure is reported first")
+
+        await fixture.viewModel.refresh()
+
+        #expect(fixture.viewModel.sync.phase == .idle)
+        #expect(
+            fixture.viewModel.deleteErrorText == nil,
+            "a healthy sync must not leave the old warning on the status bar"
+        )
     }
 
     @Test("T-SCN-0009-03: a second key press during the in-flight delete is ignored")

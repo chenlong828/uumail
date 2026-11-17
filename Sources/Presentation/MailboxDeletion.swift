@@ -48,4 +48,10 @@ final class MailboxDeletion {
     func clearHidden(_ ref: MessageRef) {
         hidden.remove(ref)
     }
+
+    /// A successful sync proves the account is reachable, so an old warning must not stay
+    /// on the status bar until the next delete attempt.
+    func clearErrorText() {
+        errorText = nil
+    }
 }

@@ -72,6 +72,7 @@ scenario: SCN-0014
 | `T-SCN-0014-02` | 正 | L1 + L2 | 选中已读/无选中 → 入口禁用；强制调用不写库、不发网络；重复标记同一封幂等，不产生第二次网络写；切 A→B 后只影响 B；选中行被隐藏时 no-op。 | `MailboxViewModelTests.manualMarkReadIsIdempotentAndSelectionScoped`（L1）+ `ManualMarkReadProbe.buttonDisabledWhenNoUnread`（L2） |
 | `T-SCN-0014-03` | 正 | L1 | 手动置读与自动计时/普通同步并发 → 只有一次真实 0→1 与一次网络写；列表只目标行变已读；自动计时在刷新后取消，无第二封被误置读；`SyncEngine` 串行门不被写响应分页拖成两次写。 | `MailboxViewModelTests.manualMarkReadRacesDwellOnce` + `SyncEngineTests.markReadIsSerializedWithSyncOnce`（既有） |
 | `T-SCN-0014-04` | 反 | L1 | 回写失败（offline/503）→ 本地仍已读、`markReadErrorText == nil`、不回滚；本地写失败 → 保持未读、`markReadErrorText` 含中文、不启动回写、列表不显示已读；已读邮件选中不发网络。本地失败经 internal `localMarkRead` 闭包（`@testable import Presentation`）注入，**至少两条**：① `MailError.storage(reason:)`；② 非 `MailError`（`MailStoreError.database("磁盘写入失败")` 与/或 `NSError`）。非 `MailError` 走 `performMarkRead` 的同一归一分支，断言 `markReadErrorText` 等于 `ErrorText.text(for: .storage(reason: String(describing: injected)))` 或至少以「本地存储失败」开头并含注入的中文原因；不得只注入 `MailError` 造成假绿。状态栏绑定由代码审查确认（与 `SCN-0009` 删除错误同一 L1 口径），本卡不上 L2 状态栏像素断言。 | `MailboxViewModelTests.manualMarkReadWriteBackFailureKeepsLocal` + `...manualMarkReadLocalFailureReportsChinese`（MailError）+ `...manualMarkReadNonMailErrorReportsChinese`（`MailStoreError.database`/`NSError`）+ `...normalizeMarkReadErrorWrapsNonMailError`（L1） |
+| `T-SCN-0014-05` | 正 | L1 | 本地置读失败后的一次成功同步 → `markReadErrorText` 归零，状态栏回到同步状态。 | `MailboxViewModelTests.successfulSyncClearsMarkReadError` |
 
 证据层级：L1 单元测试 / L2 无头探针 / L3 截图 OCR / L4 GUI 自动化（AX）。本卡最低 L1，按钮存在/可用另用 L2。
 

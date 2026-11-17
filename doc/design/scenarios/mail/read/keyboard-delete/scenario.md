@@ -62,6 +62,7 @@ scenario: SCN-0009
 | `T-SCN-0009-02` | 正 | 删唯一一封 → 列表空态、正文 `.none`、不崩溃；搜索结果中删除 → 搜索列表与文件夹列表都不再返回该行，选中推进正确。 | `PresentationTests/MailboxViewModelTests.deleteLastMessageClearsSelectionAndBody` + `...deleteFromSearchResultsRemovesFromFolderList` |
 | `T-SCN-0009-03` | 正 | 服务器回「已不存在」→ 视为成功并本地软删；连按两次只发一次网络；删除成功后下一轮增量同步不复活该邮件。 | `PresentationTests/MailboxViewModelTests.deleteTwiceSendsOneNetworkWrite`（连按去重在 VM）+ `SyncEngineTests/SyncEngineTests.deleteIsIdempotentAndAdvancesKeyOnce`（服务器 not-found 幂等 + key 只推进一次）+ `ScenesTests/ReadSceneTests.deleteDoesNotResurrectOnNextSync` |
 | `T-SCN-0009-04` | 反 | 服务器删除失败（offline/503）→ 行恢复原位置、选中恢复、状态栏中文错误、`MailStore` 行未软删；重试成功后删除。无选中时按键不删除、不发网络；焦点在搜索框时按键不删除、不发网络。 | `PresentationTests/MailboxViewModelTests.deleteFailureRestoresRowAndShowsError` + `...deleteWithoutSelectionDoesNothing` + 焦点/按键 UI 探针证据（T-1114-18） |
+| `T-SCN-0009-05` | 正 | 删除失败后的一次成功同步 → `deleteErrorText` 归零、状态栏回到同步状态（不再让旧警告常驻）。 | `PresentationTests/MailboxViewModelTests.successfulSyncClearsDeleteError` |
 
 支撑测试（不属于 3+1 断言，但组件出口要求）：
 

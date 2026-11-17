@@ -229,6 +229,9 @@ public final class MailboxViewModel {
         if outcome.report != nil {
             sync.lastSyncedAt = outcome.at
             sync.phase = .idle
+            // The status bar shows one problem at a time; a healthy sync retires the old one.
+            deletion.clearErrorText()
+            markReadErrorText = nil
         } else if let error = outcome.error {
             sync.phase = .failed(ErrorText.text(for: error))
         } else {

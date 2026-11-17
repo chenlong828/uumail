@@ -386,3 +386,30 @@ component: CMP-PRES
   - 写失败不可强制注入（`UserDefaults.set` 无同步失败信号）：以「不抛/不回滚 + 会话状态独立」保证，不伪造失败注入。
 - 与主题的关系：两个独立 key（`appearance.fontSize` / `appearance.theme`），互不读写；任一变化不触发另一个的写；都不写业务库/网络。
 - 确认与实现：P2 默认确认（未经人工，见决策记录）；实现后按上述测试与 `SCN-0015` 的 L2 探针验证，**不翻转任何状态位**。
+
+## 设计增量：HTML 撰写状态与编辑文档（REQ-0021，2026-11-17）
+
+- `ComposeViewModel` 新增：
+  ```swift
+  public var bodyHTML: String
+  public func editorDidLoad(_ html: String)
+  public func setEditorHTML(_ html: String)
+  public var hasEdits: Bool
+  ```
+  `body` 仍是纯文本；有 `bodyHTML` 时发送前用 `HTMLText.plainText(from:)` 重新生成，无 HTML（CLI/测试/旧路径）时保留手工 `body`。`editorDidLoad` 只在首次记录归一化基线；`hasEdits` 比较收件人/抄送/主题/body/当前 HTML 与基线，取消确认用。`send`/`saveDraft` 把 `bodyHTML` 放进 `Draft`，仍只入队/写草稿。
+- 新增 `public enum ComposeDocument`（`Sources/Presentation/ComposeDocument.swift`）：
+  - `editorDocument(emailHTML:allowRemoteContent:)`：清洗后插入 `uumail-editor-csp` meta（`default-src 'none'`、`img-src data:` 或 `data: https: http:`、`style-src 'unsafe-inline'`）、`uumail-editor-style` 样式、`contenteditable`/`spellcheck`；空 HTML 用 `HTMLText.emptyEmailDocument()`。
+  - `emailHTML(fromEditorDocument:)`：去掉上述 meta/style/属性，返回可发送的邮件 HTML；发件人 `<style>` 保留。
+- `DisplayFormat.quoteHeader`/`longDate`：`yyyy年M月d日 HH:mm` + 原发件人 + `写道：`；缺失回退，格式在 Presentation 层，Scenes 只接收字符串。
+- 不变量：`hasEdits` 的「未编辑种子」必须为 false（WebKit 归一化不回弹确认框）；`canSend`/状态机/`onEnqueued` 不变；body 与 bodyHTML 同源。
+- 测试：`PresentationTests/ComposeDocumentTests`（round trip、两档 CSP、空文档、抬头格式）、`ComposeViewModelTests.sendCarriesHTML`、`.cancelBaseline`、`.replyNormalisedSeedIsNotDirty`；全量 292 tests / 51 suites。
+- 预算：`ComposeViewModel` 263 行、`ComposeDocument` 107 行；`Presentation` 现有依赖不变，只 import Foundation/MailDomain/Scenes/Observation。
+
+## 设计增量：成功同步清掉状态栏旧文案（T-1117-03，SCN-0009/SCN-0014，2026-11-17，P3）
+
+`MailboxDeletion.errorText` 原先只在下一次 `begin(_:)` 时清空，`markReadErrorText` 只在改选/本地置读成功时清空，而状态栏三者的优先级是「删除错误 → 置读错误 → 同步状态」。于是只要有一次删除或本地置读失败，那条警告会一直压住同步状态，即使随后的同步全部成功（用户看到的就是「邮件照收、提示常驻」）。
+
+规则改为：`apply(_ outcome:)` 在 `outcome.report != nil`（本次同步成功）时同时 `deletion.clearErrorText()` 与 `markReadErrorText = nil`——一次成功的同步已经证明账号可达，旧问题不再是当前状态。失败分支不变：错误文案仍然立刻显示、优先级不变；下一次失败会重新写入。
+
+- `MailboxDeletion` 新增 internal `clearErrorText()`；`MailboxViewModel` 不新增公开成员，public 契约不变。
+- 测试：`MailboxViewModelTests.successfulSyncClearsDeleteError`、`successfulSyncClearsMarkReadError`（L1：先注入失败，断言文案在；再跑一次成功 `refresh()`，断言 `phase == .idle` 且文案为 nil）。
