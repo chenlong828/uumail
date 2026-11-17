@@ -2,7 +2,7 @@
 layer: design
 module: presentation
 status: active
-updated: 2026-11-16
+updated: 2026-11-17
 component: CMP-PRES
 ---
 
@@ -14,20 +14,20 @@ component: CMP-PRES
 - 单元：模块（薄视图模型 + 展示类型 + 文案/格式化 + UI 偏好适配）
 - 层 / 类型：L3；表现
 - 业务价值：把用户动作转成一次场景调用，把场景结果映射为可观察状态与中文文案；让视图退化成绑定。没有它，视图直接持有场景并写展示逻辑，状态机无法测试。
-- 负责 X：`MailboxViewModel`（文件夹/列表/正文/附件/同步/选择/搜索/自动刷新；T-1114-10 设计新增停留计时、键盘删除、前台状态、搜索模式保持（2026-11-14 已实现））、`ComposeViewModel`（新建/回复/全部回复/转发、入队状态、草稿）、`AccountSetupViewModel`（validate/connect、忙碌态、错误）、展示类型（`BodyPresentation`、`BodyNotice`、`SyncPresentation`、`Selection`）、`ErrorText` 唯一文案表、`DisplayFormat`（发件人/日期）、`ThemePreferenceStore`（主题偏好的读/写/回退；2026-11-16 设计新增，见文末增量）。
-- 不负责 Y：业务规则、直接访问 `MailStore`/`MailGateway`/`Outbox`、轮询节奏（`SyncScene`）、缓存优先与补拉（`ReadScene`）、系统外观跟随与主题菜单（`CMP-APP` 的 `preferredColorScheme`/`ThemeCommands`）。
+- 负责 X：`MailboxViewModel`（文件夹/列表/正文/附件/同步/选择/搜索/自动刷新；T-1114-10 设计新增停留计时、键盘删除、前台状态、搜索模式保持（2026-11-14 已实现））、`ComposeViewModel`（新建/回复/全部回复/转发、入队状态、草稿）、`AccountSetupViewModel`（validate/connect、忙碌态、错误）、展示类型（`BodyPresentation`、`BodyNotice`、`SyncPresentation`、`Selection`）、`ErrorText` 唯一文案表、`DisplayFormat`（发件人/日期）、`ThemePreferenceStore`（主题偏好的读/写/回退；2026-11-16 设计新增）、`FontSizePreferenceStore`（字号偏好的读/写/回退；2026-11-17 设计新增，见文末增量）。
+- 不负责 Y：业务规则、直接访问 `MailStore`/`MailGateway`/`Outbox`、轮询节奏（`SyncScene`）、缓存优先与补拉（`ReadScene`）、系统外观跟随与主题菜单（`CMP-APP` 的 `preferredColorScheme`/`ThemeCommands`）、字号字体映射/应用与字号菜单（`CMP-APP` 的 `FontSizeStyle`/`FontSizeCommands`）。
 - 内部逻辑：
   - 每个动作只调一次场景方法；结果映射为状态，不重试、不判断业务分支。
   - 正文：缓存优先 → `.loading`/摘要提示 → `.loaded(html, truncated)` 或 `.failed(text)`；`BodyNotice` 承载「正在补拉」与「摘要回退」。
   - 自动刷新：消费 `SyncScene.startAutoRefresh` 流，映射 `SyncPresentation`；`stopAutoRefresh` 取消消费并停场景循环。
   - `ComposeViewModel.send` 调 `ComposeScene.send`，成功即 `status = .queued` 并触发组合根的投递信号；失败保留编辑文本。
-- 拥有的数据：视图状态（选择、搜索词、加载态、编辑器文本、当前邮件远程放行、置读错误提示），不持久化；另持有**主题偏好的本地镜像**（`UserDefaults["appearance.theme"]`，注入 store；不是业务数据，真源仍是 App 的 `@State`，见文末增量）。
-- 变化轴：窗口形态与交互；主题外观（2026-11-16 新增一档三态主题）。
-- 公开契约：`CMP-PRES#MailboxViewModel`（T-1114-10 设计新增 `#visibleMessages`、`#deleteErrorText`、`#setApplicationActive`、`#deleteSelected`（2026-11-14 已实现）；2026-11-16 新增 `#headerPresentation`；2026-11-16 设计新增 `#allowsRemoteContent`、`#canAllowRemoteContent`、`#setAllowsRemoteContent(_:)`、`#canMarkSelectedRead`、`#markSelectedRead()`、`#markReadErrorText`（P2 待确认，见文末增量））、`#ComposeViewModel`、`#AccountSetupViewModel`、`#ErrorText`、`#DisplayFormat`、`#ThemePreference`、`#ThemePreferenceStore`（2026-11-16 新增 public，P2 已确认并实现）、`#MessageHeaderPresentation`（2026-11-16 新增 public，P2 已确认，实现见文末增量）；`MailboxDwell`/`MailboxDeletion` 仍是模块内文件。
-- 入口：`Sources/Presentation/MailboxViewModel.swift#MailboxViewModel`、`ComposeViewModel.swift#ComposeViewModel`、`AccountSetupViewModel.swift#AccountSetupViewModel`、`ErrorText.swift#ErrorText`、`PresentationTypes.swift#BodyPresentation`、`ThemePreference.swift#ThemePreference/#ThemePreferenceStore`、`MessageHeaderPresentation.swift#MessageHeaderPresentation`（2026-11-16 新增）
+- 拥有的数据：视图状态（选择、搜索词、加载态、编辑器文本、当前邮件远程放行、置读错误提示），不持久化；另持有**两个本地 UI 偏好镜像**——**主题偏好**（`UserDefaults["appearance.theme"]`，`ThemePreferenceStore`）与**字号偏好**（`UserDefaults["appearance.fontSize"]`，`FontSizePreferenceStore`，2026-11-17 设计新增；两个 key 独立、互不读写；不是业务数据，真源仍是 App 的 `@State`，见文末增量）。
+- 变化轴：窗口形态与交互；主题外观（2026-11-16 新增一档三态主题）；**字号档位**（2026-11-17 新增五档 100/120/145/175/225%，界面与阅读正文共用同一档位）。
+- 公开契约：`CMP-PRES#MailboxViewModel`（T-1114-10 设计新增 `#visibleMessages`、`#deleteErrorText`、`#setApplicationActive`、`#deleteSelected`（2026-11-14 已实现）；2026-11-16 新增 `#headerPresentation`；2026-11-16 设计新增 `#allowsRemoteContent`、`#canAllowRemoteContent`、`#setAllowsRemoteContent(_:)`、`#canMarkSelectedRead`、`#markSelectedRead()`、`#markReadErrorText`（P2 待确认，见文末增量））、`#ComposeViewModel`、`#AccountSetupViewModel`、`#ErrorText`、`#DisplayFormat`、`#ThemePreference`、`#ThemePreferenceStore`（2026-11-16 新增 public，P2 已确认并实现）、`#FontSizePreference`、`#FontSizePreferenceStore`（2026-11-17 设计新增 public，P2 默认确认未经人工）、`#MessageHeaderPresentation`（2026-11-16 新增 public，P2 已确认，实现见文末增量）；`MailboxDwell`/`MailboxDeletion` 仍是模块内文件。
+- 入口：`Sources/Presentation/MailboxViewModel.swift#MailboxViewModel`、`ComposeViewModel.swift#ComposeViewModel`、`AccountSetupViewModel.swift#AccountSetupViewModel`、`ErrorText.swift#ErrorText`、`PresentationTypes.swift#BodyPresentation`、`ThemePreference.swift#ThemePreference/#ThemePreferenceStore`、`FontSizePreference.swift#FontSizePreference/#FontSizePreferenceStore`（2026-11-17 设计新增）、`MessageHeaderPresentation.swift#MessageHeaderPresentation`（2026-11-16 新增）
 - 依赖：`Scenes`、`MailDomain`、`Observation`、`Foundation`（`UserDefaults`；不算新组件依赖）。扇出 1。
-- 冷热：热（主线程）；主题偏好读/写是低频冷路径，不与 VM 热路径共享状态。
-- 尺寸预算：单文件 ≤400 行；当前 `MailboxViewModel` **304**（2026-11-16 设计前实测）、`ComposeViewModel` 196、`AccountSetupViewModel` 100、`ThemePreference` 50；2026-11-16 设计预计 `MailboxViewModel` 约 365、`MailboxDwell` 70→约 55；`Presentation` 共 1166 行（含 Body/Delete/Compose/Dwell/Deletion 拆分）。
+- 冷热：热（主线程）；主题与字号偏好的读/写都是低频冷路径（启动一次 + 选择一次），不与 VM 热路径共享状态。
+- 尺寸预算：单文件 ≤400 行；当前（2026-11-17 实测）`MailboxViewModel` **378**、`ComposeViewModel` 196、`AccountSetupViewModel` 100、`ThemePreference` 50、`MailboxDwell` 59、`FontSizePreference` 约 55（2026-11-17 设计新增）；`Presentation` 共 **1229** 行（含 Body/Delete/Compose/Dwell/Deletion 拆分）→ 字号设计约 1284。本次不新增 `MailboxViewModel` 成员、不改 `MailboxDwell`。
 - 单独运行：`./Scripts/swiftw test --filter PresentationTests`
 - 删除测试：删掉后视图直接持有场景并写展示逻辑，测试无法覆盖状态机 → 复杂度集中，是真边界。
 
@@ -341,3 +341,48 @@ component: CMP-PRES
   - 计时：注入 sleeper 记录 `Duration`，断言 `.seconds(3)`；既有触发/取消/后台/重载不重置/幂等用例按 3 秒更新。
 - P2 确认项（详见 `task-spaces/20261116-223645/design.md` §8.2）：D1 放行状态归 VM 与重置/守卫语义；D2 手动置读 API 名/返回/错误面；D3 `MailboxDwell` 仅计时的重构；D4 工具栏/控件形态（`CMP-APP`）。确认记录见 `doc/history/decisions/2026-11-16-remote-toolbar-mark-read.md`（`frozen`，D1–D8 按唯一建议答案确认，无收窄）。
 - 实现（2026-11-16，T-1116-12）：`MailboxViewModel` 新增 6 个 public 成员与 internal `performMarkRead -> MailError?`/`normalizeMarkReadError`/`localMarkRead`；`selectedListKey.didSet` 重置放行与错误；`MailboxDwell` 改为 3 秒纯计时并在 init 接 `onElapsed`。`MailboxViewModel.swift` 378 行（≤400）、`MailboxDwell.swift` 59 行（≤70）。`./Scripts/swiftw test --filter PresentationTests` 77 tests / 14 suites 通过（含 `remoteContentResetsOnSelectionChange`、`remoteContentCannotLeakToStaleBody`、`forcedRemoteAllowIsNoOpWhenUnavailable`、`manualMarkReadPersistsBeforeWriteBack`、`manualMarkReadIsIdempotentAndSelectionScoped`、`manualMarkReadRacesDwellOnce`、`manualMarkReadWriteBackFailureKeepsLocal`、`manualMarkReadLocalFailureReportsChinese`、`manualMarkReadNonMailErrorReportsChinese`、`normalizeMarkReadErrorWrapsNonMailError`、`dwellAsksForThreeSecondsAndMarks`）；架构 4 门通过。证据：`task-spaces/20261116-223645/evidence/t1116-12-presentation.txt`。
+
+## 设计增量：字号偏好（REQ-0020 / SCN-0015，2026-11-17，P2 默认确认）
+
+- 来源：`REQ-0020`（`accepted`）/ `SCN-0015`；完整论证、候选与否决、L2 探针见 `task-spaces/20261117-071134/design.md` 与 `evidence/font-size-probe/`；默认确认记录见 `doc/history/decisions/2026-11-17-font-size.md`（`frozen`，**默认确认（未经人工）**）。
+- 新增 public 类型（**P2 契约增量**，兼容性新增；本节点不代签）：
+
+  ```swift
+  public enum FontSizePreference: Int, CaseIterable, Sendable {
+      case percent100 = 100
+      case percent120 = 120
+      case percent145 = 145
+      case percent175 = 175
+      case percent225 = 225
+      public var scale: Double { get }   // 1.0 / 1.2 / 1.45 / 1.75 / 2.25
+      public var title: String { get }   // "100%" … "225%"
+  }
+
+  public struct FontSizePreferenceStore {
+      public init()                                  // UserDefaults.standard
+      init(defaults: UserDefaults)                   // internal，测试注入
+      static let defaultsKey = "appearance.fontSize" // internal
+      public func load() -> FontSizePreference
+      public func save(_ preference: FontSizePreference)
+  }
+  ```
+
+- 不变量：
+  - `load()` 是纯读；任何存储内容都不崩溃。缺失/损坏/未知 → `.percent100`。
+  - `title` 是展示字符串（`"100%"`…`"225%"`），无本地化依赖；不参与比较/持久化。
+  - `Int` raw 与磁盘 `String` 编码并存：raw 稳定，存储形态为 String；`UserDefaults` 把合法整数桥接为等值字符串时按同档接受，这是显式兼容性承诺，不视为损坏。
+  - 存储形态为 `String` raw value（`"100"`…`"225"`），与 `ThemePreferenceStore` 的 string 比较幂等模式一致；`UserDefaults` 把合法整数桥接为 `"175"` 时按同档接受（语义等价），`"purple"`、空串、`"175.5"`、`"250"`、int `999` 等回 100。
+  - `save(_:)` 只写 `UserDefaults["appearance.fontSize"]`；同值 no-op；不写业务库/Keychain/网络；不抛错、不回滚调用方状态。
+  - store 不是会话真源：`CMP-APP#UumailApp.@State fontSize` 决定当前字号；写失败时本次会话不变、下次启动读旧值/默认。
+- 不负责：`Font` 映射、环境值、菜单勾选与应用（都在 `CMP-APP`：`FontSizeStyle`/`FontSizeCommands`）；不 import SwiftUI/AppKit；`Presentation` 仍只 import `Foundation`/`MailDomain`/`Scenes`/`Observation`，扇出不新增。
+- 尺寸/依赖：新文件 `Sources/Presentation/FontSizePreference.swift` 约 55 行；`Presentation` 由 1229 行增至约 1284，扇出仅加一个 Foundation 文件。
+- 测试计划（L1，`Tests/PresentationTests/FontSizePreferenceStoreTests.swift`，`@testable import Presentation`；每个用例经 internal `init(defaults:)` 注入独立 suite 并清理，不碰 `.standard`）：
+  - `defaultsTo100WhenUnset`：空 suite → `.percent100`。
+  - `roundTripsEachLevel`：五档 save→load。
+  - `invalidValueFallsBackTo100`：`"purple"`/`""`/`"0"`/`"250"`/`"175.5"`/int `999` → `.percent100`。
+  - `validIntegerIsAcceptedAsSameLevel`：int `175` → `.percent175`（记录 `UserDefaults` 字符串桥接口径，不把等价编码当损坏）。
+  - `persistsAndRestoresAcrossInstances`：同一 suite 两个 store 实例模拟重开。
+  - `repeatedSaveKeepsSingleValue`：同值 save 两次读回一致、不抛。
+  - 写失败不可强制注入（`UserDefaults.set` 无同步失败信号）：以「不抛/不回滚 + 会话状态独立」保证，不伪造失败注入。
+- 与主题的关系：两个独立 key（`appearance.fontSize` / `appearance.theme`），互不读写；任一变化不触发另一个的写；都不写业务库/网络。
+- 确认与实现：P2 默认确认（未经人工，见决策记录）；实现后按上述测试与 `SCN-0015` 的 L2 探针验证，**不翻转任何状态位**。

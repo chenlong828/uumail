@@ -2,7 +2,7 @@
 layer: plan
 module: global
 status: draft
-updated: 2026-11-16
+updated: 2026-11-17
 ---
 
 # 风险
@@ -49,11 +49,26 @@ updated: 2026-11-16
 | R36 | SwiftUI `.toolbar` 项在无头 `NSHostingView`/`NSWindow` 中不可读，工具栏位置无法按 L2 断言 | 探针读不到工具栏项/按钮，或只能读到底层视图；硬把 L2 写成截图/AX | `SCN-0013`/`SCN-0014` 的入口位置无法验收，可能被迫升 L3 或退化成只测映射 | **设计阶段已证（2026-11-16）**：离屏 `NSHostingController` + `NSWindow` 可读 `NSToolbar.items` 的 `label`/`isVisible`/`visibleItems`；`window.sendEvent` 合成点击可驱动 Button/Toggle，禁用项不触发；生产形状 `MailboxToolbar` 33 条断言 PASS，证据 `task-spaces/20261116-223645/evidence/toolbar-probe/`。实现时换生产源复跑；不使用 L1 冒充 | `design/components/CMP-APP/spec.md` 设计增量、`SCN-0013`/`SCN-0014`、`evidence/toolbar-probe/` |
 | R37 | L2 工具栏探针依赖 `window.sendEvent` 合成点击与 SwiftUI 工具栏项实现 | OS/SwiftUI 升级后合成点击不再命中工具栏项，或 `NSToolbarItem.label` 变空 | L2 断言假红/假绿，或点击驱动不了入口 | 探针先断言条目存在且 `visibleItems` 包含它，再点击；状态变化后让 run loop 转一帧再点禁用项；点击不动时红灯而不是静默跳过；必要时改为直接触发 `Actions` 闭包并登记限制，不能把 L1 冒充 L2 | `design/components/CMP-APP/spec.md` 设计增量、`SCN-0013`/`SCN-0014`、`evidence/toolbar-probe/` |
 | R38 | 本地置读失败的错误类型不是 `MailError`，`ErrorText` 回退 `String(describing:)`，中文提示契约假绿 | 测试只注入 `MailError` 时绿；生产 `ReadScene.markReadLocally` 抛 `MailStoreError`/GRDB `DatabaseError` 时状态栏显示英文/调试文本，`T-SCN-0014-04` 名存实亡 | 违反 `REQ-0019`「本地写失败可感知中文提示」；手工置读失败用户看不懂 | **设计已缓解（2026-11-16 第 2 轮）**：`MailboxViewModel.performMarkRead` 返回 `MailError?`，非 `MailError` 归一为 `.storage(reason:)`；`markSelectedRead` 只把 `MailError` 交 `ErrorText`；`T-SCN-0014-04` 补非 `MailError`（`MailStoreError.database`/`NSError`）L1，断言「本地存储失败：…」、保持未读、零回写 | `design/components/CMP-PRES/spec.md` 设计增量、`CMP-SCN-READ/spec.md`、`SCN-0014`、`task-spaces/20261116-223645/design.md` §5.2/§7.9 |
+| R39 | 界面字号缩放机制与 SwiftUI 显式 `.font` 修饰冲突 | 根环境值/默认字体改了，但 `.font(.caption/.headline/.body)` 仍按原字号；或 100% 档被额外修饰符改变基线 | 部分界面文字不缩放、用户看到半套缩放；场景抽样漏面则假绿 | 设计逐项列出 `MailboxView`/`MessageHeaderView`/`MessageBodyView`/`MailboxToolbar`/`AccountSetupView`/`ComposeView` 的字体使用并替换为 scale-aware 字体/修饰符；100% 恒等断言；L2 抽样侧栏/列表/头部/状态栏/配置/撰写；不能用 L1 映射冒充 | `design/components/CMP-APP/spec.md` 设计增量、`SCN-0015` |
+| R40 | 正文缩放机制不覆盖作者显式 `px`，或 `pageZoom` 放大图片/表格导致溢出 | CSS 只改 body `font-size`，作者内联 20px 不变；或 `pageZoom` 把图片/表格一起放大导致溢出/遮挡 | 「阅读正文按比例」只实现一半，或正文布局变差；用户以为功能失效 | 设计用默认样式 + 作者内联 px + 表格/图片夹具探针，比较 CSS 注入/`pageZoom`/混合的代价；`design.md` 记录作者样式/图片/表格/白底/CSP 影响；验收含作者 px；默认不重载 | `design/components/CMP-APP/spec.md` 设计增量、`SCN-0015` |
+| R41 | 225% 下布局溢出/控件不可操作 | 头部 44pt 标签裁字、工具栏 7 项溢出且无溢出菜单、状态栏/列表行高固定、头部挤压正文 | 225% 档不可用，需求核心场景失败；既有 `SCN-0012`/`SCN-0013` 回归红 | 设计给 225% 预算：标签宽/头部上限/工具栏溢出/列表行高/状态栏/最小阅读区；L2 在 900×560 与放大窗口验证 7 个动作可达、正文可滚动、无重叠；100% 数值预算不变 | `design/components/CMP-APP/spec.md` 设计增量、`SCN-0015`/`SCN-0012`/`SCN-0013` |
+| R42 | 100% 恒等档回归 | 新增环境值/缩放修饰符/`baseCSS` 改动让默认字体、边距、行高变化；或 100% 仍套一层缩放 | 既有 `verified` 场景与用户基线同时回归；「默认 100%」名不副实 | 100% 走恒等分支、无额外修饰；L1 断言 `baseCSS` 13px/1.55；L2 对比 100% 字体/边距；回归 `SCN-0010`/`SCN-0011`/`SCN-0012`/`SCN-0013`/`SCN-0014` | `design/components/CMP-APP/spec.md` 设计增量、`SCN-0015` |
+| R43 | L2 文本/正文度量 seam 不可行 | 离屏 `NSHostingController` 读不到字号；WebView 在 `allowsContentJavaScript = false` 下取不到计算样式；只能退化成 L1 映射 | `SCN-0015` 无法按声称层级验收；可能假绿或被迫升 L3 | 设计落 `designed` 前先证 seam：`NSTextField.font`、`NSToolbar.visibleItems`、`WKWebView.pageZoom`/快照/等效度量；不可行时由正式卡声明 L3 并写理由；不得静默降级或用 L1 冒充 | `design/components/CMP-APP/spec.md` 设计增量、`SCN-0015` |
+| R44 | 字号偏好写失败/启动闪烁/与主题耦合 | `UserDefaults` 写失败不可观察；启动先 100% 后跳；切主题把字号重置或反之；父菜单未打开读勾选为旧值 | 用户看到跳变/偏好丢失；验收「重启保持」「主题独立」不可信 | 会话状态为真源、store 不抛不回滚；`init` 读偏好后再渲染首帧；字号/主题独立 key；勾选先开父菜单（R26）；覆盖 invalid/round-trip/relaunch/theme independence | `design/components/CMP-PRES/spec.md`、`CMP-APP/spec.md` 设计增量、`SCN-0015`/`SCN-0011` |
+
+2026-11-17 设计处置（run `20261117-071134`，`REQ-0020`/`SCN-0015`；**未关闭**，实现/验证时按场景卡复核；第 2 轮按评审 fail 修订）：
+
+- **R39**：界面缩放改为「环境值 + `scaledFont(_:)`（原 `.font(style)` 点）+ `scaledInheritedFont(_:)`（原默认字体点；100% 不加修饰）+ 根 `.font` 仅 >100% 安装」。第 2 轮实测：装根 `.font(.body)`/显式 `.font(.body)` 会把默认两行文本 32.0→31.5pt，因此 100% 不装；生产头部 100% 159.5pt（第 1 轮 158.5pt 是 fixture/补丁副本拟合值）。`ContentUnavailableView` 与字符串标题 `Button` 实测不吃环境字体（尺寸比 1.00），已用 `EmptyState`（100% 原组件、>100% 自绘）与按档位分支的按钮 label 补齐；`UumailApp` 根级数据库错误页也纳入 `EmptyState`。覆盖清单见 `CMP-APP` 增量、`design.md` §6.2、`evidence/font-size-probe/round2/{HeaderBodyProbe,EmptyStateProbe2}.txt`。
+- **R40**：正文改用 `WKWebView.pageZoom`，作者显式 `px`/图片/表格随整页缩放；实测 1.0→2.25 导航增量 0、作者 20px 渲染 40→90 设备像素（2.250×）、默认 13px 26→59（2.269×）、滚动保持、白底/CSP/禁 JS 不变。代价（固定宽度大表可能横向滚动）与候选否决见 `design.md` §4.2；图片/表格像素断言留实现期夹具，`evidence/font-size-probe/WebProbe.txt` 已含图片/表格夹具。
+- **R41**：175%/225% 预算落为标签宽 `44×scale`、**元数据区（头部+附件条+banner）cap 220pt 并内部滚动**（100–145% 不 cap）、480pt 保守高下正文视口实测 **259pt**（≥200 下限、达 260 目标）、145% 205pt、120% 242.5pt、状态栏计数 `.layoutPriority(1)`、工具栏 7 动作在 100%/225% 均可见。第 1 轮“只 cap 头部”实测 225% 视口仅 **147.5pt**，已否决；`ViewThatFits` 在真实栈里 100% 也会 cap，已改为按档位分支。证据 `evidence/font-size-probe/round2/{HeaderBodyProbe,CapDiag}.txt` 与 `ToolbarZoomProbe.txt`。
+- **R42**：100% 恒等有 L2 断言：生产头部 159.5pt、完整 body 视口 273pt（480 高）/353pt（560 高）、字体 size/family/traits 全等、`baseCSS` 13px/1.55、`pageZoom=1`；100% 不装根 `.font`、不包 cap、`EmptyState` 100% 与 `ContentUnavailableView` 逐点相等。实现期按 `T-SCN-0015-01`/`percent100MatchesBaseline` 复跑，并回归 `SCN-0010…0014`。
+- **R43**：L2 seam 的设计阶段出口已达成，但**证据来源拆开**：100% 用未修改生产源；225% 用“生产源 + 设计 diff 补丁副本”（`round2/patched/`、`patches/`）；生产源 225% 复跑标为**实现期 L2**，不再写成“设计期已证生产”。设计期已测：菜单（真实 App+父菜单打开）、界面字体（`NSTextField.font`）、生产头部 100%（159.5pt）与设计 diff 副本 225%（312.5pt/44×2.25/不重叠）、完整 body 视口（100% 273、120% 242.5、145% 205、175/225% 259）、`EmptyState`/按钮/根错误页（100% 逐点相等、120/225 比例 1.2/2.25）、工具栏（`NSToolbar.visibleItems`）。限制与非 `textSelection` 文本的替代（源码覆盖审计）已写入 `SCN-0015` 与 `design.md` §9，不静默降级。
+- **R44**：`@State` 会话真源 + store 不抛/不回滚；首帧读取；独立 key `appearance.fontSize`；父菜单打开再读勾选（R26）；L1 覆盖缺失/损坏/持久化/幂等，L2 覆盖 seed 175 首帧与重复 no-op。证据 `MenuProbe.txt`/`MenuProbe.seed175.txt`，决策记录 `history/decisions/2026-11-17-font-size.md` 与第 2 轮 `history/decisions/2026-11-17-font-size-round2.md`（默认确认，未经人工）。
 
 ## 风险等级口径
 
 - 高：直接使项目不可用或造成合规事故（R1、R2、R11）。
-- 中：影响关键旅程但可降级（R3、R4、R5、R6、R8、R12、R13、R18、R19、R21、R22、R23、R24、R27、R28、R29、R31、R32、R33、R34、R35、R36、R37、R38）。
+- 中：影响关键旅程但可降级（R3、R4、R5、R6、R8、R12、R13、R18、R19、R21、R22、R23、R24、R27、R28、R29、R31、R32、R33、R34、R35、R36、R37、R38、R39、R40、R41、R42、R43、R44）。
 - 低：局部体验或可回滚（R7、R9、R10、R15、R25、R26、R30）。
 
 R14 已于 2026-11-14 关闭（T-1114-02：网关 Sync 信封实测返回 `Cc`）。R16/R17/R20 已于 2026-11-14 关闭（真机写命令、预算拆分、写响应语义）。R27–R31 为 2026-11-16 阅读页信封头新增，**未关闭**；落点与缓解见各行。
@@ -61,3 +76,5 @@ R14 已于 2026-11-14 关闭（T-1114-02：网关 Sync 信封实测返回 `Cc`�
 2026-11-16 设计探针（run `20261116-212545`）：R29 的 L2 可读 seam 已证实——无头 `NSHostingView` 下 SwiftUI 可选 `Text` 由 `NSTextField` 承载、`stringValue` 就是渲染文本（AX 树在无头宿主下读到 0 个元素，故放弃 AX 方案）；证据 `task-spaces/20261116-212545/evidence/header-probe/`。R27 的行数上限与 R28 的 `.none` 收口已写入 `CMP-APP`/`CMP-PRES` 设计增量；R29 收窄为受 R31 约束，仍需实现后回归。
 
 R32–R38 为 2026-11-16 需求分析/设计新增（远程图片开关归位、手动置读、自动已读 10→3 秒、工具栏 L2 探针、合成点击载体、非 `MailError` 归一），**未关闭**；落点与缓解见各行。R33 的现状证据见 `task-spaces/20261116-223645/evidence/current-state.txt`（`MessageBodyView` 的 `@State` 无按邮件重置）；R32/R33/R36/R38 的设计处置见同目录 `design.md`、`evidence/toolbar-probe/` 与第 2 轮 §5.2/§7.9。R37 是 R36 设计阶段证通后的残余测试载体风险，实现复跑时按场景卡先断言条目存在再点击。
+
+R39–R44 为 2026-11-17 需求分析新增（`REQ-0020` 字体大小），**未关闭**；落点与缓解见各行。现状证据见 `task-spaces/20261117-071134/evidence/current-state.txt`（无既有字号实现、正文 13px 固定、`lastRender` 不含字号、头部 44pt 固定宽、工具栏 7 项）；设计待答清单见同目录 `brief.md` §7。R43 的 L2 度量 seam 已由 2026-11-17 设计探针证通（见上「2026-11-17 设计处置」；225% 为生产源+设计 diff 副本，生产源复跑留实现期），剩余为实现期复跑；若实现期 seam 失效，由 `SCN-0015` 声明 L3 并写理由。

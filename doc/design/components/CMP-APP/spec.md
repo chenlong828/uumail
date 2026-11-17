@@ -2,7 +2,7 @@
 layer: design
 module: app
 status: active
-updated: 2026-11-16
+updated: 2026-11-17
 component: CMP-APP
 ---
 
@@ -21,12 +21,12 @@ component: CMP-APP
   - 每个视图只接收一个视图模型（`@Bindable`），动作一律 `viewModel.xxx()`；响应式刷新只看 VM 状态。
   - 正文渲染：`MessageWebView`（WKWebView、禁 JS、CSP 阻止远程资源）；附件条点击调 VM。
 - 拥有的数据：无；账号凭据归 `CredentialStore`，邮件数据归 `MailStore`。
-- 变化轴：窗口形态（单窗口 → 多窗口/菜单栏）、列表与阅读布局。
+- 变化轴：窗口形态（单窗口 → 多窗口/菜单栏）、列表与阅读布局、字号档位（2026-11-17 新增五档 UI 偏好）。
 - 公开契约：无对外契约；只依赖 `Presentation`（`UumailApp` 另依赖 `Composition`）。
-- 入口：`Sources/uumail/UumailApp.swift#UumailApp`、`MailboxView.swift#MailboxView`、`MailboxToolbar.swift#MailboxToolbar`（2026-11-16 设计新增）、`MessageBodyView.swift#MessageBodyView`、`ComposeView.swift#ComposeView`、`AccountSetupView.swift#AccountSetupView`
+- 入口：`Sources/uumail/UumailApp.swift#UumailApp`、`MailboxView.swift#MailboxView`、`MailboxToolbar.swift#MailboxToolbar`（2026-11-16 设计新增）、`MessageBodyView.swift#MessageBodyView`、`ComposeView.swift#ComposeView`、`AccountSetupView.swift#AccountSetupView`、`FontSizeStyle.swift#EnvironmentValues.fontSizePreference`/`#View.scaledFont(_:)`/`#View.scaledInheritedFont(_:)`/`#FontSizePreference.font(for:)`、`FontSizeCommands.swift#FontSizeCommands`、`EmptyState.swift#EmptyState`（2026-11-17 设计新增，internal；第 2 轮修正入口符号）
 - 依赖：`Presentation`、`Composition`（仅 `UumailApp.swift`）、SwiftUI/AppKit/WebKit。扇出 2。
 - 冷热：热（读本地库）。
-- 尺寸预算：单文件 ≤300 行；当前 `uumail` 共 655 行（2026-11-16 设计前实测；其中 `MailboxView` 211、`MessageBodyView` 161）；2026-11-16 设计预计 `MailboxView` 约 190、`MessageBodyView` 约 150、新 `MailboxToolbar` 约 85，总计约 710。
+- 尺寸预算：单文件 ≤300 行；当前 `uumail` 共 **715** 行（2026-11-17 实测：`MailboxView` 202、`MessageBodyView` 155、`UumailApp` 57、`MessageHeaderView` 31、`ComposeView` 45、`AccountSetupView` 48、`MailboxToolbar` 75、`MessageBodyStyle` 41、`ThemeCommands` 45）；2026-11-17 字号设计预计约 900（新增 `FontSizeStyle` 约 110、`FontSizeCommands` 约 35、`EmptyState` 约 110），单文件仍 ≤300。
 - 单独运行：`./Scripts/make-app.sh && open dist/uumail.app`（release 构建，产物不入库）
 - 删除测试：删掉则只能命令行看信，对终端用户等于没有产品。
 
@@ -174,3 +174,36 @@ component: CMP-APP
 - 不改：工具栏以外的列表/侧栏/搜索/主题菜单/撰写/配置；`MessageWebView` 的白底/CSP/禁 JS；附件条/头部/banner；`UumailApp` 窗口下限（仍 900×560）。
 - P2 确认项：D4 工具栏形态/顺序；D5 远程入口用带状态 Button 而非 Toggle/菜单；D6 不可用时禁用而非隐藏；D7 L2 载体；D8 是否抽 `MailboxToolbar` 文件。详见 `task-spaces/20261116-223645/design.md` §8.2；确认记录见 `doc/history/decisions/2026-11-16-remote-toolbar-mark-read.md`（`frozen`，含 N6：`MailboxToolbar` 为 `CMP-APP` 内部文件、非新组件）。
 - 实现（2026-11-16，T-1116-13）：新 `Sources/uumail/MailboxToolbar.swift`（75 行，7 个紧凑图标入口，固定顺序）；`MailboxView.swift`（202 行）接入 `MailboxToolbar`、状态栏错误与阅读区放行参数；`MessageBodyView.swift`（155 行）删除正文 `@State` 与独立开关行，改为只读 `Bool`；`MessageWebView` 的 CSP/禁 JS/白底/`lastRender` 未改。`./Scripts/swiftw build` 通过，`./Scripts/swiftw test` 264 tests / 49 suites 通过，架构 4 门通过。L2 探针编译生产 `MailboxToolbar.swift`：`RemoteContentToolbarProbe` 28 PASS/0 FAIL、`ManualMarkReadProbe` 5 PASS/0 FAIL；`RemoteContentBodyProbe` 编译生产 `MessageBodyView`/`MessageWebView`/`MessageBodyStyle`，9 PASS/0 FAIL（正文无独立开关行、头部在开关前后保留、Bool→CSP 两档重载、CSP 精确值）。证据：`task-spaces/20261116-223645/evidence/t1116-13-build-test-arch.txt`、`evidence/t1116-13-toolbar/`。
+
+## 设计增量：界面与阅读字体大小（REQ-0020 / SCN-0015，2026-11-17，P2 默认确认）
+
+- 来源：`REQ-0020`（`accepted`）/ `SCN-0015`；完整论证、候选与否决、175/225% 预算与 L2 探针见 `task-spaces/20261117-071134/design.md` 与 `evidence/font-size-probe/round2/`；默认确认记录见 `doc/history/decisions/2026-11-17-font-size.md` 与第 2 轮 `2026-11-17-font-size-round2.md`（`frozen`，**默认确认（未经人工）**）。
+- **第 2 轮修正（2026-11-17，评审 fail 后）**：① 100% 不再装根 `.font`，原来源继承默认字体的点改用 `scaledInheritedFont`（100% 不加修饰；实测装根 `.font` 会把两行默认文本 32.0→31.5pt）；② 225% 只 cap 头部会只剩 147.5pt 视口，改为 175/225% cap 整个元数据区（头部+附件条+banner）220pt，480 高实测 259pt；③ 根级数据库错误页纳入 `EmptyState`；④ 生产头部 100% 实测 159.5pt（第 1 轮 158.5pt 是 fixture/补丁副本拟合值）；⑤ 225% 几何来自“生产源 + 设计 diff 副本”，生产源复跑标为实现期 L2。
+- 本增量只动 `CMP-APP` 与 `CMP-PRES`；不改 `MailDomain`/`MailStore`/`Scenes`/`MailGateway`/`Composition` 契约、schema、协议、依赖或 target；不改 `Package.swift`。
+- 新文件（均为 `CMP-APP` 内部文件，不新增组件/target）：
+  - `Sources/uumail/FontSizeStyle.swift`（约 110 行）：`EnvironmentValues.fontSizePreference`、`View.scaledFont(_:)`（原 `.font(style)` 点）、`View.scaledInheritedFont(_:)`（原默认字体点；100% 不加任何字体修饰，>100% 才加）、`FontSizePreference.font(for:)`。100% 返回原语义字体（`.caption`/`.body`/`.headline`/…），其余档用 `NSFont.preferredFont(forTextStyle:)` 的 descriptor 缩放 point size，保持家族与字重；根 **仅 >100%** 写 `.environment(\.font, fontSize.font(for: .body))` 覆盖默认文本、`TextField` 与 `Form` 输入，100% 不装（否则默认行高漂移）。
+  - `Sources/uumail/FontSizeCommands.swift`（约 35 行）：`CommandGroup(after: .sidebar)` + `Picker("字体大小", selection:)`，五项 `100%/120%/145%/175%/225%`；binding setter `guard newValue != fontSize` 保证重复选择 no-op，变化时先改 binding 再 `store.save`；只写本地偏好。
+  - `Sources/uumail/EmptyState.swift`（约 110 行）：`ContentUnavailableView` 与字符串标题 `Button` 不响应环境字体（本机实测 100%→225% 尺寸比 1.00）。100% 分支保留原 `ContentUnavailableView` 的初始化参数与字体修饰（逐点相等；description 为默认 body 时不装 `.font`，caption 时保留 `.font(.caption)`）；>100% 分支用 `Image + 缩放字体` 自绘（icon `52×scale`、**title 按实测 26pt 基 × scale（不是 `.title2` 的 17pt 基，否则 120% 会小于 100%）**、description 按原样式 body 13/caption 10 缩放、单一 action 的 label 缩放），支持 selectable。**title 基值需在最低 macOS 14 上复测 `ContentUnavailableView` 标题（本机 macOS 26 为 26pt），不能把 26 当跨系统常量；120% 实际比例必须 1.2**。100%→120% 会切换这个无状态占位子树的视图类型；不重置选中/滚动/搜索/草稿（显式例外，见 design.md §5.2）。`UumailApp` 根级数据库错误页、`MailboxView` 空态/同步中、`MessageBodyView` 选择/加载/失败态都走它。
+- `UumailApp`：`@State fontSize: FontSizePreference` + `private let fontStore: FontSizePreferenceStore`；`init` 先构造 store 再赋 `self.fontStore`、`_fontSize = State(initialValue: store.load())`、`_composition`；根 Group 加 `.environment(\.fontSizePreference, fontSize)`，**仅 `fontSize != .percent100` 时再加 `.environment(\.font, fontSize.font(for: .body))`**；`composition == nil` 的根级数据库错误页改 `EmptyState(title: "无法打开本地数据库", systemImage: "externaldrive.badge.xmark", description: "请检查 ~/Library/Application Support/uumail 的读写权限。")`；`.commands { ThemeCommands(...); FontSizeCommands(fontSize: $fontSize, store: fontStore) }`（声明顺序保证 View 菜单「主题 → 字体大小」相邻；L2 实测）。
+- 界面文字覆盖（逐项）：
+  - `MailboxView`：侧栏文件夹与列表主题显式 `.scaledInheritedFont(.body)`（原来源继承默认字体；100% 不加修饰、保持原行高，>100% 缩放；不依赖 `List` 是否继承环境字体）；发件人/日期/状态栏 `.font(.caption)` 改 `.scaledFont(.caption)`；状态栏计数 `.layoutPriority(1)`（225% 下同步/错误文案尾部截断，「N 封」保可见）；列表空态换 `EmptyState`。
+  - `MessageHeaderView`：主题 `.font(.headline)` 改 `.scaledFont(.headline)`；标签/值 `.scaledInheritedFont(.body)`（原来源继承默认字体；100% 不加修饰，避免 32.0→31.5pt 行高漂移；实测 100% 生产头部 159.5pt、225% 312.5pt）；标签列宽 `44` 改 `44 × preference.scaleFactor`（100% 仍 44；225% 99，值列起点 115，实测不重叠）；行序/行数/`lineLimit`/`textSelection` 不变。
+  - `MessageBodyView`：失败描述/截断 banner `.font(.caption)` 改 `.scaledFont(.caption)`；附件按钮 label 用 `scaledInheritedFont(.body)`（100% 无修饰）；空态/占位/失败态换 `EmptyState`；**175%/225%** 把「头部 + 附件条 + banner」整体包 `ScrollView` 并 `.frame(height: 220)`，100–145% 保持生产嵌套（不包 cap；实测 100% 视口 273pt/480 高、与生产逐点相等；120% 242.5、145% 205、175/225 259）；banner retry 按钮 100% 保留字符串标题（自定义 label 会差 1pt）、>100% 显式缩放 label；向 `MessageWebView` 传 `fontSize`。否决第 1 轮 `ViewThatFits` 只 cap 头部：真实栈里 100% 也会选中 ScrollView（`CapDiag.txt`），且 225% 视口只有 147.5pt。
+  - `ComposeView`：`TextEditor` 用 `scaledInheritedFont(.body)`（100% 无修饰），状态文本 `.scaledFont(.caption)`；「存草稿」「发送」按钮 100% 保留字符串标题、>100% 显式缩放 label（环境字体到不了按钮字符串标题，实测；字符串/自定义 label 的 100% 高度差 1pt，故按档位分支）。
+  - `AccountSetupView`：说明/错误 `.font(.caption)` 改 `.scaledFont(.caption)`；「连接」按钮 100% 保留字符串标题、>100% 显式缩放 label。
+  - `MailboxToolbar`：**不改**；系统工具栏不随字号缩放，7 个动作/顺序/禁用不变；L2 实测 900×560 下 100% 与 225% 均 7 项可见（无溢出），若未来溢出由系统 overflow menu 承接，动作仍可达。
+  - 系统 chrome：窗口标题栏、菜单栏、搜索框、系统对话框/文件面板/tooltip 不缩放；登记为系统能力边界，不在本景断言。
+- 正文（`MessageWebView`）：
+  - 新增 `let fontSize: FontSizePreference`；`makeNSView` 创建 WebView 时先设一次 `pageZoom`（避免启动首帧 1.0 跳到目标档），`updateNSView` 在 `lastRender` guard **之外**执行 `if webView.pageZoom != CGFloat(fontSize.scale) { webView.pageZoom = CGFloat(fontSize.scale) }`。
+  - `lastRender` 键仍为 `"\(allowRemoteContent)|\(html)"`，**不纳入字号**（纳入会触发 `loadHTMLString` 重载，违反即时性）。
+  - `pageZoom` 是整页渲染缩放：默认 13px 文本、作者显式 `px`、图片、表格一起按真实渲染比例缩放；`MessageBodyStyle.baseCSS`（100% 13px/1.55）、白底、CSP、禁 JS、`.aqua` 全部不改。代价：固定宽度大表在 225% 下可能需要横向滚动；图片随页面放大，`max-width:100%` 仍生效。
+  - 实测：1.0→2.25 导航增量 0；作者 20px 元素渲染高度 40→90 设备像素（2.250×）、默认 13px 26→59（2.269×）；滚动 200 保持；深色窗口下四角仍白；五档来回扫无重载；切换到新邮件时只加载一次、`pageZoom` 保持 2.25。证据 `task-spaces/20261117-071134/evidence/font-size-probe/WebProbe.txt`。
+- 175%/225% 预算（默认 900×560；480pt 为保守可用高）：元数据区（头部+附件条+banner）cap 220pt；100% 生产头部 159.5pt、225% 312.5pt；标签宽 99pt；**正文视口 480 高实测 259pt（≥200 下限，达 260 目标）**；120%/145% 不 cap（242.5/205pt，145 仍 ≥200）；560 高下 225% 视口 339pt；工具栏 7 动作可见、状态栏计数保宽、列表行高由字体撑开、撰写/配置表单可滚动；不新增窗口最小尺寸（仍 900×560）。
+- 尺寸：`UumailApp` 57→约 69、`MailboxView` 202→约 207、`MessageHeaderView` 31→约 35、`MessageBodyView` 155→约 175、`ComposeView` 45→约 48、`AccountSetupView` 48→约 50、新 `FontSizeStyle`/`FontSizeCommands`/`EmptyState` 约 255；`Sources/uumail` 715→约 900；单文件仍 ≤300，`CMP-APP` 尺寸预算成立。
+- 验证（L2，不新增 `uumail` 测试 target；见 `SCN-0015`）：
+  - `FontSizeProbe`：真实 SwiftUI App + 生产 `ThemeCommands`/`FontSizeCommands`（父菜单打开后读五项与勾选，R26）；`NSHostingView` + `.textSelection` 读 `NSTextField.font`（100% 恒等/225% 29.25pt）；**未修改生产 `MessageHeaderView` 100% 基线**（159.5pt/44pt 列）与设计 diff 副本 225%（312.5pt、99pt 列、值列起点 115、不重叠；生产源复跑标实现期 L2）；**完整 `MessageBodyView`**（header+附件+banner+divider+真实 `WKWebView`）在 320×480/560 的实测视口（100% 273、120% 242.5、145% 205、175/225% 259；只 cap 头部 A 变体 225% 147.5）；`EmptyState`/按钮/根错误页 100/120/225 字体与按钮 fitting（`EmptyState` 为新增文件，设计期用原型，实现期换生产文件复跑）；离屏 `WKWebView` 快照 + 导航计数（pageZoom 不重载）；生产 `MailboxToolbar` + `NSToolbar.visibleItems`（7 动作）。
+  - 非 `textSelection` 文本不在 AppKit 层暴露 `NSTextField`：用「生产同一 `scaledFont`/根环境 + 探针宿主逐样式测量 + 源码覆盖审计（每个 `.font(` 调用点要么缩放、要么在系统 chrome 清单内）」组合；不把 L1 映射冒充 L2。若实现期 seam 失效，由场景卡声明 L3，不静默降级。
+  - 既有回归：`SCN-0010`/`SCN-0011`/`SCN-0012`/`SCN-0013`/`SCN-0014` 在 100% 不退化；`SCN-0001`/`SCN-0006`/`SCN-0004` 只做外观/输入/不触网回归。
+- 不改：`MailboxToolbar` 的 7 个动作与顺序、主题菜单三项、`MessageBodyStyle` 的 100% `baseCSS`、`MessageWebView` 的 CSP/白底/禁 JS、`lastRender` 键、窗口下限、`MailDomain`/`MailStore`/`Scenes` 契约、schema/协议/依赖/target。
+- P2 默认确认项（未经人工）：D1 界面机制；D2 正文 pageZoom；D3 偏好形态；D4 菜单/相邻；D5 100% 恒等；D6 225% 预算；D7 空态/按钮；D8 测试载体；D9 回归口径；D10 级别。详见 `task-spaces/20261117-071134/design.md` §10.2；确认记录见 `doc/history/decisions/2026-11-17-font-size.md`。
+- 实现状态：**未实现**（本节点只落设计）。实现后按 `SCN-0015` 的 `T-SCN-0015-01..04` 验证；不翻转 `verified`/`delivered`。
