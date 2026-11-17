@@ -2,7 +2,7 @@
 layer: design
 module: app
 scope: project:uumail
-status: designed
+status: verified
 updated: 2026-11-17
 flow: settings/appearance
 scenario: SCN-0015
@@ -105,4 +105,6 @@ scenario: SCN-0015
 
 ## 状态
 
-`designed`（2026-11-17，设计节点落卡；同日第 2 轮按评审 fail 修订）。四元素齐：入口、运行序、不可变引用、测试均 `present`；`T-SCN-0015-01..04` 为 3 正 1 反可执行 ID；最低 `L1 + L2`，不要求 L3/L4。第 2 轮修订：生产头部 159.5pt（更正 158.5）、175/225% 元数据 cap、完整 body 视口实测、`EmptyState`/按钮/根错误页样本、100% 不装根字体、空态子树例外。实现与验证后由评审/收尾节点按清单翻转 `verified`；本卡不标 `verified`，不翻转任何需求/场景状态。
+`verified`（2026-11-17，T-1117-01 验证，收尾按 `review.md` §8 清单翻转；`T-1117-01` 为无人值守默认任务号、未经人工）。原 `designed`（2026-11-17，设计节点落卡；同日第 2 轮按评审 fail 修订）。四元素齐：入口、运行序、不可变引用、测试均 `present`；`T-SCN-0015-01..04` 为 3 正 1 反可执行 ID；最低 `L1 + L2`，不要求 L3/L4。第 2 轮修订：生产头部 159.5pt（更正 158.5）、175/225% 元数据 cap、完整 body 视口实测、`EmptyState`/按钮/根错误页样本、100% 不装根字体、空态子树例外。
+
+`verified` 判据：`T-SCN-0015-01..04` 全 pass（3 正 1 反）；L1 6/6、L2 342/0（`fontsize-web` 38 PASS，含 R40 图片/表格 8 条）、全量 `275 tests / 50 suites`、架构 4/4；`SCN-0010`/`SCN-0011`/`SCN-0012`/`SCN-0013`/`SCN-0014` 回归无退化；无未登记 skip。证据：`task-spaces/20261117-095147/test.md` §2–§6、`review.md` §8/§12 与 `evidence/`。
