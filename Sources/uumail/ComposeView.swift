@@ -16,7 +16,9 @@ struct ComposeView: View {
             .padding(12)
             Divider()
             TextEditor(text: $viewModel.body)
-                .scaledInheritedFont(.body)
+                // The baseline source already set `.font(.body)` here; `scaledFont`
+                // keeps 100% at 13pt/.AppleSystemUIFont and scales above.
+                .scaledFont(.body)
                 .padding(8)
             Divider()
             HStack {

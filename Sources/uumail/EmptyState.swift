@@ -1,3 +1,4 @@
+import AppKit
 import Presentation
 import SwiftUI
 
@@ -85,10 +86,11 @@ struct EmptyState: View {
                 .font(.system(size: 52 * preference.scaleFactor))
                 .foregroundStyle(.secondary)
             Text(title)
-                // `ContentUnavailableView`'s title measures 26pt on this platform.
-                // Scaling `.title2` (17pt) would make the 120% title smaller than the
-                // 100% baseline, so the custom branch scales the measured 26pt base.
-                .font(.system(size: 26 * preference.scaleFactor, weight: .semibold))
+                // `ContentUnavailableView`'s title uses the system large-title metrics
+                // (26pt on macOS 26). Resolve that base at runtime instead of hard-coding
+                // 26 so the >100% branch keeps the 1.2/2.25 ratio on the minimum macOS 14
+                // as well (design.md §9); the custom branch keeps the design's semibold.
+                .font(scaledTitleFont)
                 .multilineTextAlignment(.center)
             if let description {
                 Text(description)
@@ -105,5 +107,21 @@ struct EmptyState: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// The framework title's base point size, resolved from the same system semantic
+    /// style (`largeTitle`) that backs `ContentUnavailableView`; only the >100% branch
+    /// uses it, so 100% identity is unaffected. Weight matches the design's semibold
+    /// title treatment and stays constant across levels.
+    private var scaledTitleFont: Font {
+        let base = NSFont.preferredFont(forTextStyle: .largeTitle)
+        let descriptor = base.fontDescriptor.addingAttributes([
+            .traits: [NSFontDescriptor.TraitKey.weight: NSFont.Weight.semibold]
+        ])
+        let size = base.pointSize * preference.scaleFactor
+        guard let font = NSFont(descriptor: descriptor, size: size) else {
+            return .system(size: size, weight: .semibold)
+        }
+        return Font(font)
     }
 }
