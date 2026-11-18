@@ -2,7 +2,7 @@
 layer: design
 module: presentation
 status: active
-updated: 2026-11-17
+updated: 2026-11-18
 component: CMP-PRES
 ---
 
@@ -14,8 +14,8 @@ component: CMP-PRES
 - 单元：模块（薄视图模型 + 展示类型 + 文案/格式化 + UI 偏好适配）
 - 层 / 类型：L3；表现
 - 业务价值：把用户动作转成一次场景调用，把场景结果映射为可观察状态与中文文案；让视图退化成绑定。没有它，视图直接持有场景并写展示逻辑，状态机无法测试。
-- 负责 X：`MailboxViewModel`（文件夹/列表/正文/附件/同步/选择/搜索/自动刷新；T-1114-10 设计新增停留计时、键盘删除、前台状态、搜索模式保持（2026-11-14 已实现））、`ComposeViewModel`（新建/回复/全部回复/转发、入队状态、草稿）、`AccountSetupViewModel`（validate/connect、忙碌态、错误）、展示类型（`BodyPresentation`、`BodyNotice`、`SyncPresentation`、`Selection`）、`ErrorText` 唯一文案表、`DisplayFormat`（发件人/日期）、`ThemePreferenceStore`（主题偏好的读/写/回退；2026-11-16 设计新增）、`FontSizePreferenceStore`（字号偏好的读/写/回退；2026-11-17 设计新增，见文末增量）。
-- 不负责 Y：业务规则、直接访问 `MailStore`/`MailGateway`/`Outbox`、轮询节奏（`SyncScene`）、缓存优先与补拉（`ReadScene`）、系统外观跟随与主题菜单（`CMP-APP` 的 `preferredColorScheme`/`ThemeCommands`）、字号字体映射/应用与字号菜单（`CMP-APP` 的 `FontSizeStyle`/`FontSizeCommands`）。
+- 负责 X：`MailboxViewModel`（文件夹/列表/正文/附件/同步/选择/搜索/自动刷新；T-1114-10 设计新增停留计时、键盘删除、前台状态、搜索模式保持（2026-11-14 已实现））、`ComposeViewModel`（新建/回复/全部回复/转发、入队状态、草稿；2026-11-18 设计新增收件人候选状态与焦点/文本/光标/键盘/选中方法）、`AccountSetupViewModel`（validate/connect、忙碌态、错误）、展示类型（`BodyPresentation`、`BodyNotice`、`SyncPresentation`、`Selection`）、`ErrorText` 唯一文案表、`DisplayFormat`（发件人/日期）、`ThemePreferenceStore`（主题偏好的读/写/回退；2026-11-16 设计新增）、`FontSizePreferenceStore`（字号偏好的读/写/回退；2026-11-17 设计新增，见文末增量）。
+- 不负责 Y：业务规则、直接访问 `MailStore`/`MailGateway`/`Outbox`、轮询节奏（`SyncScene`）、缓存优先与补拉（`ReadScene`）、系统外观跟随与主题菜单（`CMP-APP` 的 `preferredColorScheme`/`ThemeCommands`）、字号字体映射/应用与字号菜单（`CMP-APP` 的 `FontSizeStyle`/`FontSizeCommands`）、收件人目录的信封聚合与名字/地址解析/匹配排序（`ComposeScene` + `MailDomain`）。
 - 内部逻辑：
   - 每个动作只调一次场景方法；结果映射为状态，不重试、不判断业务分支。
   - 正文：缓存优先 → `.loading`/摘要提示 → `.loaded(html, truncated)` 或 `.failed(text)`；`BodyNotice` 承载「正在补拉」与「摘要回退」。
@@ -23,11 +23,11 @@ component: CMP-PRES
   - `ComposeViewModel.send` 调 `ComposeScene.send`，成功即 `status = .queued` 并触发组合根的投递信号；失败保留编辑文本。
 - 拥有的数据：视图状态（选择、搜索词、加载态、编辑器文本、当前邮件远程放行、置读错误提示），不持久化；另持有**两个本地 UI 偏好镜像**——**主题偏好**（`UserDefaults["appearance.theme"]`，`ThemePreferenceStore`）与**字号偏好**（`UserDefaults["appearance.fontSize"]`，`FontSizePreferenceStore`，2026-11-17 设计新增；两个 key 独立、互不读写；不是业务数据，真源仍是 App 的 `@State`，见文末增量）。
 - 变化轴：窗口形态与交互；主题外观（2026-11-16 新增一档三态主题）；**字号档位**（2026-11-17 新增五档 100/120/145/175/225%，界面与阅读正文共用同一档位）。
-- 公开契约：`CMP-PRES#MailboxViewModel`（T-1114-10 设计新增 `#visibleMessages`、`#deleteErrorText`、`#setApplicationActive`、`#deleteSelected`（2026-11-14 已实现）；2026-11-16 新增 `#headerPresentation`；2026-11-16 设计新增 `#allowsRemoteContent`、`#canAllowRemoteContent`、`#setAllowsRemoteContent(_:)`、`#canMarkSelectedRead`、`#markSelectedRead()`、`#markReadErrorText`（P2 待确认，见文末增量））、`#ComposeViewModel`、`#AccountSetupViewModel`、`#ErrorText`、`#DisplayFormat`、`#ThemePreference`、`#ThemePreferenceStore`（2026-11-16 新增 public，P2 已确认并实现）、`#FontSizePreference`、`#FontSizePreferenceStore`（2026-11-17 设计新增 public，P2 默认确认未经人工）、`#MessageHeaderPresentation`（2026-11-16 新增 public，P2 已确认，实现见文末增量）；`MailboxDwell`/`MailboxDeletion` 仍是模块内文件。
-- 入口：`Sources/Presentation/MailboxViewModel.swift#MailboxViewModel`、`ComposeViewModel.swift#ComposeViewModel`、`AccountSetupViewModel.swift#AccountSetupViewModel`、`ErrorText.swift#ErrorText`、`PresentationTypes.swift#BodyPresentation`、`ThemePreference.swift#ThemePreference/#ThemePreferenceStore`、`FontSizePreference.swift#FontSizePreference/#FontSizePreferenceStore`（2026-11-17 设计新增）、`MessageHeaderPresentation.swift#MessageHeaderPresentation`（2026-11-16 新增）
+- 公开契约：`CMP-PRES#MailboxViewModel`（T-1114-10 设计新增 `#visibleMessages`、`#deleteErrorText`、`#setApplicationActive`、`#deleteSelected`（2026-11-14 已实现）；2026-11-16 新增 `#headerPresentation`；2026-11-16 设计新增 `#allowsRemoteContent`、`#canAllowRemoteContent`、`#setAllowsRemoteContent(_:)`、`#canMarkSelectedRead`、`#markSelectedRead()`、`#markReadErrorText`（P2 待确认，见文末增量））、`#ComposeViewModel`（2026-11-18 设计新增 `#RecipientField`、`#recipientSuggestions`、`#highlightedSuggestion`、`#recipientFocusChanged(in:)`、`#recipientFocusLost()`、`#recipientTextChanged(in:caretAtEnd:)`、`#recipientCaretChanged(atEnd:)`、`#moveRecipientHighlight(by:)`、`#selectRecipientSuggestion(at:)`、`#selectHighlightedRecipientSuggestion()`、`#dismissRecipientSuggestions()`）、`#AccountSetupViewModel`、`#ErrorText`、`#DisplayFormat`、`#ThemePreference`、`#ThemePreferenceStore`（2026-11-16 新增 public，P2 已确认并实现）、`#FontSizePreference`、`#FontSizePreferenceStore`（2026-11-17 设计新增 public，P2 默认确认未经人工）、`#MessageHeaderPresentation`（2026-11-16 新增 public，P2 已确认，实现见文末增量）；`MailboxDwell`/`MailboxDeletion` 仍是模块内文件。
+- 入口：`Sources/Presentation/MailboxViewModel.swift#MailboxViewModel`、`ComposeViewModel.swift#ComposeViewModel`（2026-11-18 新增收件人联想成员）、`AccountSetupViewModel.swift#AccountSetupViewModel`、`ErrorText.swift#ErrorText`、`PresentationTypes.swift#BodyPresentation`、`ThemePreference.swift#ThemePreference/#ThemePreferenceStore`、`FontSizePreference.swift#FontSizePreference/#FontSizePreferenceStore`（2026-11-17 设计新增）、`MessageHeaderPresentation.swift#MessageHeaderPresentation`（2026-11-16 新增）
 - 依赖：`Scenes`、`MailDomain`、`Observation`、`Foundation`（`UserDefaults`；不算新组件依赖）。扇出 1。
-- 冷热：热（主线程）；主题与字号偏好的读/写都是低频冷路径（启动一次 + 选择一次），不与 VM 热路径共享状态。
-- 尺寸预算：单文件 ≤400 行；当前（2026-11-17 实测）`MailboxViewModel` **378**、`ComposeViewModel` 196、`AccountSetupViewModel` 100、`ThemePreference` 50、`MailboxDwell` 59、`FontSizePreference` 约 55（2026-11-17 设计新增）；`Presentation` 共 **1229** 行（含 Body/Delete/Compose/Dwell/Deletion 拆分）→ 字号设计约 1284。本次不新增 `MailboxViewModel` 成员、不改 `MailboxDwell`。
+- 冷热：热（主线程）；主题与字号偏好的读/写都是低频冷路径（启动一次 + 选择一次），不与 VM 热路径共享状态；收件人候选是撰写页主线程内存过滤，不查库、不触网。
+- 尺寸预算：单文件 ≤400 行；当前（2026-11-18 实测）`MailboxViewModel` **378**、`ComposeViewModel` **263**、`AccountSetupViewModel` 100、`ThemePreference` 50、`MailboxDwell` 59、`FontSizePreference` 约 55；`Presentation` 共 **1508** 行（2026-11-18 实测，含 Body/Delete/Compose/Dwell/Deletion 拆分）。本次设计预计 `ComposeViewModel` +80–100 行 → 约 360，仍 ≤400；不新增 `MailboxViewModel` 成员、不改 `MailboxDwell`。
 - 单独运行：`./Scripts/swiftw test --filter PresentationTests`
 - 删除测试：删掉后视图直接持有场景并写展示逻辑，测试无法覆盖状态机 → 复杂度集中，是真边界。
 
@@ -413,3 +413,36 @@ component: CMP-PRES
 
 - `MailboxDeletion` 新增 internal `clearErrorText()`；`MailboxViewModel` 不新增公开成员，public 契约不变。
 - 测试：`MailboxViewModelTests.successfulSyncClearsDeleteError`、`successfulSyncClearsMarkReadError`（L1：先注入失败，断言文案在；再跑一次成功 `refresh()`，断言 `phase == .idle` 且文案为 nil）。
+
+## 设计增量：收件人输入联想状态（REQ-0022 / SCN-0017，2026-11-18，P1 默认确认、未实现）
+
+- `ComposeViewModel` 新增 public 面（全部 additive，既有 init/成员不变）：
+
+  ```swift
+  public enum RecipientField: Equatable, Sendable { case to, cc }
+
+  public private(set) var recipientSuggestions: [ContactAddress]
+  public private(set) var highlightedSuggestion: Int?
+
+  public func recipientFocusChanged(in field: RecipientField)
+  public func recipientFocusLost()
+  public func recipientTextChanged(in field: RecipientField, caretAtEnd: Bool)
+  public func recipientCaretChanged(atEnd: Bool)
+  public func moveRecipientHighlight(by delta: Int)
+  @discardableResult public func selectRecipientSuggestion(at index: Int) -> Bool
+  @discardableResult public func selectHighlightedRecipientSuggestion() -> Bool
+  public func dismissRecipientSuggestions()
+  ```
+
+- 内部状态：`directory: ContactDirectory?`（首次聚焦或首次文本变化时经 `scene.recipientDirectory(account:)` 加载一次并缓存）、`activeField: RecipientField?`。不新增 `MailStore` import；目录只经 `ComposeScene` 取得。
+- 行为：
+  - `recipientFocusChanged` 置当前字段并加载目录（已加载则复用）；`recipientFocusLost` 清当前字段与候选。
+  - `recipientTextChanged`：`caretAtEnd == false` → 清候选；否则用 `RecipientText.tailFragment(in:)` 取片段，空 → 清；否则用 `AddressList(prefixBeforeTail)` + 对方字段的完整文本组成已填地址集合，调 `directory.suggestions(for:excluding:limit:8)`；每次文本变化重置 `highlightedSuggestion = nil`（默认不高亮）。
+  - `recipientCaretChanged`：光标不在末尾 → 清候选；回到末尾且当前字段有片段 → 按当前文本重算。
+  - `moveRecipientHighlight`：无候选时清空；`↓` 首次到 0，`↑/↓` 在 `0...count-1` 内夹取，不循环；`selectHighlightedRecipientSuggestion` 只有在 `highlightedSuggestion != nil` 时提交（`Return` 的 VM 侧保证）。
+  - `selectRecipientSuggestion(at:)`：用 `RecipientText.replacingTail(in:with: contact.address)` 替换当前字段文本，写回 `to`/`cc`，清候选与高亮；其他字段/主题/正文/编辑器不动；`hasEdits` 由既有文本比较自然变 true。
+  - 不自动选中/自动发送；不在每次输入时加载目录或查库；目录加载失败等价于空目录，不显示错误。
+- IME：VM 不处理键盘事件，也不在 `Return` 上自动提交；「组合态 Return 不选中」由 `CMP-APP` 的 `RecipientTextField` 在 `hasMarkedText()` 时把命令放行给输入法并在 VM 侧保持 `highlightedSuggestion == nil` 来保证。L1 只断言「无高亮时 `selectHighlighted...` 返回 false」；组合态行为由 `T-SCN-0017-03` 的 L2 探针覆盖。
+- 兼容性：`ComposeViewModel` 既有 `Mode`/`Status`/`to`/`cc`/`subject`/`body`/`bodyHTML`/`send`/`saveDraft`/`hasEdits` 不变；新成员不影响既有调用；不新增依赖/文件；单文件仍 ≤400。
+- 测试：`PresentationTests/ComposeViewModelTests.suggestionsRefreshWithFragment`、`.selectionReplacesTailOnly`、`.ccIsIndependent`、`.selectionWritesPureAddressIntoDraft`、`.noPerKeystrokeDirectoryLoad`、`.directoryLoadsOncePerCompose`、`.middleCaretHidesSuggestions`、`.noDefaultHighlightSoReturnDoesNotCommit`、`.escapeDismissesSuggestions`、`.duplicateNotSuggested`、`.rapidTypingUsesLatestFragment`、`.emptyFragmentHasNoSuggestions`、`.blurClearsSuggestions`；既有 `sendEnqueues`/`replyAll*` 不回归。
+- 定级/确认：P1（`ComposeViewModel` public 面新增 + 依赖平台级 `MailDomain` 值类型）；默认确认（未经人工）见 `history/decisions/2026-11-18-recipient-autocomplete.md`。

@@ -2,7 +2,7 @@
 layer: design
 module: domain
 status: active
-updated: 2026-11-17
+updated: 2026-11-18
 component: CMP-DOMAIN
 ---
 
@@ -14,16 +14,16 @@ component: CMP-DOMAIN
 - 单元：模块（值类型 + 端口 + 错误目录的组合组件）
 - 层 / 类型：L1 契约；领域
 - 业务价值：让场景、数据与协议都只认识一套稳定概念。没有它，每个 target 自带一份值类型，改一个字段要动四处。
-- 负责 X：值类型（`AccountID`、`OutboxID`、`Folder`、`Message`、`Attachment`、`Draft`、`OutboxItem`、`FolderListing`、`MessageDelta`、`SyncReport`、`FetchedBody`、`AttachmentRef`、`ServerCapabilities`）、端口（`MailGateway`、`MailWriteGateway`、`SyncStore`、`CredentialStore`、`Notifier`、`AttachmentFiles`、`MailClock`）、`MailError`、`ServerConfiguration`。
+- 负责 X：值类型（`AccountID`、`OutboxID`、`Folder`、`Message`、`Attachment`、`Draft`、`OutboxItem`、`FolderListing`、`MessageDelta`、`SyncReport`、`FetchedBody`、`AttachmentRef`、`ServerCapabilities`，以及 2026-11-18 新增的 `ContactAddress`、`ContactEnvelope`、`ContactDirectory`、`RecipientText`）、端口（`MailGateway`、`MailWriteGateway`、`SyncStore`、`CredentialStore`、`Notifier`、`AttachmentFiles`、`MailClock`）、`MailError`、`ServerConfiguration`。
 - 不负责 Y：任何 I/O、持久化、协议编解码、UI 文案。
-- 内部逻辑：无行为；只做值传递与契约声明。`FetchedBody` 保留 `text/isHTML/isTruncated`（D10）。
+- 内部逻辑：无 I/O；只有纯值类型与纯函数——`AddressList` 的信封归一化、`ContactDirectory` 的解析/去重/名字回退/匹配排序、`RecipientText` 的尾片段与替换。`FetchedBody` 保留 `text/isHTML/isTruncated`（D10）。
 - 拥有的数据：无持久数据。
 - 变化轴：领域概念本身的字段与语义（邮件、文件夹、发送意图）。
-- 公开契约：`CMP-DOMAIN#MailGateway`、`#MailWriteGateway`（T-1114-10 设计，2026-11-14 已实现；作为非可选生产能力注入）、`#SyncStore`、`#CredentialStore`、`#Notifier`、`#AttachmentFiles`、`#MailClock`；能力 ID 由各操作名引用（如 `CMP-DOMAIN#fetchBody`）。
-- 入口：`Sources/MailDomain/Values.swift#AccountID`、`Ports.swift#MailGateway`、`Errors.swift#MailError`、`Configuration.swift#ServerConfiguration`
+- 公开契约：`CMP-DOMAIN#MailGateway`、`#MailWriteGateway`（T-1114-10 设计，2026-11-14 已实现；作为非可选生产能力注入）、`#SyncStore`、`#CredentialStore`、`#Notifier`、`#AttachmentFiles`、`#MailClock`、`#ContactAddress`、`#ContactEnvelope`、`#ContactDirectory`、`#RecipientText`（2026-11-18 新增，REQ-0022/SCN-0017）；能力 ID 由各操作名引用（如 `CMP-DOMAIN#fetchBody`、`#ContactDirectory.suggestions`）。
+- 入口：`Sources/MailDomain/Values.swift#AccountID`、`Ports.swift#MailGateway`、`Errors.swift#MailError`、`Configuration.swift#ServerConfiguration`、`Contacts.swift#ContactAddress`、`#ContactEnvelope`、`#ContactDirectory`、`#RecipientText`（2026-11-18 新增）
 - 依赖：仅 Foundation。扇出 0。
 - 冷热：两侧共用；只做值传递。
-- 尺寸预算：目标 ≤800 行；当前 515 行；上限 120k token。
+- 尺寸预算：目标 ≤800 行；当前 545 行（`wc -l` 2026-11-18，`AddressList` 等 5 个文件）；2026-11-18 设计新增 `Contacts.swift` 约 150 行 → 约 695 行，仍低于 800；上限 120k token。
 - 单独运行：`./Scripts/swiftw test --filter MailDomainTests`
 - 删除测试：删掉后 `Scenes`、`MailStore`、`SyncEngine`、`Outbox` 各自定义同名类型并互相转换 → 复杂度集中，是真边界。
 
@@ -169,3 +169,49 @@ component: CMP-DOMAIN
 - 兼容性：可选 + 默认 nil，既有 `Draft(...)` 调用、CLI `send`、旧 outbox 行（v10 前读出 nil）全部不破；`Equatable` 对旧值仍相等。`bodyHTML` 为 nil 或纯空白时 `MimeBuilder` 走单段 `text/plain`。
 - 不新增端口/错误类型；`MailDomain` 仍只 import Foundation。`body`/`bodyHTML` 的生成与清洗在 `Scenes.HTMLText`/`ComposeScene`，本组件只承载值。
 - 验证：编译期由 `ScenesTests`/`PresentationTests`/`OutboxTests` 构造带 HTML 的 `Draft` 覆盖；旧构造调用不回归（全量 292 tests / 51 suites）。
+
+## 设计增量：收件人联想目录（REQ-0022 / SCN-0017，2026-11-18，P1 默认确认、未实现）
+
+- 新增 `Sources/MailDomain/Contacts.swift`，public 纯值类型（只依赖 Foundation，无 I/O）：
+
+  ```swift
+  public struct ContactAddress: Equatable, Sendable, Identifiable {
+      public let name: String?
+      public let address: String
+      public var id: String { address.lowercased() }
+      public init(name: String?, address: String)
+  }
+
+  public struct ContactEnvelope: Equatable, Sendable {
+      public let sender: String?
+      public let recipients: String?
+      public let cc: String?
+      public let receivedRaw: String?
+      public init(sender: String?, recipients: String?, cc: String?, receivedRaw: String?)
+  }
+
+  public struct ContactDirectory: Equatable, Sendable {
+      public init(envelopes: [ContactEnvelope], excluding: [String] = [])
+      public var isEmpty: Bool { get }
+      public func suggestions(
+          for fragment: String,
+          excluding: [String] = [],
+          limit: Int = 8
+      ) -> [ContactAddress]
+  }
+
+  public enum RecipientText {
+      public static func tailFragment(in text: String) -> String
+      public static func prefixBeforeTail(in text: String) -> String
+      public static func replacingTail(in text: String, with address: String) -> String
+  }
+  ```
+
+- 解析规则：信封按顶层 `;`/`,` 拆分，引号内与 `<>` 内不拆；有 `<>` 取内部为地址、`<>` 前为显示名（去包裹引号、折叠空白）；无 `<>` 且含 `@` 的整段为地址、名字为 nil；只接受含 `@` 且无空白的 SMTP 地址，跳过裸显示名、通讯组名、Exchange DN、未闭合/空 `<>`。名字为空、与地址相同、或形如 RFC 2047 编码词（`=?...?=`）时按「无可用名字」，不显示编码乱码。不展开通讯组、不查目录、不做拼音/首字母/模糊音。
+- 去重与排序：按小写地址去重；同一地址多个名字取**最近一次非空名字**（`receivedRaw` 降序近似最近，同值按输入顺序稳定）；构建时排除 `excluding`（当前账号地址），查询时再排除 `excluding`（已填地址）。`suggestions` 大小写不敏感，排序键为「地址前缀 → 显示名前缀 → 地址子串 → 显示名子串 → 最近出现 → 地址小写」，结果可复现；`limit` 夹取到 `0...8`，0/负数返回空。
+- `RecipientText`：尾片段 = 最后一个顶层 `;`/`,` 之后的文本（trim 后返回）；`prefixBeforeTail` 返回该分隔符及其前文本（无分隔符返回空串）；`replacingTail` 用纯地址替换尾片段并补 `; `，保留前缀，空地址原样返回。光标在中间/有选区时由调用方禁止调用，不在本类型判断 UI。
+- 解析器归位：把 `AddressList` 的私有 `split`/段解析抽成模块内 `EnvelopeParser`（internal），`AddressList` 与 `ContactDirectory` 共用；`AddressList` 的公开拆分/取址/去重输出不变（既有 `MailDomainTests` 钉住），`ContactDirectory` 只额外使用 `isSMTP` 过滤与显示名。
+- 错误模式：无 throwing；畸形段跳过，构建/查询失败等价于空目录；不做失败重试、不产生用户可见错误。
+- 兼容性：纯增量 public 值类型；不改 `AddressList` 公开行为、不改 `MailGateway`/`SyncStore`/`Message`/`Draft`；不新增依赖/target；`MailDomain` 仍只 import Foundation、无 I/O。
+- 测试：`MailDomainTests/ContactDirectoryTests`（名字保留/回退、最近非空名字、去重、匹配排序、畸形/DN/RFC 2047、limit/排除）与 `RecipientTextTests`（尾片段/前缀/替换、引号与 `<>`、空片段）；`AddressList` 既有用例必须全绿。场景/视图模型测试见 `SCN-0017`。
+- 定级/确认：本增量属 P1（平台级扇入模块新增 public 契约）；默认确认（未经人工）见 `history/decisions/2026-11-18-recipient-autocomplete.md`，交评审判断。

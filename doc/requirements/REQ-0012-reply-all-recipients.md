@@ -3,7 +3,7 @@ layer: requirements
 module: mail
 scope: project:uumail
 status: delivered
-updated: 2026-11-14
+updated: 2026-11-18
 ---
 
 # REQ-0012 全部回复的收件人与抄送预填
@@ -39,5 +39,6 @@ updated: 2026-11-14
   - 2026-11-14 设计拍板（T-1114-01）：历史回填 = schema v9 把非 `folders` 的 message `sync_key` 置 `"0"`，下次同步重拉最近窗口（≤5×25 封），保留 messages/body/attachments；不逐封抓头。地址解析 = `MailDomain.AddressList` 纯值类型；To/Cc 去重、排除自己、保序、Cc 减 To。`CMP-STORE` 拆 `Migrations.swift`，组件预算 900 行不调（实测 852 + v9 增量约 35）。细节与候选见 `task-spaces/20261114-103223/design.md`、`doc/design/scenarios/mail/send/reply-all-recipients/scenario.md`。
   - 2026-11-14 设计门：`Cc` 是否由网关 Sync 信封返回仍未证；T-1114-02 未证前不实现降级。P1 核心 schema/契约需人确认后才开 change。
   - 2026-11-14 验收（T-1114-09，第 2 轮）：`SCN-0007` 的 3 正 1 反在组件级全绿；场景卡点名的 `ComposeSceneTests.replyAllUsesBackfilledCc` 已改为自带 pre-v9 fixture，真实走 v9 迁移 → `applySyncBatch(changed:)` 回填 → `replyAllSeed`，闭合「回填 Cc → 全部回复带出」缺口。全量 182 tests / 38 suites、架构 4 门通过。真机 UI 冒烟已完成：带 Cc 多人邮件全部回复 → `To`/`Cc` 正确（自己不出现在任一栏）→ 发送 → outbox 行与 MIME 均带 Cc；为避免向真实同事投递，冒烟使用仅本地的录制网关，MIME 落盘后返回 `offline`，未向真实邮箱发信。
+  - 2026-11-18 边界澄清：本卡非目标中的「GAL/联系人联想、收件人历史补全」只约束本卡的「全部回复种子」范围，不阻止 `REQ-0022` 另立收件人输入联想能力；本卡行为、断言与状态不变。
 - **状态**：delivered（2026-11-14，T-1114-09）。`SCN-0007` 3 正 1 反全绿并转 `verified`，真机 UI 冒烟已执行；`SCN-0006` 发送回归无退化。
 - **验收归属**：`SCN-0007` 的 3 正 1 反全绿并转 `verified`（2026-11-14），手工冒烟证据写入场景卡 §状态；`SCN-0006` 发送回归不退化。

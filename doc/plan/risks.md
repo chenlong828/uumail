@@ -2,7 +2,7 @@
 layer: plan
 module: global
 status: draft
-updated: 2026-11-17
+updated: 2026-11-18
 ---
 
 # 风险
@@ -55,6 +55,9 @@ updated: 2026-11-17
 | R42 | 100% 恒等档回归 | 新增环境值/缩放修饰符/`baseCSS` 改动让默认字体、边距、行高变化；或 100% 仍套一层缩放 | 既有 `verified` 场景与用户基线同时回归；「默认 100%」名不副实 | 100% 走恒等分支、无额外修饰；L1 断言 `baseCSS` 13px/1.55；L2 对比 100% 字体/边距；回归 `SCN-0010`/`SCN-0011`/`SCN-0012`/`SCN-0013`/`SCN-0014` | `design/components/CMP-APP/spec.md` 设计增量、`SCN-0015` |
 | R43 | L2 文本/正文度量 seam 不可行 | 离屏 `NSHostingController` 读不到字号；WebView 在 `allowsContentJavaScript = false` 下取不到计算样式；只能退化成 L1 映射 | `SCN-0015` 无法按声称层级验收；可能假绿或被迫升 L3 | 设计落 `designed` 前先证 seam：`NSTextField.font`、`NSToolbar.visibleItems`、`WKWebView.pageZoom`/快照/等效度量；不可行时由正式卡声明 L3 并写理由；不得静默降级或用 L1 冒充 | `design/components/CMP-APP/spec.md` 设计增量、`SCN-0015` |
 | R44 | 字号偏好写失败/启动闪烁/与主题耦合 | `UserDefaults` 写失败不可观察；启动先 100% 后跳；切主题把字号重置或反之；父菜单未打开读勾选为旧值 | 用户看到跳变/偏好丢失；验收「重启保持」「主题独立」不可信 | 会话状态为真源、store 不抛不回滚；`init` 读偏好后再渲染首帧；字号/主题独立 key；勾选先开父菜单（R26）；覆盖 invalid/round-trip/relaunch/theme independence | `design/components/CMP-PRES/spec.md`、`CMP-APP/spec.md` 设计增量、`SCN-0015`/`SCN-0011` |
+| R45 | `MailStore` 组件实测 1008 行，已超 1000 行硬上限 8 行 | `wc -l Sources/MailStore/*.swift` 合计 1008；下一次改 store 的人没注意就继续加行 | 越改越难拆；如果联系人改走派生表，会把 schema/迁移/预算三件事一起压上来 | **本批 REQ-0022 新增 0 行**（会话内聚合，不建表/不加查询）；既有 8 行登记为欠账；下一位改 `MailStore` 的任务先拆分或走 P1 预算调整，不静默继续加行 | `design/components/CMP-STORE/spec.md`、`task-spaces/20261118-082503/evidence/design-baseline.log` |
+| R46 | 收件人联想是会话内投影，旧邮件/未同步文件夹的联系人不可见 | 用户清理旧邮件后，之前能补全的地址不再出现；或某文件夹未同步 | 用户以为联想「丢了数据」；与「持久联系人」的预期不符 | 已在 `REQ-0022` 非目标、`SCN-0017` 失败路径与决策记录 D2 写明「当前只利用已有缓存」；要持久联系人另立 v11 需求，不把本批当持久通讯录；`ContactDirectory` 只读本地信封、不联网 | `requirements/REQ-0022-recipient-autocomplete.md`、`SCN-0017`、`history/decisions/2026-11-18-recipient-autocomplete.md` |
+| R47 | L2 候选浮层探针读不到 SwiftUI 行文本/位置 | 离屏 `NSHostingView` 下 `RecipientSuggestionList` 的行没有 `NSTextField`/`NSTextView` 承载，或 frame 被 Form 裁剪 | `SCN-0017` 的「可见候选/人名+邮箱/无名字回退」无法按 L2 验收，可能被迫升 L3 或退化成 L1 映射 | 设计把候选浮层放在 Form 之外的 `ZStack`，用 `PreferenceKey` 定位，避免 Form 裁剪；探针先断言行/字段存在再比对文本与 frame；若仍读不到，由 `SCN-0017` 改声明 L3 并写理由，**不得**静默降级或跳过 | `design/components/CMP-APP/spec.md` 设计增量、`SCN-0017`、`task-spaces/20261118-082503/` |
 
 2026-11-17 设计处置（run `20261117-071134`，`REQ-0020`/`SCN-0015`；**未关闭**，实现/验证时按场景卡复核；第 2 轮按评审 fail 修订）：
 
@@ -68,8 +71,8 @@ updated: 2026-11-17
 ## 风险等级口径
 
 - 高：直接使项目不可用或造成合规事故（R1、R2、R11）。
-- 中：影响关键旅程但可降级（R3、R4、R5、R6、R8、R12、R13、R18、R19、R21、R22、R23、R24、R27、R28、R29、R31、R32、R33、R34、R35、R36、R37、R38、R39、R40、R41、R42、R43、R44）。
-- 低：局部体验或可回滚（R7、R9、R10、R15、R25、R26、R30）。
+- 中：影响关键旅程但可降级（R3、R4、R5、R6、R8、R12、R13、R18、R19、R21、R22、R23、R24、R27、R28、R29、R31、R32、R33、R34、R35、R36、R37、R38、R39、R40、R41、R42、R43、R44、R45、R47）。
+- 低：局部体验或可回滚（R7、R9、R10、R15、R25、R26、R30、R46）。
 
 R14 已于 2026-11-14 关闭（T-1114-02：网关 Sync 信封实测返回 `Cc`）。R16/R17/R20 已于 2026-11-14 关闭（真机写命令、预算拆分、写响应语义）。R27–R31 为 2026-11-16 阅读页信封头新增，**未关闭**；落点与缓解见各行。
 
@@ -78,3 +81,5 @@ R14 已于 2026-11-14 关闭（T-1114-02：网关 Sync 信封实测返回 `Cc`�
 R32–R38 为 2026-11-16 需求分析/设计新增（远程图片开关归位、手动置读、自动已读 10→3 秒、工具栏 L2 探针、合成点击载体、非 `MailError` 归一），**未关闭**；落点与缓解见各行。R33 的现状证据见 `task-spaces/20261116-223645/evidence/current-state.txt`（`MessageBodyView` 的 `@State` 无按邮件重置）；R32/R33/R36/R38 的设计处置见同目录 `design.md`、`evidence/toolbar-probe/` 与第 2 轮 §5.2/§7.9。R37 是 R36 设计阶段证通后的残余测试载体风险，实现复跑时按场景卡先断言条目存在再点击。
 
 R39–R44 为 2026-11-17 需求分析新增（`REQ-0020` 字体大小），**未关闭**；落点与缓解见各行。现状证据见 `task-spaces/20261117-071134/evidence/current-state.txt`（无既有字号实现、正文 13px 固定、`lastRender` 不含字号、头部 44pt 固定宽、工具栏 7 项）；设计待答清单见同目录 `brief.md` §7。R43 的 L2 度量 seam 已由 2026-11-17 设计探针证通（见上「2026-11-17 设计处置」；225% 为生产源+设计 diff 副本，生产源复跑留实现期），剩余为实现期复跑；若实现期 seam 失效，由 `SCN-0015` 声明 L3 并写理由。
+
+R45–R47 为 2026-11-18 需求分析/设计新增（`REQ-0022` 收件人联想），**未关闭**；落点与缓解见各行。R45 的现状证据见 `task-spaces/20261118-082503/evidence/design-baseline.log`（`MailStore` 四文件合计 1008 行）；R46 的已接受降级见决策记录 D2；R47 的实现期 seam 复核留 `SCN-0017` 的 L2 探针。

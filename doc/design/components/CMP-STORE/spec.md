@@ -2,7 +2,7 @@
 layer: design
 module: store
 status: active
-updated: 2026-11-14
+updated: 2026-11-18
 component: CMP-STORE
 ---
 
@@ -10,7 +10,7 @@ component: CMP-STORE
 
 ## 模块卡
 
-- 状态：`active`（schema v9；账号、文件夹、消息、正文、附件、outbox、FTS 读写均已落地）
+- 状态：`active`（schema v10；账号、文件夹、消息、正文、附件、outbox、FTS 读写均已落地；v10 为 REQ-0021 的 `outbox.body_html`，本批不改存储）
 - 单元：组件
 - 层 / 类型：L1a；领域基础（数据服务，唯一写入口）
 - 业务价值：为列表、阅读、搜索、发送意图提供**唯一权威本地副本**；没有它，同一封邮件会以三种口径出现在三个模块里。
@@ -23,11 +23,11 @@ component: CMP-STORE
 - 入口：`Sources/MailStore/MailStore.swift#MailStore`、`SyncStoreConformance.swift`（`MailStore: SyncStore`）
 - 依赖：`MailDomain`、GRDB。扇出 2。
 - 冷热：读热、写冷热混合；`DatabaseQueue` 单写。
-- 尺寸预算：硬上限 1000 行；当前 1000 行（`MailStore.swift` 761 + `Migrations.swift` 161 + `SyncStoreConformance.swift` 40 + `Values.swift` 38，`wc -l` 2026-11-14；T-1114-14 压实到硬上限 1000，未超限）。
+- 尺寸预算：硬上限 1000 行；当前 **1008 行**（`MailStore.swift` 763 + `Migrations.swift` 167 + `SyncStoreConformance.swift` 40 + `Values.swift` 38，`wc -l` 2026-11-18）；相对 2026-11-14 的 1000 行多 8 行（v10 迁移与既有小改），属既有超出，登记 `plan/risks.md` R45。本批（REQ-0022）新增 **0 行**、不调预算；下一位改 `MailStore` 的任务必须先拆分或走 P1 预算调整，不得静默继续加行。
 - 单独运行：`./Scripts/swiftw test --filter MailStoreTests`
 - 删除测试：删掉后场景、同步、搜索各自拼 SQL 并各自维护 SyncKey → 复杂度分散，是真边界。
 
-## 契约卡：MailStore v9
+## 契约卡：MailStore v10
 
 - 账号：`createAccount(NewAccount)`（`draft`）、`markAccountReady`、`discardAccount`（仅无消息）、`account(_:)`（返回 `displayName/address/host`）、`accounts()`。
 - 文件夹与同步：`folders(account:)`、`applyFolderSnapshot(account:folders:syncKey:)`、`applySyncBatch(account:folder:added:changed:removedServerIDs:syncKey:)`、`syncKey(account:collection:)`、`resetCollection(account:folder:)`；已实现 `markRead(account:folder:serverID:)`、`commitMarkRead(account:folder:serverID:delta:)`、`commitDelete(account:folder:serverID:delta:)`（T-1114-14；见文末设计增量）。
@@ -39,7 +39,7 @@ component: CMP-STORE
 - 幂等 / 顺序 / 并发：批次幂等；单写队列；跨进程靠 SQL 原子更新与租约。
 - 超时 / 取消 / 背压：单事务目标 ≤2s；批次大小由 `SyncEngine` 控制。
 - 一致性 / 可见性：提交后立即可见；信封与正文同生同灭。
-- 兼容性 / 废弃：schema 只前进；v9 只加 `messages.cc` 可空列并把非 `folders` 的 `sync_key` 置 `"0"`，旧库可前滚。`MailStore/Values.swift` 仍保留指向 `MailDomain` 的过渡 `typealias`（未删，见 `design/architecture.md` §10）。
+- 兼容性 / 废弃：schema 只前进；v9 只加 `messages.cc` 可空列并把非 `folders` 的 `sync_key` 置 `"0"`，v10 只加 `outbox.body_html` 可空列（REQ-0021），旧库可前滚。`MailStore/Values.swift` 仍保留指向 `MailDomain` 的过渡 `typealias`（未删，见 `design/architecture.md` §10）。
 - 契约测试：`MailStoreTests` 38 例、`MigrationTests` 2、`PerformanceTests` 1、`Smoke` 1。
 
 ## 数据所有权
@@ -138,3 +138,11 @@ component: CMP-STORE
 - 写路径：`enqueueOutbox` 的 INSERT 增加 `body_html`（来自 `Draft.bodyHTML`，可为 NULL）；`pendingOutbox`/`claimOutbox RETURNING`/`outboxItem`/`outboxItem(row:)` 全部带该列。`saveDraft` 复用同一写路径，草稿行同样保留 HTML。
 - 不变量：`body` 列仍必填；`body_html` 只在有 HTML 时写；schema 变更不改 `messages`/`message_bodies`/FTS/附件；不新增第二写入口。
 - 测试：`ScenesTests/ComposeSceneTests.replyAllUsesBackfilledCc` 的 pre-v9/v10 fixture 读到旧草稿 `bodyHTML == nil`；`OutboxTests/OutboxDeliveryTests.deliversHTML` 验证入队读出 HTML 并投递；`MigrationTests` pre-v9 fixture 已补 outbox 表，v10 在旧库上可执行。
+
+## 设计增量：收件人联想不改本组件（REQ-0022 / SCN-0017，2026-11-18）
+
+- **不改 schema**：不建 `contacts` 表、不注册 v11、不回填、不改 `applySyncBatch` 的 upsert；schema 保持 v10。
+- **不加查询**：`ComposeScene.recipientDirectory(account:)` 复用既有只读契约 `folders(account:)` 与 `messages(account:folder:limit:)`，按文件夹取信封后在 `Scenes`/`MailDomain` 内存聚合；本组件不新增 public 方法、不新增 SQL。
+- **预算**：本批对 `MailStore` 目标新增 0 行；既有 1008/1000 的 8 行超出与本批无关，登记 R45。若后续要把联系人做成持久派生表（v11 `contacts` + 回填 + upsert），先按 P1 立项、拆分 `MailStore` 或调预算，再动本组件。
+- **数据所有权**：`messages` 仍是 `CMP-STORE` 唯一写入口；联系人目录是会话内只读投影，不持久、不是第二真相；旧邮件清理后名字可能丢失，已在 `SCN-0017` 失败路径与决策记录中接受。
+- **验证**：本组件无新增测试；`MailStoreTests` 既有用例不回归即可。聚合行为由 `ScenesTests/ComposeSceneTests.recipientDirectory*` 覆盖。

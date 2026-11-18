@@ -2,7 +2,7 @@
 layer: design
 module: scenes
 status: active
-updated: 2026-11-14
+updated: 2026-11-18
 component: CMP-SCN-COMPOSE
 ---
 
@@ -23,11 +23,11 @@ component: CMP-SCN-COMPOSE
   - `saveDraft` 写草稿行（`isDraft = true`），不入队、不投递。
 - 拥有的数据：无持久数据；草稿文本由 `Presentation` 持有。
 - 变化轴：撰写形态（纯文本/富文本、附件）。
-- 公开契约：`CMP-SCN-COMPOSE#replySeed`、`#replyAllSeed`、`#forwardSeed`、`#saveDraft`、`#send`、`#pending`、`#retry`、`#cancel`
-- 入口：`Sources/Scenes/ComposeScene.swift#ComposeScene`
+- 公开契约：`CMP-SCN-COMPOSE#replySeed`、`#replyAllSeed`、`#forwardSeed`、`#saveDraft`、`#send`、`#pending`、`#retry`、`#cancel`、`#recipientDirectory(account:)`（2026-11-18 设计新增，REQ-0022/SCN-0017）
+- 入口：`Sources/Scenes/ComposeScene.swift#ComposeScene`、`#ComposeScene.recipientDirectory(account:)`
 - 依赖：`MailStore`、`Outbox`、`MailDomain`。扇出 2。
-- 冷热：热（入队本地事务）。
-- 尺寸预算：≤500 行；当前 `ComposeScene.swift` 152 行（随 `Scenes` 共 691 行）。
+- 冷热：热（入队本地事务）；`recipientDirectory` 为一次本地只读聚合（撰写页首次聚焦），不触网、不阻塞打开 sheet。
+- 尺寸预算：≤500 行；当前 `ComposeScene.swift` 165 行（`wc -l` 2026-11-18；随 `Scenes` 共 947 行）；本次设计新增约 45–55 行，预计 ≤220 行。
 - 单独运行：`./Scripts/swiftw test --filter ScenesTests`
 - 删除测试：删掉后视图直接操作 outbox 并拼 MIME → 规则散落，是真边界。
 
@@ -112,3 +112,23 @@ component: CMP-SCN-COMPOSE
 - 行为：`HTMLText.quotedEmail(header:originalHTML:)` 生成完整 HTML 文档（`uumail-reply-start` 空行、全宽引文容器、12px 灰字抬头、清洗后的原正文）；`body` 由 `HTMLText.plainText(from:)` 同源生成。`quotedHeader` 由 `Presentation.DisplayFormat.quoteHeader` 传入（日期+发件人+写道：）；nil 时回退 `原邮件`，转发回退 `---------- 转发邮件 ----------`。不缩进、不用 `<blockquote>`/`margin-left`。`replyAllSeed` 只把 `bodyHTML` 带过去，地址规则不动。
 - 不变：`send` 只入队、`saveDraft` 不入队、主题前缀规则、`In-Reply-To`/`References` 既有行为；不新增依赖。
 - 测试：`ScenesTests/ComposeSceneTests.replySeedRules`、`.replySeedSanitisesOriginal`、`.forwardSeedRules`、`.replyAllFillsSenderAndOriginalRecipients`、`.replyAllUsesBackfilledCc`（旧行 nil）；全量 292 tests / 51 suites。
+
+## 设计增量：收件人联想目录（REQ-0022 / SCN-0017，2026-11-18，P1 默认确认、未实现）
+
+- 新增 public 同步方法：
+
+  ```swift
+  public func recipientDirectory(account: AccountID) -> ContactDirectory
+  ```
+
+- 行为：
+  1. `try store.account(account)?.address` 取当前账号地址；读取失败/缺失 → `nil`（不排除自己），不抛错。
+  2. `try store.folders(account:)` 取文件夹；跳过 `Drafts(3)`/`Deleted Items(4)`/`Sent Items(5)`/`Outbox(6)`，其余文件夹按存储顺序处理。
+  3. 对每个保留文件夹调用 `try store.messages(account:folder:limit:500)`（只读信封，不读正文/附件），把 `sender`/`recipients`/`cc`/`receivedRaw` 映射为 `ContactEnvelope`。
+  4. 返回 `ContactDirectory(envelopes: envelopes, excluding: [ownAddress].compactMap { $0 })`。
+  5. 任一步 store 读取抛错 → 返回 `ContactDirectory(envelopes: [], excluding: [])`，静默降级；不把存储错误显示成收件人错误。
+- 边界：本组件只做「取数 + 映射 + 交给 `MailDomain`」，不复制解析/匹配/排序规则；不逐键调用（由 `ComposeViewModel` 缓存一次）；不新增 `MailStore` 方法/schema/依赖；不触网。
+- 不变量：`replySeed`/`replyAllSeed`/`forwardSeed`/`send`/`saveDraft` 行为不变；`recipientDirectory` 是纯读、无副作用、非 throwing；返回的目录只含当前账号、且来自非 Drafts/Deleted/Sent/Outbox 文件夹的信封。
+- 尺寸：`ComposeScene.swift` 165 → 预计约 215 行（新增约 50 行），低于 500；`Scenes` 总行数约 947（2026-11-18 实测）+ 约 50，不新增 target。
+- 测试：`ScenesTests/ComposeSceneTests.recipientDirectoryAggregatesLocally`（Inbox + 自定义文件夹聚合、名字/地址、排除自己）、`.recipientDirectorySkipsNonMailFoldersAndOwnAddress`（Sent/Drafts/Deleted/Outbox 不贡献）、`.recipientDirectoryDegradesToEmpty`（空库/读失败等价）；`ComposeSceneTests` 既有种子/发送用例不回归。
+- 定级/确认：P1（场景 public 契约 + 平台级 `MailDomain` 值类型）；默认确认（未经人工）见 `history/decisions/2026-11-18-recipient-autocomplete.md`。

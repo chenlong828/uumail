@@ -3,7 +3,7 @@ layer: plan
 module: global
 scope: project:uumail
 status: current
-updated: 2026-11-17
+updated: 2026-11-18
 ---
 
 # 路线图
@@ -42,6 +42,7 @@ updated: 2026-11-17
 | W-M3-06 远程开关归位、手动置读与 3 秒自动已读 | M3 | W-M3-05；REQ-0013/REQ-0018/REQ-0019 `delivered`；SCN-0008/SCN-0013/SCN-0014 `verified`；P2（D1–D8）已确认（`history/decisions/2026-11-16-remote-toolbar-mark-read.md`） | CMP-PRES、CMP-APP | 已完成（2026-11-17）：确认门 `T-1116-11` 于 2026-11-16 落盘，`T-1116-12`/`T-1116-13` 实现完成，`T-1116-14`…`T-1116-16` 逐例验证通过（12/12 例子）；全量 269 tests / 49 suites、架构 4 门、三份 L2 探针 32/5/16 通过；`SCN-0008`/`SCN-0013`/`SCN-0014` 转 `verified`、`REQ-0013`/`REQ-0018`/`REQ-0019` 转 `delivered`；任务表见本文 §W-M3-06 |
 | W-M3-07 界面与阅读字体大小可调 | M3 | 代码基线 `4ae0108`；REQ-0020 `delivered`；SCN-0015 `verified`；设计 `task-spaces/20261117-071134/design.md`（第 2 轮） | CMP-PRES、CMP-APP | 已完成（2026-11-17）：实现 `2c2b1a2` + 评审回退修复 `d958da9`（`ComposeView` 100% 恒等、`EmptyState` 语义基值）；`T-SCN-0015-01..04`（3 正 1 反）L1 6/6、L2 342/0（`fontsize-web` 38 PASS，含 R40 图片/表格 8 条）、全量 275 tests / 50 suites、架构 4/4；`SCN-0015` 转 `verified`、`REQ-0020` 转 `delivered`（`task-spaces/20261117-095147/review.md` §8/§12）；`T-1117-01` 为无人值守默认任务号（未经人工），task-split 未产出独立任务表 |
 | W-M3-08 HTML 回复撰写 | M3 | W-M3-07；REQ-0021 `delivered`；SCN-0016 `verified`；P2（D1–D8）已登记（`history/decisions/2026-11-17-html-compose.md`） | CMP-DOMAIN、CMP-STORE、CMP-OUT、CMP-SCN-COMPOSE、CMP-PRES、CMP-APP | 已完成（2026-11-17）：`T-1117-20`…`T-1117-27`；`Draft/OutboxItem.bodyHTML`、outbox v10 `body_html`、`multipart/alternative`、全宽 HTML 引文、`ComposeDocument`、WKWebView 编辑器/格式栏/取消确认/sheet 等宽落地；`SCN-0016` 转 `verified`、`REQ-0021` 转 `delivered`；全量 292 tests / 51 suites、架构 4 门；真实 App UI 冒烟 sheet 1441pt = detail 1440pt；任务表见本文 §W-M3-08 任务表 |
+| W-M3-09 收件人输入联想补全 | M3 | W-M3-08；REQ-0022 `accepted`；SCN-0017 `designed`；P1 默认确认（未经人工，`history/decisions/2026-11-18-recipient-autocomplete.md`） | CMP-DOMAIN、CMP-SCN-COMPOSE、CMP-PRES、CMP-APP | 设计完成（2026-11-18）：`SCN-0017` 落 `designed`（3 正 1 反，T-01/02/04 最低 L1、T-03 最低 L2）；会话内聚合、不改 `MailStore`/schema、不新增 target/依赖；**任务表待 `task-split`**，未实现、未验证 |
 | W-SCN-REFACTOR 场景收口与分层重构 | M1/M2/M3 结构前置 | W-DOC-01、M4 结论 | 全仓 | 已完成（`history/works/2026-11-10-scene-refactor/`）：4 场景、9 库 + 2 可执行、159 测试、4 架构门 |
 
 ### W-SCN-REFACTOR 场景收口与分层重构（2026-11-14 完成）
@@ -281,6 +282,14 @@ P1 确认记录已归档为 `uumail/doc/history/decisions/2026-11-14-mail-write-
 | `T-1117-27` | `verify` | `SCN-0016` | `SCN-0016` §测试/§状态 | 已完成 | 3 正 1 反 L1 全绿；292 tests / 51 suites；架构 4 门；L2 UI 冒烟与 WebKit 探针登记；`SCN-0016` `verified`、`REQ-0021` `delivered` |
 
 边界：`T-1117-21`…`26` 各自只改一个组件；`T-1117-27` 只补测试/证据，不改产品代码。回退 = 按提交反向回退；schema 为 additive，回退后旧行 `body_html` 列保留但代码不读，下一次正常迁移可继续；不删除用户邮件数据。
+
+## W-M3-09 设计状态（收件人输入联想补全，2026-11-18）
+
+来源：`REQ-0022`（`accepted`）、`SCN-0017`（`designed`）、`history/decisions/2026-11-18-recipient-autocomplete.md`（D1–D10，P1 默认确认，未经人工）、`design/components/{CMP-DOMAIN,CMP-STORE,CMP-SCN-COMPOSE,CMP-PRES,CMP-APP}/spec.md` §2026-11-18 增量。
+
+设计结论：**会话内聚合**，首次聚焦经 `ComposeScene.recipientDirectory(account:)` 读一次本地已收信封，`ComposeViewModel` 缓存；不建 `contacts` 表、不改 `MailStore`/schema（store 既有 1008/1000 超出登记 R45，本批新增 0 行）；`MailDomain` 新增 `ContactAddress`/`ContactEnvelope`/`ContactDirectory`/`RecipientText`；`ComposeViewModel` 新增候选/焦点/键盘/选中 public 面；`uumail` 新增 `RecipientTextField`/`RecipientSuggestionList`/`ComposeRecipientForm`，候选浮层不改变 sheet 宽高。
+
+**待 `task-split`**：按组件与场景拆任务（`CMP-DOMAIN` → `CMP-SCN-COMPOSE` → `CMP-PRES` → `CMP-APP` → `verify`），一个 task 一件事，不改本设计边界；任务号、依赖、装载清单、出口由该节点补入本节。本设计不预分配任务号，也不代替 `task-split` 决策。设计提交使用 `T-1118-01` 作为**默认设计任务号（未经人工）**，只用于 commit 可追溯，不代表任务表编号。
 
 ## 批次纪律
 
