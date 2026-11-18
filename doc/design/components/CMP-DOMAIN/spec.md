@@ -207,11 +207,11 @@ component: CMP-DOMAIN
   }
   ```
 
-- 解析规则：信封按顶层 `;`/`,` 拆分，引号内与 `<>` 内不拆；有 `<>` 取内部为地址、`<>` 前为显示名（去包裹引号、折叠空白）；无 `<>` 且含 `@` 的整段为地址、名字为 nil；只接受含 `@` 且无空白的 SMTP 地址，跳过裸显示名、通讯组名、Exchange DN、未闭合/空 `<>`。名字为空、与地址相同、或形如 RFC 2047 编码词（`=?...?=`）时按「无可用名字」，不显示编码乱码。不展开通讯组、不查目录、不做拼音/首字母/模糊音。
-- 去重与排序：按小写地址去重；同一地址多个名字取**最近一次非空名字**（`receivedRaw` 降序近似最近，同值按输入顺序稳定）；构建时排除 `excluding`（当前账号地址），查询时再排除 `excluding`（已填地址）。`suggestions` 大小写不敏感，排序键为「地址前缀 → 显示名前缀 → 地址子串 → 显示名子串 → 最近出现 → 地址小写」，结果可复现；`limit` 夹取到 `0...8`，0/负数返回空。
+- 解析规则：信封按顶层 `;`/`,` 拆分，引号内与 `<>` 内不拆；有 `<>` 取内部为地址、`<>` 前为显示名（去包裹引号、折叠空白）；无 `<>` 且含 `@` 的整段为地址、名字为 nil；只接受**恰好一个 `@`、local/domain 非空、无空白且不含 `;`/`,`/`<`/`>`/引号**的 SMTP 地址，跳过裸显示名、通讯组名、Exchange DN、未闭合/空 `<>`、以及 `Team <a@x;b@y>` 这类 `<>` 内塞多地址的畸形段。名字为空、与地址相同、或形如 RFC 2047 编码词（`=?...?=`）时按「无可用名字」，不显示编码乱码。不展开通讯组、不查目录、不做拼音/首字母/模糊音。
+- 去重与排序：按小写地址去重；同一地址多个名字取**最近一次非空名字**（`receivedRaw` 降序近似最近，同值按输入顺序稳定）；构建时排除 `excluding`（当前账号地址），查询时再排除 `excluding`（已填地址，大小写不敏感、trim 后为空则忽略；`excluding` 只收地址字符串，调用方先用 `AddressList` 归一出纯地址）。`suggestions` 大小写不敏感，排序键为「地址前缀 → 显示名前缀 → 地址子串 → 显示名子串 → 最近出现 → 地址小写」，结果可复现；空/纯空白片段返回空；`limit` 夹取到 `0...8`，0/负数返回空。每文件夹 500/总计 5,000 的读取上限是 `CMP-SCN-COMPOSE` 的策略，不在本组件。
 - `RecipientText`：尾片段 = 最后一个顶层 `;`/`,` 之后的文本（trim 后返回）；`prefixBeforeTail` 返回该分隔符及其前文本（无分隔符返回空串）；`replacingTail` 用纯地址替换尾片段并补 `; `，保留前缀，空地址原样返回。光标在中间/有选区时由调用方禁止调用，不在本类型判断 UI。
 - 解析器归位：把 `AddressList` 的私有 `split`/段解析抽成模块内 `EnvelopeParser`（internal），`AddressList` 与 `ContactDirectory` 共用；`AddressList` 的公开拆分/取址/去重输出不变（既有 `MailDomainTests` 钉住），`ContactDirectory` 只额外使用 `isSMTP` 过滤与显示名。
 - 错误模式：无 throwing；畸形段跳过，构建/查询失败等价于空目录；不做失败重试、不产生用户可见错误。
 - 兼容性：纯增量 public 值类型；不改 `AddressList` 公开行为、不改 `MailGateway`/`SyncStore`/`Message`/`Draft`；不新增依赖/target；`MailDomain` 仍只 import Foundation、无 I/O。
-- 测试：`MailDomainTests/ContactDirectoryTests`（名字保留/回退、最近非空名字、去重、匹配排序、畸形/DN/RFC 2047、limit/排除）与 `RecipientTextTests`（尾片段/前缀/替换、引号与 `<>`、空片段）；`AddressList` 既有用例必须全绿。场景/视图模型测试见 `SCN-0017`。
-- 定级/确认：本增量属 P1（平台级扇入模块新增 public 契约）；默认确认（未经人工）见 `history/decisions/2026-11-18-recipient-autocomplete.md`，交评审判断。
+- 测试：`MailDomainTests/ContactDirectoryTests`（名字保留/回退、最近非空名字、去重、匹配排序、畸形/DN/RFC 2047、limit/排除、空片段、引号内逗号/未闭合 `<>`、`Team <a@x;b@y>`/`a@x,b@y` 不产生候选）与 `RecipientTextTests`（尾片段/前缀/替换、引号与 `<>`、空片段）；`AddressList` 既有用例必须全绿（尤其保留 `/O=…`、`CN=z`、`Team <team>` 等非 SMTP 形状，不得因共享解析器归位而收窄）。场景/视图模型测试见 `SCN-0017`。
+- 定级/确认：本增量属 P1（平台级扇入模块新增 public 契约）；默认确认（未经人工）见 `history/decisions/2026-11-18-recipient-autocomplete.md`，交评审判断；A1–A6 细化见 `history/decisions/2026-11-18-recipient-autocomplete-design-addendum.md`。

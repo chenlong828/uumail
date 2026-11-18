@@ -35,7 +35,7 @@ macOS 原生邮件客户端，只支持 EAS（Exchange ActiveSync），以「一
 | 附件 | `ReadScene` | 点附件 | 本地文件并打开 | 同一附件单飞；缓存 2 GB 最旧优先 | attachments、附件文件 | 提示失败可重试 | 中 | 冷 | 部分：无 25MB 上限、续传、名称回退 |
 | 本地搜索 | `ReadScene` | 输入关键字 | 结果列表 | 本地优先；<3 字符走 LIKE | messages、fts | 空结果/错误提示 | 中 | 热 | 已实现 |
 | 撰写/回复/转发 | `ComposeScene` | 新建/回复/转发 | 草稿或入队 | 引用规则；发送只入队 | outbox | 入队失败提示 | 中 | 热（入队） | 已实现 |
-| 收件人输入联想 | `ComposeScene.recipientDirectory` + `ComposeViewModel` | 撰写页聚焦 `To`/`Cc` 并输入 | 字段下方候选浮层，选中补全纯地址 | 只读本地已收信封；首次聚焦一次聚合；不触网、不逐键查库；排除自己/已填；默认不高亮；无候选静默 | messages（只读，会话内投影） | 目录读取失败→空候选，撰写/发送照常 | 中 | 热（内存过滤） | 已设计（`SCN-0017` `designed`，2026-11-18）；未实现 |
+| 收件人输入联想 | `ComposeScene.recipientDirectory` + `ComposeViewModel` | 撰写页聚焦 `To`/`Cc` 并输入 | 字段下方候选浮层，选中补全纯地址 | 只读本地已收信封；首次聚焦一次聚合（500/文件夹、5,000 总计）；不触网、不逐键查库；排除自己/已填；默认不高亮；无候选静默 | messages（只读，会话内投影） | 目录读取失败→空候选；超上限的旧联系人不出现（已接受），撰写/发送照常 | 中 | 热（内存过滤） | 已设计（`SCN-0017` `designed`，2026-11-18；方案设计复核 2026-11-18）；未实现 |
 | 投递 | `Outbox` | 入队、启动、重试、定时泵 | 送达或失败态 | 最多成功一次；租约防并发；永久失败保留内容 | outbox | 退避/标红 | 冷 | 冷 | 已实现；UI 无角标 |
 | 新邮件通知 | `SyncScene` | 同步新增 > 0 | 系统通知 | 通知失败不影响同步 | 无 | 静默降级 | 每 5 分钟 | 冷 | 已实现 |
 
@@ -300,7 +300,7 @@ public actor Outbox {
 
 ### 3.7 `Presentation`
 
-`MailboxViewModel`、`ComposeViewModel`、`AccountSetupViewModel`；`BodyPresentation{none/loading/loaded(html,truncated)/failed(text)}`、`BodyNotice`、`SyncPresentation`、`Selection`；`ErrorText` 是唯一的 `MailError → 中文` 映射，`DisplayFormat` 收拢发件人与日期格式化。只依赖 `Scenes` + `MailDomain`。2026-11-18 设计新增 `ComposeViewModel` 的收件人候选状态与焦点/文本/光标/键盘/选中方法（`RecipientField`、`recipientSuggestions`、`highlightedSuggestion` 等，见 `CMP-PRES` 增量）；目录聚合在 `ComposeScene`、解析/匹配在 `MailDomain`，视图模型不 import `MailStore`。T-1114-10 设计新增 `MailboxDwell`（3 秒计时）与 `MailboxDeletion`（隐藏/单飞/错误），并给 `MailboxViewModel` 增 `setApplicationActive/deleteSelected/visibleMessages/deleteErrorText`；`MailboxViewModel` 主文件 304 行（目标 ≤400；Body/Compose/Delete 已拆到 extension 文件）。2026-11-16 设计新增 `allowsRemoteContent/canAllowRemoteContent/setAllowsRemoteContent(_:)`、`canMarkSelectedRead/markSelectedRead()`、`markReadErrorText`（P2 已确认，2026-11-16，`history/decisions/2026-11-16-remote-toolbar-mark-read.md`）；`MailboxDwell` 改为仅计时的 3 秒计时器，写/重载/回写收口到 `MailboxViewModel.performMarkRead`，自动与手动置读共用；本批手动置读路径中，`performMarkRead` 在用户可见前把 `markReadLocally` 的非 `MailError` 归一为 `MailError.storage`，`ErrorText` 只接收归一后的 `MailError`。实现已落地（T-1116-12/13，2026-11-16）：`MailboxViewModel` 378 行、`MailboxDwell` 59 行、`MailboxToolbar` 75 行；`MailboxView`/`MessageBodyView` 见 `CMP-APP` 增量。
+`MailboxViewModel`、`ComposeViewModel`、`AccountSetupViewModel`；`BodyPresentation{none/loading/loaded(html,truncated)/failed(text)}`、`BodyNotice`、`SyncPresentation`、`Selection`；`ErrorText` 是唯一的 `MailError → 中文` 映射，`DisplayFormat` 收拢发件人与日期格式化。只依赖 `Scenes` + `MailDomain`。2026-11-18 设计新增 `ComposeViewModel` 的收件人候选状态与焦点/文本/光标/键盘/选中方法（`RecipientField`、`recipientSuggestions`、`highlightedSuggestion` 等，见 `CMP-PRES` 增量）；目录聚合在 `ComposeScene`、解析/匹配在 `MailDomain`，视图模型不 import `MailStore`；候选浮层由 `CMP-APP` 的 `RecipientForm.swift#ComposeRecipientForm` 以 `.overlay` 承接、不参与布局。T-1114-10 设计新增 `MailboxDwell`（3 秒计时）与 `MailboxDeletion`（隐藏/单飞/错误），并给 `MailboxViewModel` 增 `setApplicationActive/deleteSelected/visibleMessages/deleteErrorText`；`MailboxViewModel` 主文件 304 行（目标 ≤400；Body/Compose/Delete 已拆到 extension 文件）。2026-11-16 设计新增 `allowsRemoteContent/canAllowRemoteContent/setAllowsRemoteContent(_:)`、`canMarkSelectedRead/markSelectedRead()`、`markReadErrorText`（P2 已确认，2026-11-16，`history/decisions/2026-11-16-remote-toolbar-mark-read.md`）；`MailboxDwell` 改为仅计时的 3 秒计时器，写/重载/回写收口到 `MailboxViewModel.performMarkRead`，自动与手动置读共用；本批手动置读路径中，`performMarkRead` 在用户可见前把 `markReadLocally` 的非 `MailError` 归一为 `MailError.storage`，`ErrorText` 只接收归一后的 `MailError`。实现已落地（T-1116-12/13，2026-11-16）：`MailboxViewModel` 378 行、`MailboxDwell` 59 行、`MailboxToolbar` 75 行；`MailboxView`/`MessageBodyView` 见 `CMP-APP` 增量。
 
 ## 4. 冷热路径
 
@@ -308,7 +308,7 @@ public actor Outbox {
 |---|---|---|---|---|---|
 | 列表/阅读（命中缓存） | 热 | 0 | 本地错误直接呈现；正文缺失先占位 | 读连接 + WAL | `ScenesTests` 缓存命中零网络；`PresentationTests` 状态序列 |
 | 发送入队 | 热 | 0 | 入队失败保留编辑内容 | 本地事务 | `ComposeSceneTests` 入队不触网 |
-| 收件人候选（撰写页） | 热 | 0 | 目录读取失败→空候选；不阻塞打开/发送 | 主线程内存过滤；一次本地读后缓存 | 设计证据：`ContactDirectoryTests`/`ComposeSceneTests`/`ComposeViewModelTests`（L1）、`ComposeAutocompleteProbe`（L2，`SCN-0017`） |
+| 收件人候选（撰写页） | 热 | 0 | 目录读取失败→空候选；超 500/文件夹或 5,000 总计的旧联系人不出现（已接受）；不阻塞打开/发送 | 主线程内存过滤；一次本地读后缓存；读取有界 | 设计证据：`ContactDirectoryTests`/`ComposeSceneTests`/`ComposeViewModelTests`（L1）、`ComposeAutocompleteProbe`（L2，`SCN-0017`） |
 | 停留置读（本地） | 热 | 0 | 本地写失败保持未读；不弹错 | 本地事务 | 设计证据：`MailStoreTests` `markRead`；`PresentationTests` 计时（已实现，2026-11-14） |
 | 已读回写 / 删除 | 冷 | 1（gateway） | 已读：失败不回滚、不提示；删除：失败恢复行与选中并提示；不推进 key | 与 `syncOnce` 共用 FIFO 门；单账号单引擎 | 设计证据：`SyncEngineTests` 门串行；`ReadSceneTests`；`MailboxViewModelTests`（已实现，2026-11-14） |
 | 阅读补拉 | 冷 | 1（gateway） | `failed(MailError)`，保留占位/摘要；取消不落库 | 同一 `MessageRef` 单飞 | `ReadSceneTests` 先落库再 yield、失败不覆盖缓存 |
@@ -482,7 +482,7 @@ D10 的决策记录：`history/decisions/2026-11-13-fetched-body-contract.md`。
 7. **阅读场景**：已读回写/键盘删除已设计（2026-11-14，T-1114-10，见 §3.1/§5 与 `SCN-0008`/`SCN-0009`），实现已由 T-1114-11…T-1114-18 与 T-1114-21 落地（2026-11-14），R16 真机与焦点/前台探针已补齐；2026-11-15 T-1114-19/20 验证通过（`task-spaces/20261114-232232/test.md`）；sanitizer 自动化断言、1 万封 P95 未做。
 8. **失败件保留上限（24h / 100 条，T11）无清理实现**：outbox 行会保留到成功、取消或手动重试。
 9. **`backup/pre-autosquash` 分支保留**，不删。
-10. **收件人联想为会话内投影**（REQ-0022/SCN-0017，2026-11-18 设计）：不持久、不改 schema；旧邮件清理或未同步文件夹中的联系人不出现，当前已接受；若产品要求持久联系人，另立 v11 `contacts` 需求并先解决 `MailStore` 1008/1000 的预算问题（R45）。
+10. **收件人联想为会话内投影**（REQ-0022/SCN-0017，2026-11-18 设计）：不持久、不改 schema；每文件夹最多 500 封、总计最多 5,000 封，超出部分的旧邮件联系人、已清理邮件或未同步文件夹中的联系人不出现，当前已接受；若产品要求持久联系人，另立 v11 `contacts` 需求并先解决 `MailStore` 1008/1000 的预算问题（R45）。
 
 ### 10.3 定级与冻结
 
@@ -492,6 +492,6 @@ D10 的决策记录：`history/decisions/2026-11-13-fetched-body-contract.md`。
 - 结构收口：2026-11-14，T-1110-10 把规格并入本文与组件规格，工序目录归档。
 - **2026-11-14 待确认 P1（T-1114-10，第 2 轮）**：新增 `MailWriteGateway`、`SyncStore` 三个写方法、`SyncEngine` 写方法 + FIFO 门 + **非可选** `writeGateway`、`ReadScene` **非可选**写引擎、`GatewayEndpoints`（`write` 非可选）；场景扇出预算 1–2→1–3（仅 `ReadScene`，替代方案为窄 `SyncWriting` 端口）；T-1114-15/16 各含 `CMP-ROOT` 仅装配例外。不新增 schema。
 - **2026-11-14 P1 frozen 记录**：`doc/history/decisions/2026-11-14-mail-write-path.md` 已归档（确认来源与范围见该记录）；实现 T-1114-11…18/21 的契约与装配按记录落地。
-- **2026-11-18 P1 默认确认（未经人工）**：`REQ-0022`/`SCN-0017` 新增 `MailDomain` public 值类型（`ContactAddress`/`ContactEnvelope`/`ContactDirectory`/`RecipientText`，平台级扇入）、`ComposeScene.recipientDirectory(account:)` 与 `ComposeViewModel` 收件人候选 public 面，并新增 `uumail` internal 控件/候选层。记录见 `doc/history/decisions/2026-11-18-recipient-autocomplete.md`；不新增 schema/target/依赖，不改 `MailStore` 与发送链路。评审可独立否决。
+- **2026-11-18 P1 默认确认（未经人工）**：`REQ-0022`/`SCN-0017` 新增 `MailDomain` public 值类型（`ContactAddress`/`ContactEnvelope`/`ContactDirectory`/`RecipientText`，平台级扇入）、`ComposeScene.recipientDirectory(account:)` 与 `ComposeViewModel` 收件人候选 public 面，并新增 `uumail` internal 控件/候选层。记录见 `doc/history/decisions/2026-11-18-recipient-autocomplete.md`；A1–A6 细化的默认确认见 `doc/history/decisions/2026-11-18-recipient-autocomplete-design-addendum.md`；不新增 schema/target/依赖，不改 `MailStore` 与发送链路。评审可独立否决。
 - **2026-11-14 R16 真机与写响应修订**：写命令被接受并返回新 key；写响应携带整页 delta + `Collection/MoreAvailable`，改为与 key 同事务提交（不再拒绝）；not-found 为成功 no-op；删除进入「已删除邮件」。前台信号实测后由 `scenePhase` 改为 `NSApplication` 通知。
 - 后续契约变更走新决策记录（`history/decisions/`），并同步改对应组件规格与 pinning test。

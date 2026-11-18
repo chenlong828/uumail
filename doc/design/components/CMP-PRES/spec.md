@@ -434,15 +434,16 @@ component: CMP-PRES
   public func dismissRecipientSuggestions()
   ```
 
-- 内部状态：`directory: ContactDirectory?`（首次聚焦或首次文本变化时经 `scene.recipientDirectory(account:)` 加载一次并缓存）、`activeField: RecipientField?`。不新增 `MailStore` import；目录只经 `ComposeScene` 取得。
+- 内部状态：`directory: ContactDirectory?`（首次聚焦或首次文本变化时经 `scene.recipientDirectory(account:)` 加载一次并缓存）、`activeField: RecipientField?`、`internal private(set) var directoryLoadCount = 0`（测试 seam，仅供 `@testable import Presentation` 断言「只加载一次」；不进入 public 契约）。不新增 `MailStore` import；目录只经 `ComposeScene` 取得。
 - 行为：
   - `recipientFocusChanged` 置当前字段并加载目录（已加载则复用）；`recipientFocusLost` 清当前字段与候选。
-  - `recipientTextChanged`：`caretAtEnd == false` → 清候选；否则用 `RecipientText.tailFragment(in:)` 取片段，空 → 清；否则用 `AddressList(prefixBeforeTail)` + 对方字段的完整文本组成已填地址集合，调 `directory.suggestions(for:excluding:limit:8)`；每次文本变化重置 `highlightedSuggestion = nil`（默认不高亮）。
+  - `recipientTextChanged`：`caretAtEnd == false` → 清候选；否则确保目录已加载（未加载则加载一次并 `directoryLoadCount += 1`）；用 `RecipientText.tailFragment(in:)` 取片段，空 → 清；否则用 `AddressList(prefixBeforeTail)` + 对方字段的完整文本组成已填地址集合，调 `directory.suggestions(for:excluding:limit:8)`；每次文本变化重置 `highlightedSuggestion = nil`（默认不高亮）；输入刷新不重新查库。
   - `recipientCaretChanged`：光标不在末尾 → 清候选；回到末尾且当前字段有片段 → 按当前文本重算。
   - `moveRecipientHighlight`：无候选时清空；`↓` 首次到 0，`↑/↓` 在 `0...count-1` 内夹取，不循环；`selectHighlightedRecipientSuggestion` 只有在 `highlightedSuggestion != nil` 时提交（`Return` 的 VM 侧保证）。
   - `selectRecipientSuggestion(at:)`：用 `RecipientText.replacingTail(in:with: contact.address)` 替换当前字段文本，写回 `to`/`cc`，清候选与高亮；其他字段/主题/正文/编辑器不动；`hasEdits` 由既有文本比较自然变 true。
   - 不自动选中/自动发送；不在每次输入时加载目录或查库；目录加载失败等价于空目录，不显示错误。
+- 性能：首次聚焦/首次文本变化同步读一次，`ComposeScene` 已有 500/文件夹、5,000 总计上限；设计目标是在当前 125 封真实库上无可感知卡顿、在 5,000 封夹具上首次加载 ≤100ms（实现期记录，不写成 CI 硬计时断言）。若实测超目标，回设计改为异步加载或降低上限；`CMP-PRES` 不在输入路径上查库。
 - IME：VM 不处理键盘事件，也不在 `Return` 上自动提交；「组合态 Return 不选中」由 `CMP-APP` 的 `RecipientTextField` 在 `hasMarkedText()` 时把命令放行给输入法并在 VM 侧保持 `highlightedSuggestion == nil` 来保证。L1 只断言「无高亮时 `selectHighlighted...` 返回 false」；组合态行为由 `T-SCN-0017-03` 的 L2 探针覆盖。
 - 兼容性：`ComposeViewModel` 既有 `Mode`/`Status`/`to`/`cc`/`subject`/`body`/`bodyHTML`/`send`/`saveDraft`/`hasEdits` 不变；新成员不影响既有调用；不新增依赖/文件；单文件仍 ≤400。
-- 测试：`PresentationTests/ComposeViewModelTests.suggestionsRefreshWithFragment`、`.selectionReplacesTailOnly`、`.ccIsIndependent`、`.selectionWritesPureAddressIntoDraft`、`.noPerKeystrokeDirectoryLoad`、`.directoryLoadsOncePerCompose`、`.middleCaretHidesSuggestions`、`.noDefaultHighlightSoReturnDoesNotCommit`、`.escapeDismissesSuggestions`、`.duplicateNotSuggested`、`.rapidTypingUsesLatestFragment`、`.emptyFragmentHasNoSuggestions`、`.blurClearsSuggestions`；既有 `sendEnqueues`/`replyAll*` 不回归。
-- 定级/确认：P1（`ComposeViewModel` public 面新增 + 依赖平台级 `MailDomain` 值类型）；默认确认（未经人工）见 `history/decisions/2026-11-18-recipient-autocomplete.md`。
+- 测试：`PresentationTests/ComposeViewModelTests.suggestionsRefreshWithFragment`、`.selectionReplacesTailOnly`、`.ccIsIndependent`、`.selectionWritesPureAddressIntoDraft`、`.noPerKeystrokeDirectoryLoad`（`@testable import Presentation` 断言 `directoryLoadCount` 在多次输入后仍为 1）、`.directoryLoadsOncePerCompose`、`.middleCaretHidesSuggestions`、`.noDefaultHighlightSoReturnDoesNotCommit`、`.escapeDismissesSuggestions`、`.duplicateNotSuggested`、`.rapidTypingUsesLatestFragment`、`.emptyFragmentHasNoSuggestions`、`.blurClearsSuggestions`；既有 `sendEnqueues`/`replyAll*` 不回归。
+- 定级/确认：P1（`ComposeViewModel` public 面新增 + 依赖平台级 `MailDomain` 值类型）；默认确认（未经人工）见 `history/decisions/2026-11-18-recipient-autocomplete.md`；A5/A6 见 `history/decisions/2026-11-18-recipient-autocomplete-design-addendum.md`。

@@ -144,5 +144,5 @@ component: CMP-STORE
 - **不改 schema**：不建 `contacts` 表、不注册 v11、不回填、不改 `applySyncBatch` 的 upsert；schema 保持 v10。
 - **不加查询**：`ComposeScene.recipientDirectory(account:)` 复用既有只读契约 `folders(account:)` 与 `messages(account:folder:limit:)`，按文件夹取信封后在 `Scenes`/`MailDomain` 内存聚合；本组件不新增 public 方法、不新增 SQL。
 - **预算**：本批对 `MailStore` 目标新增 0 行；既有 1008/1000 的 8 行超出与本批无关，登记 R45。若后续要把联系人做成持久派生表（v11 `contacts` + 回填 + upsert），先按 P1 立项、拆分 `MailStore` 或调预算，再动本组件。
-- **数据所有权**：`messages` 仍是 `CMP-STORE` 唯一写入口；联系人目录是会话内只读投影，不持久、不是第二真相；旧邮件清理后名字可能丢失，已在 `SCN-0017` 失败路径与决策记录中接受。
+- **数据所有权**：`messages` 仍是 `CMP-STORE` 唯一写入口；联系人目录是会话内只读投影，不持久、不是第二真相；旧邮件清理、未同步文件夹或超出 500/文件夹、5,000 总计上限后名字/联系人不出现，已在 `SCN-0017` 失败路径、R46 与决策记录中接受。
 - **验证**：本组件无新增测试；`MailStoreTests` 既有用例不回归即可。聚合行为由 `ScenesTests/ComposeSceneTests.recipientDirectory*` 覆盖。

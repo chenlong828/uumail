@@ -52,6 +52,7 @@ updated: 2026-11-18
   - 2026-11-18 存储形态（D7）：需求只要求「打开撰写页可用、不逐键查库」；派生表 vs 会话内聚合由设计定。倾向派生表（持久、删邮件后名字仍在），但新 schema/契约按 P1 交设计确认，不在需求阶段拍板。
   - 2026-11-18 边界澄清（D8）：`REQ-0012` 非目标里的「GAL/联系人联想、收件人历史补全」只约束该卡的「全部回复种子」范围，不阻止本卡另立；`REQ-0012` 的行为与断言不变。
   - 2026-11-18 `SCN-0017` 已交场景草案（`task-spaces/20261118-080109/scenario-drafts.md`）；正式场景卡由设计节点创建，本节点不落 `doc/design/`。
-  - 2026-11-18 设计落卡：`SCN-0017` 已落 `designed`；设计选择**会话内聚合**（不改 `MailStore`、不建 `contacts` 表、schema 保持 v10），首屏一次读、候选上限 8、可见性最低 L2、键盘默认不高亮；完整边界与默认确认（未经人工）见 `doc/history/decisions/2026-11-18-recipient-autocomplete.md` 与场景卡。本卡范围/非目标不变。
+  - 2026-11-18 设计落卡：`SCN-0017` 已落 `designed`；设计选择**会话内聚合**（不改 `MailStore`、不建 `contacts` 表、schema 保持 v10），首屏一次读（每文件夹 500、总计 5,000）、候选上限 8、可见性最低 L2、键盘默认不高亮；完整边界与默认确认（未经人工）见 `doc/history/decisions/2026-11-18-recipient-autocomplete.md` 与场景卡。本卡范围/非目标不变。
+  - 2026-11-18 方案设计复核：候选浮层改 `.overlay` 不参与布局、`ComposeRecipientForm` 拆到 `RecipientForm.swift`、字段按现状 24pt/13pt/4pt inset 拟合、读取加 5,000 总计上限；见 `doc/history/decisions/2026-11-18-recipient-autocomplete-design-addendum.md`（A1–A6，默认确认未经人工）。
 - **状态**：`accepted`（2026-11-18，需求分析）。`SCN-0017` 已由设计落为 `designed`（2026-11-18）；未实现、未验证，待任务拆分与实现。
 - **验收归属**：`SCN-0017` 的 3 正 1 反全绿并转 `verified`；`SCN-0006`/`SCN-0007`/`SCN-0016`/`SCN-0015` 回归不退化。需求不另立测试。

@@ -121,14 +121,15 @@ component: CMP-SCN-COMPOSE
   public func recipientDirectory(account: AccountID) -> ContactDirectory
   ```
 
+- 内部常量：`recipientDirectoryFolderLimit = 500`、`recipientDirectoryTotalLimit = 5_000`（`internal static`，供 `@testable` 测试构造夹具；不进入 public 契约）。
 - 行为：
   1. `try store.account(account)?.address` 取当前账号地址；读取失败/缺失 → `nil`（不排除自己），不抛错。
-  2. `try store.folders(account:)` 取文件夹；跳过 `Drafts(3)`/`Deleted Items(4)`/`Sent Items(5)`/`Outbox(6)`，其余文件夹按存储顺序处理。
-  3. 对每个保留文件夹调用 `try store.messages(account:folder:limit:500)`（只读信封，不读正文/附件），把 `sender`/`recipients`/`cc`/`receivedRaw` 映射为 `ContactEnvelope`。
+  2. `try store.folders(account:)` 取文件夹；跳过 `Drafts(3)`/`Deleted Items(4)`/`Sent Items(5)`/`Outbox(6)`，其余文件夹按存储顺序处理（Inbox 优先）。
+  3. 对每个保留文件夹调用 `try store.messages(account:folder:limit:500)`（只读信封，不读正文/附件），把 `sender`/`recipients`/`cc`/`receivedRaw` 映射为 `ContactEnvelope`；**累计到 5,000 封即停止**，避免大邮箱首次聚焦时把主线程拖住。
   4. 返回 `ContactDirectory(envelopes: envelopes, excluding: [ownAddress].compactMap { $0 })`。
   5. 任一步 store 读取抛错 → 返回 `ContactDirectory(envelopes: [], excluding: [])`，静默降级；不把存储错误显示成收件人错误。
-- 边界：本组件只做「取数 + 映射 + 交给 `MailDomain`」，不复制解析/匹配/排序规则；不逐键调用（由 `ComposeViewModel` 缓存一次）；不新增 `MailStore` 方法/schema/依赖；不触网。
+- 边界：本组件只做「取数 + 映射 + 交给 `MailDomain`」，不复制解析/匹配/排序规则；不逐键调用（由 `ComposeViewModel` 缓存一次）；不新增 `MailStore` 方法/schema/依赖；不触网。每文件夹 500、总计 5,000 是**性能上限**，超出部分的旧邮件联系人不出现，属已接受降级（R46），不是持久性承诺。
 - 不变量：`replySeed`/`replyAllSeed`/`forwardSeed`/`send`/`saveDraft` 行为不变；`recipientDirectory` 是纯读、无副作用、非 throwing；返回的目录只含当前账号、且来自非 Drafts/Deleted/Sent/Outbox 文件夹的信封。
-- 尺寸：`ComposeScene.swift` 165 → 预计约 215 行（新增约 50 行），低于 500；`Scenes` 总行数约 947（2026-11-18 实测）+ 约 50，不新增 target。
-- 测试：`ScenesTests/ComposeSceneTests.recipientDirectoryAggregatesLocally`（Inbox + 自定义文件夹聚合、名字/地址、排除自己）、`.recipientDirectorySkipsNonMailFoldersAndOwnAddress`（Sent/Drafts/Deleted/Outbox 不贡献）、`.recipientDirectoryDegradesToEmpty`（空库/读失败等价）；`ComposeSceneTests` 既有种子/发送用例不回归。
-- 定级/确认：P1（场景 public 契约 + 平台级 `MailDomain` 值类型）；默认确认（未经人工）见 `history/decisions/2026-11-18-recipient-autocomplete.md`。
+- 尺寸：`ComposeScene.swift` 165 → 预计约 220 行（新增约 55 行），低于 500；`Scenes` 总行数约 947（2026-11-18 实测）+ 约 55，不新增 target。
+- 测试：`ScenesTests/ComposeSceneTests.recipientDirectoryAggregatesLocally`（Inbox + 自定义文件夹聚合、名字/地址、排除自己）、`.recipientDirectorySkipsNonMailFoldersAndOwnAddress`（Sent/Drafts/Deleted/Outbox 不贡献）、`.recipientDirectoryCapsFolderAndTotal`（文件夹 500/总计 5,000 截断，用 `@testable` 常量构造小 fixture）、`.recipientDirectoryDegradesToEmpty`（空库/读失败等价）；`ComposeSceneTests` 既有种子/发送用例不回归。
+- 定级/确认：P1（场景 public 契约 + 平台级 `MailDomain` 值类型）；默认确认（未经人工）见 `history/decisions/2026-11-18-recipient-autocomplete.md`；A4 总计上限与 A6 内部常量见 `history/decisions/2026-11-18-recipient-autocomplete-design-addendum.md`。

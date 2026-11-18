@@ -14,7 +14,7 @@ component: CMP-APP
 - 单元：组件
 - 层 / 类型：L3；UI 外壳
 - 业务价值：让用户能看见并操作邮箱；没有它，同步能力只存在于命令行。
-- 负责 X：窗口与导航、窗口主工具栏（`MailboxToolbar`）、文件夹选择、邮件列表渲染、正文 WebView、撰写/配置表单、空态与失败态展示；T-1114-10 设计新增列表焦点 Delete/Backspace、前台状态转发（实测后改用 `NSApplication` 通知）、状态栏删除错误（2026-11-14 已实现，T-1114-18）；2026-11-18 设计新增撰写页收件人/抄送字段控件与候选浮层（`RecipientTextField`/`RecipientSuggestionList`/`ComposeRecipientForm`）。
+- 负责 X：窗口与导航、窗口主工具栏（`MailboxToolbar`）、文件夹选择、邮件列表渲染、正文 WebView、撰写/配置表单、空态与失败态展示；T-1114-10 设计新增列表焦点 Delete/Backspace、前台状态转发（实测后改用 `NSApplication` 通知）、状态栏删除错误（2026-11-14 已实现，T-1114-18）；2026-11-18 设计新增撰写页收件人/抄送字段控件与候选浮层（`RecipientTextField`/`RecipientSuggestionList`/`RecipientForm.swift` 的 `ComposeRecipientForm`）。
 - 不负责 Y：业务编排、状态机、格式化规则、服务装配、网络与持久化。
 - 内部逻辑：
   - `UumailApp` 构造 `AppComposition`，按 `route` 显示 `MailboxView` 或 `AccountSetupView`；生命周期交给组合根。
@@ -23,10 +23,10 @@ component: CMP-APP
 - 拥有的数据：无；账号凭据归 `CredentialStore`，邮件数据归 `MailStore`。
 - 变化轴：窗口形态（单窗口 → 多窗口/菜单栏）、列表与阅读布局、字号档位（2026-11-17 新增五档 UI 偏好）。
 - 公开契约：无对外契约；只依赖 `Presentation`（`UumailApp` 另依赖 `Composition`）。
-- 入口：`Sources/uumail/UumailApp.swift#UumailApp`、`MailboxView.swift#MailboxView`、`MailboxToolbar.swift#MailboxToolbar`（2026-11-16 设计新增）、`MessageBodyView.swift#MessageBodyView`、`ComposeView.swift#ComposeView`、`ComposeView.swift#ComposeRecipientForm`（2026-11-18 设计新增，internal）、`RecipientTextField.swift#RecipientTextField`/`#RecipientSuggestionList`（2026-11-18 设计新增，internal）、`AccountSetupView.swift#AccountSetupView`、`FontSizeStyle.swift#EnvironmentValues.fontSizePreference`/`#View.scaledFont(_:)`/`#View.scaledInheritedFont(_:)`/`#FontSizePreference.font(for:)`、`FontSizeCommands.swift#FontSizeCommands`、`EmptyState.swift#EmptyState`（2026-11-17 设计新增，internal；第 2 轮修正入口符号）
+- 入口：`Sources/uumail/UumailApp.swift#UumailApp`、`MailboxView.swift#MailboxView`、`MailboxToolbar.swift#MailboxToolbar`（2026-11-16 设计新增）、`MessageBodyView.swift#MessageBodyView`、`ComposeView.swift#ComposeView`、`RecipientForm.swift#ComposeRecipientForm`（2026-11-18 设计新增，internal；方案设计复核从 `ComposeView.swift` 拆出，供 L2 探针单独编译）、`RecipientTextField.swift#RecipientTextField`/`#RecipientSuggestionList`（2026-11-18 设计新增，internal）、`AccountSetupView.swift#AccountSetupView`、`FontSizeStyle.swift#EnvironmentValues.fontSizePreference`/`#View.scaledFont(_:)`/`#View.scaledInheritedFont(_:)`/`#FontSizePreference.font(for:)`、`FontSizeCommands.swift#FontSizeCommands`、`EmptyState.swift#EmptyState`（2026-11-17 设计新增，internal；第 2 轮修正入口符号）
 - 依赖：`Presentation`、`Composition`（仅 `UumailApp.swift`）、SwiftUI/AppKit/WebKit。扇出 2。
 - 冷热：热（读本地库）；收件人候选只读 VM 内存状态，不触网、不查库。
-- 尺寸预算：单文件 ≤300 行；当前 `uumail` 共 **1490 行**（2026-11-18 实测：`MailboxView` 218、`MessageBodyView` 256、`UumailApp` 69、`MessageHeaderView` 34、`ComposeView` 172、`ComposeEditor` 173、`ComposeFormatBar` 75、`AccountSetupView` 66、`MailboxToolbar` 75、`MessageBodyStyle` 41、`ThemeCommands` 45、`FontSizeStyle` 106、`FontSizeCommands` 33、`EmptyState` 127）；2026-11-18 收件人联想设计预计 +260–320（`RecipientTextField.swift` 约 200、`ComposeView` +40、`ComposeRecipientForm` 约 60）→ 约 1750，单文件仍 ≤300，不新增 target/依赖。
+- 尺寸预算：单文件 ≤300 行；当前 `uumail` 共 **1490 行**（2026-11-18 实测：`MailboxView` 218、`MessageBodyView` 256、`UumailApp` 69、`MessageHeaderView` 34、`ComposeView` 172、`ComposeEditor` 173、`ComposeFormatBar` 75、`AccountSetupView` 66、`MailboxToolbar` 75、`MessageBodyStyle` 41、`ThemeCommands` 45、`FontSizeStyle` 106、`FontSizeCommands` 33、`EmptyState` 127）；2026-11-18 收件人联想设计预计 +280–340（`RecipientTextField.swift` 约 200、`RecipientForm.swift` 约 80、`ComposeView` 约 180）→ 约 1770，单文件仍 ≤300，不新增 target/依赖。
 - 单独运行：`./Scripts/make-app.sh && open dist/uumail.app`（release 构建，产物不入库）
 - 删除测试：删掉则只能命令行看信，对终端用户等于没有产品。
 
@@ -221,18 +221,21 @@ component: CMP-APP
 ## 设计增量：收件人输入联想控件与候选浮层（REQ-0022 / SCN-0017，2026-11-18，P1 默认确认、未实现）
 
 - 新增 internal `Sources/uumail/RecipientTextField.swift`：
-  - `RecipientTextField`：`NSViewRepresentable`，包一个无边框、无背景的 `NSTextField`，绑定 `to`/`cc`；带 `label` 参数，用与既有 Form 行一致的标签宽度/字体渲染「收件人」「抄送」（100% 不改变表单基线）；`updateNSView` 只在文本不同时写回，避免打断输入法组合态；保留焦点环。
-  - 回调：`onFocusChange(Bool)`、`onCaretChange(atEnd: Bool)`（由 `currentEditor()?.selectedRange` 判断）、`onCommand(RecipientCommand) -> Bool`，命令含 `.moveUp`/`.moveDown`/`.commit`/`.dismiss`。
-  - `control(_:textView:doCommandBy:)`：`moveUp:`/`moveDown:` → `.moveUp`/`.moveDown`；`insertNewline:`/`insertTab:` → `.commit`，但 `textView.hasMarkedText()` 时返回 `false` 放行给输入法；`cancelOperation:` → `.dismiss`；其他命令返回 `false`。
-  - `RecipientSuggestionList`：SwiftUI 行列表；每行 `Text(name)` + `Text(address)`（secondary）或只 `Text(address)`；`lineLimit(1)`、地址 `truncationMode(.middle)`，整行 `.help(name.map { "\($0) <\($1)>" } ?? address)` 供悬停查看完整地址；`Button` 点击选中；hover 只变底色、不改 VM 高亮；`.accessibilityElement(children: .ignore)` + `accessibilityLabel(name.map { "\($0), \($1)" } ?? address)`；容器 `.accessibilityLabel("收件人建议")`。
-- `Sources/uumail/ComposeView.swift`：
-  - 抽出 internal `ComposeRecipientForm`：内部把 `Form`（To/Cc 两个 `RecipientTextField` + `@ViewBuilder` 承接主题行）包在 `ZStack(alignment: .topLeading)` 中，`RecipientSuggestionList` 作为 ZStack 的兄弟层放在 Form 之外；`ComposeView` 用它替换原来的 Form，主题行通过 `@ViewBuilder` 传入；Form 保留既有 12pt padding 与行间距。这样候选浮层不会被 Form 内部裁剪，也不会改变 Form 的行布局。
-  - 每个字段用 `GeometryReader` 把 frame 写入 `PreferenceKey`（坐标空间为 `ComposeRecipientForm`）；`ComposeRecipientForm` 的 ZStack 按**当前聚焦字段**的 `minX/maxY+4` 定位候选浮层、宽度=字段宽、`.zIndex(10)`；不参与 Form 布局，因此不改变 sheet 宽高与既有表单行高，也不会被 Form 内部裁剪。
+  - `RecipientTextField`：`NSViewRepresentable`，包一个 **字段-only** 的 `NSTextField`（标签由 Form 的 `LabeledContent` 提供）；绑定 `to`/`cc`。外观按现状 SwiftUI `TextField` 的 AppKit 载体实测拟合（`task-spaces/20261118-082503/evidence/design-probe/{textfield-probe,field-probe}.txt`）：`isBordered=false`、`drawsBackground=true`、`backgroundColor=.textBackgroundColor`、字体 13pt、文本左右 inset 4pt、100% 行高 24pt；随 `fontSizePreference` 按 `scaleFactor` 设置 `NSFont` 与行高（100% 恰为 24pt），保留焦点环。
+  - `updateNSView` 只在文本不同时写回；`currentEditor()?.hasMarkedText() == true` 时跳过写回，避免打断输入法组合态。外部写入（选中补全）后，若字段仍是 first responder，把 field editor 光标设到文本末尾；否则只更新 `stringValue`。
+  - 回调：`onFocusChange(Bool)`、`onCaretChange(atEnd: Bool)`（由 `currentEditor()?.selectedRange` 判断；仅有零长度光标在末尾才为 `true`，选区一律 `false`）、`onCommand(RecipientCommand) -> Bool`，命令含 `.moveUp`/`.moveDown`/`.commit`/`.dismiss`。
+  - `control(_:textView:doCommandBy:)`：`moveUp:`/`moveDown:` → `.moveUp`/`.moveDown`；`insertNewline:`/`insertTab:` → `.commit`，但 `textView.hasMarkedText()` 时返回 `false` 放行给输入法；`cancelOperation:`：`hasMarkedText()` 且有候选时消费 `.dismiss`（只收候选、不让输入法取消组合），无候选时返回 `false`；非组合态有候选时消费 `.dismiss`，否则 `false`；其他命令返回 `false`。
+  - `RecipientSuggestionList`：SwiftUI 行列表；每行 `Text(name)` + `Text(address)`（secondary）或只 `Text(address)`；`lineLimit(1)`、地址 `truncationMode(.middle)`，整行 `.help(name.map { "\($0) <\($1)>" } ?? address)` 供悬停查看完整地址；`Button` 点击选中；hover 只变底色、不改 VM 高亮；`.accessibilityElement(children: .ignore)` + `accessibilityLabel(name.map { "\($0), \($1)" } ?? address)`；容器 `.accessibilityLabel("收件人建议")`；行 `Button` 加 `.focusable(false)`、`.buttonStyle(.plain)`。
+- 新增 internal `Sources/uumail/RecipientForm.swift`（方案设计复核从 `ComposeView.swift` 拆出，使 L2 探针只编译这一个生产文件 + `RecipientTextField.swift`，不必拉整棵 `ComposeView` 依赖树）：
+  - `ComposeRecipientForm`：`Form` 内用 `LabeledContent("收件人")`/`LabeledContent("抄送")` 承载字段；`LabeledContent` 的标签列与现状 `TextField("收件人", …)` 对齐（设计探针实测字段起点同为 x=59），`@ViewBuilder` 承接主题行；保留既有 12pt padding 与行间距。
+  - 每个字段用 `GeometryReader` 把 frame 写入 `PreferenceKey`（坐标空间为 `ComposeRecipientForm`）；候选浮层用 **`.overlay(alignment: .topLeading)`** 挂在 `Form` 上，**不用 ZStack**：设计探针实测 ZStack 会把 200pt 浮层计入布局并把后续内容下推 60pt，`.overlay` 不参与布局、后续内容位置不变（`task-spaces/20261118-082503/evidence/design-probe/overlay-probe.txt`）。
+  - 浮层按**当前聚焦字段**的 `minX/maxY+4` 定位、宽度=字段宽；`ComposeView` 给 `ComposeRecipientForm` 在 VStack 中 `.zIndex(10)`，确保浮层绘制在 Divider/格式栏/编辑器之上，不被后续兄弟覆盖。
+  - 浮层高度取 `min(内容高度, 240×scaleFactor, 字段下方可用高度)`，超出滚动；225% 不撑破 sheet、不遮挡当前字段；跟随五档字号与浅/深色语义色。
   - `@State` 保存当前聚焦字段与 `caretAtEnd`；`.onChange(of: viewModel.to/cc)` 只在对应字段聚焦时调 `viewModel.recipientTextChanged(...)`；焦点/光标/命令转发到 VM；失焦/切字段调 `recipientFocusLost()`。
-  - 候选浮层跟随 `fontSizePreference` 与 `colorScheme`：100% 用语义字体/默认行高，>100% 用 `scaledFont`；背景 `controlBackgroundColor`/`.regularMaterial`，文字 `labelColor`/`secondaryLabelColor`；最大 8 行、最高 240pt，超出滚动；深色/225% 不裁剪。
   - 不改变 sheet 宽度计算、格式栏、HTML 编辑器、取消确认、发送/存草稿按钮与快捷键。
-- 交互：默认不高亮；`↓` 第一次高亮 0、`↑/↓` 夹取；`Return`/`Tab` 只在 VM `highlightedSuggestion != nil` 时提交；`Esc` 收起；点击行直接选中；输入法组合态不提交；失焦/切字段/关 sheet 收起；不残留浮层。候选行 `Button` 加 `.focusable(false)`，列表不成为 first responder；点击后用 `makeFirstResponder` 把焦点还给原字段，保证「鼠标操作不抢焦点」。
-- 100% 基线：字段字体/行高/内边距与替换前的 Form `TextField` 一致，候选浮层关闭时表单总高不变；L2 探针比较 100% 与替换前的字段高度（允许 ±0.5pt 渲染误差，超出即红）。
-- 可访问性：字段的「收件人」「抄送」标签与既有 Form 行一致；候选行有完整「名字, 地址」标签；键盘可达；不抢焦点。
-- 尺寸：`RecipientTextField.swift` 约 200 行、`ComposeRecipientForm` 约 60 行、`ComposeView` 约 210 行；单文件 ≤300；不新增 target/依赖。
-- 验证：`ComposeAutocompleteProbe`（L2，生产控件 + 离屏 `NSHostingView`/`NSWindow`）覆盖 `T-SCN-0017-03`：浮层位置/不撑高、人名+邮箱、无名字回退、点击/方向键+Return、IME 组合态 Return、深色/225% 语义色与 frame；证据入 `task-spaces/<run>/evidence/compose-autocomplete-probe/`。不做 L3 截图/OCR、不做 L4 AX。
+- 交互：默认不高亮；`↓` 第一次高亮 0、`↑/↓` 夹取；`Return`/`Tab` 只在 VM `highlightedSuggestion != nil` 时提交；`Esc` 收起；点击行直接选中；输入法组合态不提交；失焦/切字段/关 sheet 收起；不残留浮层。点击候选行时若字段先失焦，视图用 `suggestionClickInFlight` 守卫把清空延后到下一 runloop，点击仍用原字段 index 完成选中，随后 `makeFirstResponder` 把焦点还给原字段；L2 必测该顺序。
+- 100% 基线：字段 24pt 高、13pt 字、4pt 文本 inset，候选浮层关闭时表单总高不变；L2 允许 ±0.5pt 渲染误差，超出即红。
+- 可访问性：字段的「收件人」「抄送」标签由 `LabeledContent` 提供；候选行有完整「名字, 地址」标签；键盘可达；不抢焦点。
+- 尺寸：`RecipientTextField.swift` 约 200 行、`RecipientForm.swift` 约 80 行、`ComposeView` 约 180 行；单文件 ≤300；不新增 target/依赖。
+- 验证：`ComposeAutocompleteProbe`（L2，生产 `RecipientTextField.swift` + `RecipientForm.swift`，链接已构建的 `Presentation`/`Scenes`/`MailDomain`/`MailStore`/`Outbox`，离屏 `NSHostingView`/`NSWindow`）覆盖 `T-SCN-0017-03`：浮层位置/不撑高、100% 字段 24pt、人名+邮箱、无名字回退、点击/失焦顺序、方向键+Return、IME 组合态 Return/Esc、深色/225% 语义色与 frame；证据入 `task-spaces/<run>/evidence/compose-autocomplete-probe/`。不做 L3 截图/OCR、不做 L4 AX。
+- 方案设计复核 A1–A6（浮层 overlay、`RecipientForm.swift` 拆分、字段外观/标签、点击/IME、测试 seam）见 `history/decisions/2026-11-18-recipient-autocomplete-design-addendum.md`（默认确认，未经人工）。

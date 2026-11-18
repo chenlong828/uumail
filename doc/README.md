@@ -6,7 +6,7 @@ macOS 原生邮件客户端，只走 Exchange ActiveSync（以「一台已登记
 
 2026-11-17 追加并交付 `REQ-0021`（回复撰写 HTML 富文本、格式栏、取消确认与阅读窗格等宽）：`SCN-0016` 转 `verified`，W-M3-08（`T-1117-20`…`T-1117-27`）完成；`Draft/OutboxItem.bodyHTML`、outbox v10 `body_html`、`multipart/alternative`、全宽 HTML 引文、`ComposeDocument` 与 WKWebView 编辑器落地；全量 292 tests / 51 suites、架构 4 门。真实 App UI 冒烟：撰写 sheet 1441pt，阅读窗格 1440pt。
 
-2026-11-18 完成 `REQ-0022`（撰写页收件人/抄送输入联想补全）的需求分析与设计：`SCN-0017` 落为 `designed`（`mail/send/recipient-autocomplete`；T-01/02/04 最低 L1、T-03 最低 L2），`CMP-DOMAIN`/`CMP-SCN-COMPOSE`/`CMP-PRES`/`CMP-APP` 设计增量就位；会话内聚合、**不改 `MailStore`/schema**、不新增 target/依赖，`MailStore` 既有 1008/1000 超出登记 R45；P1 默认确认（未经人工，`history/decisions/2026-11-18-recipient-autocomplete.md`）。任务表待 `task-split`，未实现、未验证。
+2026-11-18 完成 `REQ-0022`（撰写页收件人/抄送输入联想补全）的需求分析与设计：`SCN-0017` 落为 `designed`（`mail/send/recipient-autocomplete`；T-01/02/04 最低 L1、T-03 最低 L2），`CMP-DOMAIN`/`CMP-SCN-COMPOSE`/`CMP-PRES`/`CMP-APP` 设计增量就位；会话内聚合、**不改 `MailStore`/schema**、不新增 target/依赖，`MailStore` 既有 1008/1000 超出登记 R45；P1 默认确认（未经人工，`history/decisions/2026-11-18-recipient-autocomplete.md`）。方案设计复核（同日）把候选浮层改为 `.overlay` 保布局、`ComposeRecipientForm` 拆到 `RecipientForm.swift`、加 500/文件夹与 5,000 总计读取上限，并把 click-after-focus-loss/IME Esc 写入 L2 断言；A1–A6 见 `history/decisions/2026-11-18-recipient-autocomplete-design-addendum.md`（默认确认，未经人工）。任务表待 `task-split`，未实现、未验证。
 
 ## 阅读顺序
 
