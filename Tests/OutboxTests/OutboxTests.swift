@@ -372,6 +372,25 @@ struct OutboxMimeTests {
         #expect(text.contains(Data("line1\nline2".utf8).base64EncodedString(options: [.lineLength76Characters])))
     }
 
+    @Test("an autocomplete-inserted address keeps the To/Cc headers ASCII")
+    func autocompleteAddressHeaderIsAscii() {
+        let draft = Draft(
+            to: "li.si@corp.test; zhang.san@corp.test;",
+            cc: "alice@corp.test;",
+            subject: "hi",
+            body: "text"
+        )
+        let data = MimeBuilder.build(from: "me@corp.test", draft: draft, messageID: "new@corp.test")
+        let text = String(decoding: data, as: UTF8.self)
+
+        #expect(text.contains("To: li.si@corp.test; zhang.san@corp.test;"))
+        #expect(text.contains("Cc: alice@corp.test;"))
+        #expect(!text.contains("张三"))
+        // Only the (ASCII) subject/header lines matter here; the body is base64.
+        let headers = text.components(separatedBy: "\r\n\r\n").first ?? ""
+        #expect(headers.unicodeScalars.allSatisfy { $0.value < 128 })
+    }
+
     @Test("an HTML body becomes multipart/alternative with both base64 payloads")
     func mimeMultipart() {
         let html = "<!DOCTYPE html><html><body><p>hello</p></body></html>"

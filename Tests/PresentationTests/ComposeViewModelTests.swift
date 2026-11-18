@@ -3,7 +3,7 @@ import MailDomain
 import MailStore
 import Testing
 
-import Presentation
+@testable import Presentation
 
 @Suite("ComposeViewModel")
 @MainActor
@@ -203,6 +203,247 @@ struct ComposeViewModelTests {
         let pending = try #require(try fixture.store.pendingOutbox(account: fixture.account).first)
         #expect(pending.bodyHTML == html)
         #expect(pending.body == "hello world", "the plain-text part is derived from the edited HTML")
+    }
+
+    // MARK: - Recipient suggestions (REQ-0022 / SCN-0017)
+
+    private func makeAutocompleteCompose() throws -> (MailboxFixture, ComposeViewModel) {
+        let fixture = try makeMailboxFixture(messages: ["13": [
+            presentationMessage(
+                "1",
+                sender: "\"张三\" <zhang.san@corp.test>",
+                recipients: "li.si@corp.test",
+                receivedRaw: "2026-11-18T09:00:00Z"
+            ),
+            presentationMessage(
+                "2",
+                sender: "\"李四\" <li.si@corp.test>",
+                receivedRaw: "2026-11-17T09:00:00Z"
+            ),
+            presentationMessage(
+                "3",
+                sender: "\"Alice\" <alice@corp.test>",
+                receivedRaw: "2026-11-16T09:00:00Z"
+            ),
+            presentationMessage(
+                "4",
+                sender: "wang@corp.test",
+                receivedRaw: "2026-11-15T09:00:00Z"
+            ),
+            presentationMessage(
+                "5",
+                sender: "jdoe@corp.test",
+                receivedRaw: "2026-11-14T09:00:00Z"
+            ),
+        ]])
+        return (fixture, fixture.viewModel.composeNew())
+    }
+
+    @Test("suggestions refresh with the trailing fragment and stay case-insensitive")
+    func suggestionsRefreshWithFragment() throws {
+        let (_, compose) = try makeAutocompleteCompose()
+        compose.recipientFocusChanged(in: .to)
+
+        compose.to = "zh"
+        compose.recipientTextChanged(in: .to, caretAtEnd: true)
+        #expect(
+            compose.recipientSuggestions
+                == [ContactAddress(name: "张三", address: "zhang.san@corp.test")]
+        )
+
+        compose.to = "zha"
+        compose.recipientTextChanged(in: .to, caretAtEnd: true)
+        #expect(compose.recipientSuggestions.map(\.address) == ["zhang.san@corp.test"])
+
+        compose.to = "ALICE"
+        compose.recipientTextChanged(in: .to, caretAtEnd: true)
+        #expect(
+            compose.recipientSuggestions
+                == [ContactAddress(name: "Alice", address: "alice@corp.test")]
+        )
+
+        compose.to = "wang@"
+        compose.recipientTextChanged(in: .to, caretAtEnd: true)
+        #expect(
+            compose.recipientSuggestions
+                == [ContactAddress(name: nil, address: "wang@corp.test")]
+        )
+    }
+
+    @Test("selection replaces only the trailing fragment")
+    func selectionReplacesTailOnly() throws {
+        let (_, compose) = try makeAutocompleteCompose()
+        compose.to = "li.si@corp.test; zha"
+        compose.cc = "alice@corp.test"
+        compose.subject = "主题"
+        compose.body = "正文"
+        compose.recipientFocusChanged(in: .to)
+        compose.recipientTextChanged(in: .to, caretAtEnd: true)
+
+        #expect(compose.selectRecipientSuggestion(at: 0))
+
+        #expect(compose.to == "li.si@corp.test; zhang.san@corp.test; ")
+        #expect(compose.cc == "alice@corp.test")
+        #expect(compose.subject == "主题")
+        #expect(compose.body == "正文")
+        #expect(compose.hasEdits)
+        #expect(compose.recipientSuggestions.isEmpty)
+    }
+
+    @Test("Cc has its own fragment and does not disturb To")
+    func ccIsIndependent() throws {
+        let (_, compose) = try makeAutocompleteCompose()
+        compose.to = "alice@corp.test; "
+        compose.cc = "li"
+        compose.recipientFocusChanged(in: .cc)
+        compose.recipientTextChanged(in: .cc, caretAtEnd: true)
+
+        #expect(compose.recipientSuggestions.map(\.address) == ["li.si@corp.test"])
+        #expect(compose.selectRecipientSuggestion(at: 0))
+
+        #expect(compose.to == "alice@corp.test; ")
+        #expect(compose.cc == "li.si@corp.test; ")
+    }
+
+    @Test("the inserted address is pure ASCII and becomes the draft recipient")
+    func selectionWritesPureAddressIntoDraft() async throws {
+        let (fixture, compose) = try makeAutocompleteCompose()
+        compose.to = "zha"
+        compose.subject = "hi"
+        compose.recipientFocusChanged(in: .to)
+        compose.recipientTextChanged(in: .to, caretAtEnd: true)
+        #expect(compose.selectRecipientSuggestion(at: 0))
+
+        #expect(await compose.send())
+        let pending = try #require(try fixture.store.pendingOutbox(account: fixture.account).first)
+        #expect(pending.to == "zhang.san@corp.test;")
+        #expect(!pending.to.contains("张三"))
+    }
+
+    @Test("the directory loads once per compose, not once per keystroke")
+    func directoryLoadsOncePerCompose() throws {
+        let (_, compose) = try makeAutocompleteCompose()
+        compose.recipientFocusChanged(in: .to)
+        #expect(compose.directoryLoadCount == 1)
+
+        for text in ["z", "zh", "zha", "zhan"] {
+            compose.to = text
+            compose.recipientTextChanged(in: .to, caretAtEnd: true)
+        }
+        #expect(compose.directoryLoadCount == 1)
+
+        compose.recipientFocusLost()
+        compose.recipientFocusChanged(in: .cc)
+        #expect(compose.directoryLoadCount == 1)
+    }
+
+    @Test("a caret in the middle hides suggestions and blocks insertion")
+    func middleCaretHidesSuggestions() throws {
+        let (_, compose) = try makeAutocompleteCompose()
+        compose.to = "zh"
+        compose.recipientFocusChanged(in: .to)
+        compose.recipientTextChanged(in: .to, caretAtEnd: true)
+        #expect(!compose.recipientSuggestions.isEmpty)
+
+        compose.to = "zhang"
+        compose.recipientTextChanged(in: .to, caretAtEnd: false)
+        #expect(compose.recipientSuggestions.isEmpty)
+        #expect(!compose.selectRecipientSuggestion(at: 0))
+        #expect(compose.to == "zhang")
+
+        compose.recipientCaretChanged(atEnd: false)
+        #expect(compose.recipientSuggestions.isEmpty)
+    }
+
+    @Test("no row is highlighted by default, so Return cannot commit")
+    func noDefaultHighlightSoReturnDoesNotCommit() throws {
+        let (_, compose) = try makeAutocompleteCompose()
+        compose.to = "zh"
+        compose.recipientFocusChanged(in: .to)
+        compose.recipientTextChanged(in: .to, caretAtEnd: true)
+
+        #expect(compose.highlightedSuggestion == nil)
+        #expect(!compose.selectHighlightedRecipientSuggestion())
+        #expect(compose.to == "zh")
+
+        compose.moveRecipientHighlight(by: 1)
+        #expect(compose.highlightedSuggestion == 0)
+        #expect(compose.selectHighlightedRecipientSuggestion())
+        #expect(compose.to == "zhang.san@corp.test; ")
+    }
+
+    @Test("Escape dismisses suggestions and a blur clears them")
+    func escapeDismissesAndBlurClears() throws {
+        let (_, compose) = try makeAutocompleteCompose()
+        compose.to = "zh"
+        compose.recipientFocusChanged(in: .to)
+        compose.recipientTextChanged(in: .to, caretAtEnd: true)
+        #expect(!compose.recipientSuggestions.isEmpty)
+
+        compose.dismissRecipientSuggestions()
+        #expect(compose.recipientSuggestions.isEmpty)
+        #expect(!compose.selectHighlightedRecipientSuggestion())
+
+        compose.recipientTextChanged(in: .to, caretAtEnd: true)
+        #expect(!compose.recipientSuggestions.isEmpty)
+        compose.recipientFocusLost()
+        #expect(compose.recipientSuggestions.isEmpty)
+    }
+
+    @Test("a filled address is not suggested again, in either field")
+    func duplicateNotSuggested() throws {
+        let (_, compose) = try makeAutocompleteCompose()
+        compose.to = "zhang.san@corp.test; zha"
+        compose.recipientFocusChanged(in: .to)
+        compose.recipientTextChanged(in: .to, caretAtEnd: true)
+        #expect(compose.recipientSuggestions.isEmpty, "zhang is already before the fragment")
+
+        compose.to = "zha"
+        compose.cc = "zhang.san@corp.test; "
+        compose.recipientFocusChanged(in: .to)
+        compose.recipientTextChanged(in: .to, caretAtEnd: true)
+        #expect(compose.recipientSuggestions.isEmpty, "zhang is already in Cc")
+    }
+
+    @Test("rapid typing only ever exposes the latest fragment")
+    func rapidTypingUsesLatestFragment() throws {
+        let (_, compose) = try makeAutocompleteCompose()
+        compose.recipientFocusChanged(in: .to)
+        for text in ["z", "zh", "zha", "zzz"] {
+            compose.to = text
+            compose.recipientTextChanged(in: .to, caretAtEnd: true)
+        }
+        #expect(compose.recipientSuggestions.isEmpty)
+        #expect(compose.directoryLoadCount == 1)
+    }
+
+    @Test("an empty trailing fragment never shows suggestions")
+    func emptyFragmentHasNoSuggestions() throws {
+        let (_, compose) = try makeAutocompleteCompose()
+        compose.to = "li.si@corp.test;  "
+        compose.recipientFocusChanged(in: .to)
+        compose.recipientTextChanged(in: .to, caretAtEnd: true)
+        #expect(compose.recipientSuggestions.isEmpty)
+
+        compose.to = "   "
+        compose.recipientTextChanged(in: .to, caretAtEnd: true)
+        #expect(compose.recipientSuggestions.isEmpty)
+    }
+
+    @Test("highlight movement stops at both ends instead of wrapping")
+    func highlightMovementClamps() throws {
+        let (_, compose) = try makeAutocompleteCompose()
+        compose.recipientFocusChanged(in: .to)
+        compose.to = "corp"
+        compose.recipientTextChanged(in: .to, caretAtEnd: true)
+        #expect(compose.recipientSuggestions.count > 1)
+
+        compose.moveRecipientHighlight(by: -1)
+        #expect(compose.highlightedSuggestion == compose.recipientSuggestions.count - 1)
+        compose.moveRecipientHighlight(by: 1)
+        #expect(compose.highlightedSuggestion == compose.recipientSuggestions.count - 1)
+        for _ in 0..<10 { compose.moveRecipientHighlight(by: -1) }
+        #expect(compose.highlightedSuggestion == 0)
     }
 
     @Test("cancel compares against the editor's normalised baseline, not the seed string")

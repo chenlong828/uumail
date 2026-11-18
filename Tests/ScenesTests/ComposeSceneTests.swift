@@ -280,6 +280,179 @@ struct ComposeSceneTests {
         #expect(try #require(draft.bodyHTML).contains("<div>原文</div>"))
     }
 
+    // MARK: - Recipient directory (REQ-0022 / SCN-0017)
+
+    @Test("recipientDirectory aggregates local mail envelopes and keeps names")
+    func recipientDirectoryAggregatesLocally() throws {
+        let (scene, store, account, _) = try makeScene(accountAddress: "me@corp.test")
+        let folders = [
+            Folder(serverID: "13", parentID: "0", displayName: "收件箱", type: 2),
+            Folder(serverID: "20", parentID: "0", displayName: "项目", type: 1),
+            Folder(serverID: "4", parentID: "0", displayName: "草稿", type: 3),
+            Folder(serverID: "5", parentID: "0", displayName: "已删除", type: 4),
+            Folder(serverID: "6", parentID: "0", displayName: "已发送", type: 5),
+            Folder(serverID: "7", parentID: "0", displayName: "发件箱", type: 6),
+        ]
+        try store.applyFolderSnapshot(account: account, folders: folders, syncKey: "1")
+        try store.applySyncBatch(
+            account: account,
+            folder: "13",
+            added: [
+                MailMessage(
+                    serverID: "m1",
+                    sender: "\"张三\" <zhang.san@corp.test>",
+                    recipients: "li.si@corp.test",
+                    receivedRaw: "2026-11-18T09:00:00Z",
+                    cc: "\"Carol\" <carol@corp.test>"
+                ),
+                MailMessage(
+                    serverID: "m2",
+                    sender: "me@corp.test",
+                    receivedRaw: "2026-11-18T08:00:00Z"
+                ),
+            ],
+            changed: [],
+            removedServerIDs: [],
+            syncKey: "1"
+        )
+        try store.applySyncBatch(
+            account: account,
+            folder: "20",
+            added: [
+                MailMessage(
+                    serverID: "m3",
+                    sender: "\"Alice\" <alice@corp.test>",
+                    receivedRaw: "2026-11-17T09:00:00Z"
+                )
+            ],
+            changed: [],
+            removedServerIDs: [],
+            syncKey: "1"
+        )
+        for folder in ["4", "5", "6", "7"] {
+            try store.applySyncBatch(
+                account: account,
+                folder: folder,
+                added: [
+                    MailMessage(
+                        serverID: "skip-\(folder)",
+                        sender: "skip-\(folder)@corp.test",
+                        receivedRaw: "2026-11-18T09:00:00Z"
+                    )
+                ],
+                changed: [],
+                removedServerIDs: [],
+                syncKey: "1"
+            )
+        }
+
+        let directory = scene.recipientDirectory(account: account)
+
+        #expect(
+            directory.suggestions(for: "zhang")
+                == [ContactAddress(name: "张三", address: "zhang.san@corp.test")]
+        )
+        #expect(directory.suggestions(for: "li.si").first?.name == nil)
+        #expect(directory.suggestions(for: "carol").first?.name == "Carol")
+        #expect(directory.suggestions(for: "alice").first?.name == "Alice")
+        #expect(directory.suggestions(for: "me@corp").isEmpty, "the account's own address is excluded")
+        for skipped in ["skip-4", "skip-5", "skip-6", "skip-7"] {
+            #expect(directory.suggestions(for: skipped).isEmpty, "\(skipped) must not contribute")
+        }
+        #expect(ComposeScene.recipientDirectoryFolderLimit == 500)
+        #expect(ComposeScene.recipientDirectoryTotalLimit == 5_000)
+    }
+
+    @Test("recipientDirectory skips non-mail folders and the account's own address")
+    func recipientDirectorySkipsNonMailFoldersAndOwnAddress() throws {
+        let (scene, store, account, _) = try makeScene(accountAddress: "me@corp.test")
+        let nonMail = [
+            Folder(serverID: "4", parentID: "0", displayName: "草稿", type: 3),
+            Folder(serverID: "5", parentID: "0", displayName: "已删除", type: 4),
+            Folder(serverID: "6", parentID: "0", displayName: "已发送", type: 5),
+            Folder(serverID: "7", parentID: "0", displayName: "发件箱", type: 6),
+        ]
+        try store.applyFolderSnapshot(account: account, folders: nonMail, syncKey: "1")
+        for folder in nonMail {
+            try store.applySyncBatch(
+                account: account,
+                folder: folder.serverID,
+                added: [MailMessage(serverID: "x", sender: "hidden-\(folder.serverID)@corp.test")],
+                changed: [],
+                removedServerIDs: [],
+                syncKey: "1"
+            )
+        }
+
+        let onlyNonMail = scene.recipientDirectory(account: account)
+        #expect(onlyNonMail.isEmpty)
+
+        try store.applyFolderSnapshot(
+            account: account,
+            folders: nonMail + [Folder(serverID: "13", parentID: "0", displayName: "收件箱", type: 2)],
+            syncKey: "2"
+        )
+        try store.applySyncBatch(
+            account: account,
+            folder: "13",
+            added: [
+                MailMessage(serverID: "m1", sender: "me@corp.test"),
+                MailMessage(serverID: "m2", sender: "other@corp.test"),
+            ],
+            changed: [],
+            removedServerIDs: [],
+            syncKey: "1"
+        )
+
+        let directory = scene.recipientDirectory(account: account)
+        #expect(directory.suggestions(for: "me@corp").isEmpty)
+        #expect(directory.suggestions(for: "other").map(\.address) == ["other@corp.test"])
+    }
+
+    @Test("recipientDirectory caps each folder and the total read")
+    func recipientDirectoryCapsFolderAndTotal() throws {
+        let (scene, store, account, _) = try makeScene()
+        let folders = [
+            Folder(serverID: "13", parentID: "0", displayName: "收件箱", type: 2),
+            Folder(serverID: "20", parentID: "0", displayName: "项目", type: 1),
+        ]
+        try store.applyFolderSnapshot(account: account, folders: folders, syncKey: "1")
+        let inbox = (0..<5).map { index in
+            MailMessage(
+                serverID: "inbox-\(index)",
+                sender: "inbox\(index)@corp.test",
+                receivedRaw: "2026-11-\(String(format: "%02d", index + 1))T09:00:00Z"
+            )
+        }
+        let project = (0..<5).map { index in
+            MailMessage(
+                serverID: "project-\(index)",
+                sender: "project\(index)@corp.test",
+                receivedRaw: "2026-10-\(String(format: "%02d", index + 1))T09:00:00Z"
+            )
+        }
+        try store.applySyncBatch(account: account, folder: "13", added: inbox, changed: [], removedServerIDs: [], syncKey: "1")
+        try store.applySyncBatch(account: account, folder: "20", added: project, changed: [], removedServerIDs: [], syncKey: "1")
+
+        let directory = scene.recipientDirectory(account: account, folderLimit: 2, totalLimit: 3)
+
+        #expect(directory.suggestions(for: "corp").count == 3, "only 2 inbox + 1 project row are read")
+        #expect(!directory.suggestions(for: "inbox4").isEmpty)
+        #expect(!directory.suggestions(for: "inbox3").isEmpty)
+        #expect(directory.suggestions(for: "inbox2").isEmpty)
+        #expect(!directory.suggestions(for: "project4").isEmpty)
+        #expect(directory.suggestions(for: "project3").isEmpty)
+    }
+
+    @Test("recipientDirectory degrades to an empty directory without an account")
+    func recipientDirectoryDegradesToEmpty() throws {
+        let (scene, _, _, _) = try makeScene()
+
+        let missing = scene.recipientDirectory(account: AccountID("missing-account"))
+        #expect(missing.isEmpty)
+        #expect(missing.suggestions(for: "anything").isEmpty)
+    }
+
     /// Seed rules need no mail data; this keeps those tests from sharing fixtures.
     private func makeSceneWithoutStore() throws -> ComposeScene {
         let store = try MailStore.inMemory()
