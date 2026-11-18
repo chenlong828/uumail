@@ -17,7 +17,7 @@ public struct AddressList: Equatable, Sendable {
         var parsed: [String] = []
         for raw in raws {
             guard let raw else { continue }
-            parsed.append(contentsOf: Self.parse(raw))
+            parsed.append(contentsOf: EnvelopeParser.split(raw).compactMap(EnvelopeParser.address(fromSegment:)))
         }
         self.init(normalized: parsed)
     }
@@ -49,73 +49,6 @@ public struct AddressList: Equatable, Sendable {
 }
 
 private extension AddressList {
-    /// Splits on top-level `;`/`,`, ignoring separators inside quotes and `<>`.
-    static func split(_ raw: String) -> [String] {
-        var segments: [String] = []
-        var current = ""
-        var inQuotes = false
-        var inAngle = false
-
-        for character in raw {
-            switch character {
-            case "\"":
-                inQuotes.toggle()
-                current.append(character)
-            case "<" where !inQuotes:
-                inAngle = true
-                current.append(character)
-            case ">" where !inQuotes:
-                inAngle = false
-                current.append(character)
-            case ";", ",":
-                if inQuotes || inAngle {
-                    current.append(character)
-                } else {
-                    segments.append(current)
-                    current = ""
-                }
-            default:
-                current.append(character)
-            }
-        }
-        segments.append(current)
-        return segments
-    }
-
-    static func parse(_ raw: String) -> [String] {
-        split(raw).compactMap(address(fromSegment:))
-    }
-
-    static func address(fromSegment segment: String) -> String? {
-        let trimmed = segment.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-
-        if let open = trimmed.firstIndex(of: "<") {
-            guard let close = trimmed[trimmed.index(after: open)...].firstIndex(of: ">") else {
-                return nil
-            }
-            let inner = trimmed[trimmed.index(after: open)..<close]
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            return inner.isEmpty ? nil : inner
-        }
-
-        let unquoted = stripWrappingQuotes(trimmed)
-        guard !unquoted.isEmpty else { return nil }
-        if unquoted.contains("@") { return unquoted }
-        if unquoted.hasPrefix("/") { return unquoted }
-        if unquoted.contains("="), !unquoted.contains(where: \.isWhitespace) {
-            return unquoted
-        }
-        return nil
-    }
-
-    static func stripWrappingQuotes(_ value: String) -> String {
-        guard value.count >= 2, value.hasPrefix("\""), value.hasSuffix("\"") else {
-            return value
-        }
-        return String(value.dropFirst().dropLast())
-    }
-
     static func normalizedKey(_ raw: String?) -> String? {
         guard let raw else { return nil }
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)

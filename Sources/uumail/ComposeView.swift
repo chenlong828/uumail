@@ -29,12 +29,14 @@ struct ComposeView: View {
         VStack(spacing: 0) {
             header
             Divider()
-            Form {
-                TextField("收件人", text: $viewModel.to, prompt: Text("a@example.com"))
-                TextField("抄送", text: $viewModel.cc)
+            ComposeRecipientForm(
+                viewModel: viewModel,
+                scale: fontSize.scaleFactor,
+                sheetHeight: height
+            ) {
                 TextField("主题", text: $viewModel.subject)
             }
-            .padding(12)
+            .zIndex(10)
             Divider()
             ComposeFormatBar(handle: editor)
             Divider()

@@ -37,8 +37,28 @@ public final class ComposeViewModel: Identifiable {
     public var bodyHTML: String
     public private(set) var status: Status = .editing
 
-    private let scene: ComposeScene
-    private let account: AccountID
+    /// Which address field currently owns the suggestion list.
+    public enum RecipientField: Equatable, Sendable {
+        case to
+        case cc
+    }
+
+    /// Current recipient candidates, refreshed from the in-memory directory on each
+    /// keystroke. Empty means "show nothing"; the view decides whether to render a panel.
+    public internal(set) var recipientSuggestions: [ContactAddress] = []
+    /// Keyboard selection. `nil` is the required default: Return must not commit a
+    /// recipient before the user has explicitly moved the highlight.
+    public internal(set) var highlightedSuggestion: Int?
+
+    /// One directory per compose session; `nil` means not loaded yet.
+    var recipientDirectory: ContactDirectory?
+    var activeRecipientField: RecipientField?
+    /// Test seam: how many times the scene was asked for the directory. It must stay at
+    /// one no matter how many keystrokes follow the first focus.
+    var directoryLoadCount = 0
+
+    let scene: ComposeScene
+    let account: AccountID
     private let inReplyTo: String?
     private let initial: Snapshot
     /// Normalised HTML captured when the editor finished loading. Comparing against it

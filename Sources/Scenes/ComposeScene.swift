@@ -14,6 +14,65 @@ public struct ComposeScene: Sendable {
         self.outbox = outbox
     }
 
+    // MARK: - Recipient directory
+
+    /// Bounds for the one-shot local read behind recipient autocomplete. Internal so
+    /// tests can assert them; not part of the public contract.
+    static let recipientDirectoryFolderLimit = 500
+    static let recipientDirectoryTotalLimit = 5_000
+
+    /// Reads the account's already-synced envelopes once and maps them into a
+    /// `ContactDirectory`. Non-mail folders (Drafts/Deleted/Sent/Outbox) are skipped,
+    /// Inbox-first store order is preserved, and any store failure degrades to an empty
+    /// directory: autocomplete must never block composing or surface a storage error.
+    public func recipientDirectory(account: AccountID) -> ContactDirectory {
+        recipientDirectory(
+            account: account,
+            folderLimit: Self.recipientDirectoryFolderLimit,
+            totalLimit: Self.recipientDirectoryTotalLimit
+        )
+    }
+
+    /// Test seam for the same aggregation with small bounds. Behaviour is identical.
+    func recipientDirectory(account: AccountID, folderLimit: Int, totalLimit: Int) -> ContactDirectory {
+        do {
+            let ownAddress = try store.account(account)?.address
+            let folders = try store.folders(account: account)
+            var envelopes: [ContactEnvelope] = []
+            var total = 0
+
+            for folder in folders {
+                // 3 Drafts, 4 Deleted Items, 5 Sent Items, 6 Outbox.
+                guard ![3, 4, 5, 6].contains(folder.type) else { continue }
+                guard total < totalLimit else { break }
+                let remaining = totalLimit - total
+                let limit = min(folderLimit, remaining)
+                guard limit > 0 else { break }
+                let messages = try store.messages(
+                    account: account,
+                    folder: folder.serverID,
+                    limit: limit
+                )
+                envelopes.append(contentsOf: messages.map {
+                    ContactEnvelope(
+                        sender: $0.sender,
+                        recipients: $0.recipients,
+                        cc: $0.cc,
+                        receivedRaw: $0.receivedRaw
+                    )
+                })
+                total += messages.count
+            }
+
+            return ContactDirectory(
+                envelopes: envelopes,
+                excluding: ownAddress.map { [$0] } ?? []
+            )
+        } catch {
+            return ContactDirectory(envelopes: [], excluding: [])
+        }
+    }
+
     // MARK: - Seeds
 
     /// Reply seed: subject gets a `Re:` prefix (unless already present), the sender address
