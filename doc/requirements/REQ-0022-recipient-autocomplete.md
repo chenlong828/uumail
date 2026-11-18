@@ -2,7 +2,7 @@
 layer: requirements
 module: mail
 scope: project:uumail
-status: accepted
+status: delivered
 updated: 2026-11-18
 ---
 
@@ -36,7 +36,7 @@ updated: 2026-11-18
   - **架构与预算**：`Presentation` 不得 `import MailStore`，目录查询必须经 `Scenes` 暴露（架构门 1）；不新增 target/第三方依赖。`MailStore` 组件当前实测 **1008 行**，已超规格 **1000 行硬上限**（`task-spaces/20261118-080109/evidence/code-scan.log` §8b）；若设计新增联系人表/查询，先拆分或走 P1 预算调整确认，不得静默超限。`ComposeViewModel` 当前 263/400 行、`ComposeView` 当前 172/300 行；新增联想状态/候选控件后仍须在单文件预算内，超限先拆 extension/helper。
   - **范围变更提示**：若设计选择新增联系人 `schema`（如 v11 `contacts` 表）或新增 `MailDomain`/`ComposeScene` 公开契约，属 P1，必须由设计节点按 `auto-confirm` 记录默认确认（未经人工）并交评审判断；回退方式是降级为「打开撰写页时扫本地 `messages` 内存聚合 + 会话内缓存」，不改 schema。
 - **影响场景**：
-  - `SCN-0017`（已落卡 `designed`，`mail/send/recipient-autocomplete`，`doc/design/scenarios/mail/send/recipient-autocomplete/scenario.md`）：本卡唯一新增验收证据；新增「缓存目录与匹配」「输入刷新与选中补全」「人名+邮箱/无名字回退的可见候选」「无候选/畸形/中间光标/IME 负例」断言。T-01/T-02/T-04 最低 L1，T-03 最低 L2。
+  - `SCN-0017`（`mail/send/recipient-autocomplete`，`doc/design/scenarios/mail/send/recipient-autocomplete/scenario.md`；2026-11-18 已转 `verified`）：本卡唯一新增验收证据；新增「缓存目录与匹配」「输入刷新与选中补全」「人名+邮箱/无名字回退的可见候选」「无候选/畸形/中间光标/IME 负例」断言。T-01/T-02/T-04 最低 L1，T-03 最低 L2。
   - `SCN-0006`（发送）：回归手动输入/粘贴、空收件人拒绝、发送只入队；不新增断言。
   - `SCN-0007`（全部回复）：回归 To/Cc 预填与去重；联想不得改写种子；不新增断言。
   - `SCN-0016`（HTML 撰写）：回归 To/Cc 字段、HTML 编辑器、取消与等宽 sheet；不新增断言。
@@ -54,5 +54,5 @@ updated: 2026-11-18
   - 2026-11-18 `SCN-0017` 已交场景草案（`task-spaces/20261118-080109/scenario-drafts.md`）；正式场景卡由设计节点创建，本节点不落 `doc/design/`。
   - 2026-11-18 设计落卡：`SCN-0017` 已落 `designed`；设计选择**会话内聚合**（不改 `MailStore`、不建 `contacts` 表、schema 保持 v10），首屏一次读（每文件夹 500、总计 5,000）、候选上限 8、可见性最低 L2、键盘默认不高亮；完整边界与默认确认（未经人工）见 `doc/history/decisions/2026-11-18-recipient-autocomplete.md` 与场景卡。本卡范围/非目标不变。
   - 2026-11-18 方案设计复核：候选浮层改 `.overlay` 不参与布局、`ComposeRecipientForm` 拆到 `RecipientForm.swift`、字段按现状 24pt/13pt/4pt inset 拟合、读取加 5,000 总计上限；见 `doc/history/decisions/2026-11-18-recipient-autocomplete-design-addendum.md`（A1–A6，默认确认未经人工）。
-- **状态**：`accepted`（2026-11-18，需求分析）。`SCN-0017` 已由设计落为 `designed`（2026-11-18）；未实现、未验证，待任务拆分与实现。
-- **验收归属**：`SCN-0017` 的 3 正 1 反全绿并转 `verified`；`SCN-0006`/`SCN-0007`/`SCN-0016`/`SCN-0015` 回归不退化。需求不另立测试。
+- **状态**：`delivered`（2026-11-18，T-1118-02 验证，收尾按 `task-spaces/20261118-190035/review.md` §F 清单翻转；`T-1118-02` 为无人值守默认任务号、未经人工）。原 `accepted`（2026-11-18，需求分析；同日设计落 `SCN-0017` 为 `designed`；当时未实现、未验证；`task-split` 未产出独立任务表）。`SCN-0017` 的 3 正 1 反全绿并转 `verified`（`task-spaces/20261118-190035/test.md` §2–§6、`review.md` §A–§G、`evidence/verify/`），本卡交付。
+- **验收归属**：`SCN-0017` 的 3 正 1 反全绿并已转 `verified`（2026-11-18）；`SCN-0006`/`SCN-0007`/`SCN-0016`/`SCN-0015` 回归不退化。需求不另立测试。

@@ -2,7 +2,7 @@
 layer: design
 module: mail
 scope: project:uumail
-status: designed
+status: verified
 updated: 2026-11-18
 flow: mail/send
 scenario: SCN-0017
@@ -106,6 +106,8 @@ scenario: SCN-0017
 
 ## 状态
 
-`designed`（2026-11-18，设计落卡）。四元素齐：入口、运行序、不可变引用、测试均 `present`；`T-SCN-0017-01..04` 为 3 正 1 反可执行 ID（拟），T-01/T-02/T-04 最低 L1、T-03 最低 L2。实现与验证尚未开始，本卡不标 `verified`，不翻转任何需求/场景状态。
+`verified`（2026-11-18，T-1118-02 验证，收尾按 `task-spaces/20261118-190035/review.md` §F 清单翻转；`T-1118-02` 为无人值守默认任务号、未经人工）。原 `designed`（2026-11-18，设计落卡）。四元素齐：入口、运行序、不可变引用、测试均 `present`；`T-SCN-0017-01..04` 为 3 正 1 反可执行 ID，T-01/T-02/T-04 最低 L1、T-03 最低 L2。
+
+`verified` 判据：`T-SCN-0017-01`/`T-SCN-0017-02`/`T-SCN-0017-04` L1 通过；`T-SCN-0017-03` L2 `56 PASS / 0 FAIL`；全量 `327 tests / 54 suites`、依赖场景定向 `91 tests / 11 suites`、架构 4/4；`SCN-0006`/`SCN-0007`/`SCN-0015`/`SCN-0016` 回归无退化。证据：`task-spaces/20261118-190035/test.md` §2–§6、`review.md` §A–§G 与 `evidence/verify/`。
 
 方案设计复核 A1–A6（2026-11-18）：候选浮层改 `.overlay` 不参与布局、`ComposeRecipientForm` 拆到 `RecipientForm.swift`、`RecipientTextField` 按现状 24pt/13pt/4pt inset 拟合、读取加 5,000 总计上限、click-after-focus-loss 与 IME Esc 进 L2；见 `history/decisions/2026-11-18-recipient-autocomplete-design-addendum.md`（默认确认，未经人工）。不改变三正一反与层级。
