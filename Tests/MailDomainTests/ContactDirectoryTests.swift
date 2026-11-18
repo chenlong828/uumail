@@ -142,6 +142,22 @@ struct ContactDirectoryTests {
         #expect(directory.suggestions(for: "zhang", excluding: ["  "]).count == 2)
     }
 
+    @Test("a fragment equal to a full address does not suggest that address")
+    func fragmentItselfIsExcluded() {
+        let directory = ContactDirectory(
+            envelopes: [
+                envelope(sender: "\"Zhang San\" <zhang.san@corp.test>"),
+                envelope(sender: "zhang.wei@corp.test"),
+            ]
+        )
+
+        #expect(directory.suggestions(for: "zhang.san@corp.test").isEmpty)
+        #expect(
+            directory.suggestions(for: "zhang").map(\.address)
+                == ["zhang.san@corp.test", "zhang.wei@corp.test"]
+        )
+    }
+
     @Test("blank fragments and out-of-range limits return nothing")
     func blankFragmentAndClampedLimit() {
         let directory = ContactDirectory(
