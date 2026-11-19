@@ -27,7 +27,7 @@ component: CMP-APP
 - 依赖：`Presentation`、`Composition`（仅 `UumailApp.swift`）、SwiftUI/AppKit/WebKit。扇出 2。
 - 冷热：热（读本地库）；收件人候选只读 VM 内存状态，不触网、不查库。
 - 尺寸预算：单文件 ≤300 行；当前 `uumail` 共 **1490 行**（2026-11-18 实测：`MailboxView` 218、`MessageBodyView` 256、`UumailApp` 69、`MessageHeaderView` 34、`ComposeView` 172、`ComposeEditor` 173、`ComposeFormatBar` 75、`AccountSetupView` 66、`MailboxToolbar` 75、`MessageBodyStyle` 41、`ThemeCommands` 45、`FontSizeStyle` 106、`FontSizeCommands` 33、`EmptyState` 127）；2026-11-18 收件人联想设计预计 +280–340（`RecipientTextField.swift` 约 200、`RecipientForm.swift` 约 80、`ComposeView` 约 180）→ 约 1770，单文件仍 ≤300，不新增 target/依赖。
-- 单独运行：`./Scripts/make-app.sh && open dist/uumail.app`（release 构建，产物不入库）
+- 单独运行：`./Scripts/make-app.sh && open dist/uumail.app`（release 构建，产物不入库）；`swift run` 为无 bundle `Info.plist` 的可执行，**没有 ATS 域策略**，明文 http 图片本来即可加载（REQ-0024 L2 实测，见文末 2026-11-19 增量）
 - 删除测试：删掉则只能命令行看信，对终端用户等于没有产品。
 
 ## 实现进度（2026-11-14）
@@ -252,3 +252,18 @@ component: CMP-APP
 - 验证：`T-SCN-0017-03`（L2）新增 `.nameWidthsAtMinAndDefaultSheet`/`.longNameKeepsAddressFloor`/`.nameWidthsAt175Percent`/`.nameWidthsAt225Percent`/`.addressKeepsAtVisibleAtZoom`/`.noNameRowUsesLabelIdentity`/`.columnWidthsEdgeClamp`；断言邮箱显示串含 `@` 两侧且 `显示串宽 ≤ 帧宽 + 0.5`，完整地址仍在行上；证据入 `task-spaces/<run>/evidence/compose-autocomplete-probe/`。`T-SCN-0017-04` 不新增。
 - 定级与确认：**P3**（单组件内部布局/显示规则、无 public 契约/schema/依赖/热路径失败语义变化）；默认确认 D1–D6（无人值守自动确认，**未经人工**；依据 `REQ-0023` D1–D4 与实测，见 `task-spaces/20261119-164437/design2.md` §6.2；130/`addressMinimum` 与 15 字目标是参数，不是契约）。回退：删除本增量与 helper、把「名字优先、邮箱 `@` 保底」还原为 `min(名字固有宽, 可用宽 × 0.45)` 与 `byTruncatingMiddle`；无数据/契约迁移。若评审否决 A 族（列宽重分配），按 `design2.md` §3 的 B/C/D 族重选，不复用本节数值。
 - 实现进度（2026-11-19，`T-1119-01`）：`RecipientSuggestionLayout`（列宽分配 + 地址显式缩短）与 `SuggestionRowView.layout()` 接线已落生产源（`RecipientTextField.swift` 253 行、`RecipientTextField+AppKit.swift` 293 行，未新增文件/target/依赖）。生产源 `ComposeAutocompleteProbe` 覆盖 `T-SCN-0017-03` 的 11 个可执行 ID，147 CHECK / 0 FAIL；实测 100%×480/700/900、145%/175%/225%×480、无名字行、40 字名 130pt、`@` 两侧与 `fullAddress` 保留与设计预期一致（证据 `task-spaces/20261119-164437/evidence/compose-autocomplete-probe/`）。性能（N4，`bench.txt`）：18 字符地址首次约 0.68ms/行（与设计期 0.6ms 同量级），39/58 字符约 4.2/10.9ms；布局重复调用命中 `(地址, 宽, 字号)` 缓存约 10µs/次，热路径为**有界 O(L²) + 缓存**。实现未改 `SCN-0017`/`REQ-0023` 状态位。
+
+## 设计增量：远程图片实际加载的运行载体 ATS 例外（REQ-0024 / SCN-0018，2026-11-19，P2 待人工确认）
+
+- 来源：`REQ-0024`（`quality`，`accepted`）/ 新场景 `SCN-0018`（`mail/read/remote-image-load`，`designed`）。完整论证、方案族与设计期 L2 矩阵见 `task-spaces/20261119-213812/design.md` 与 `evidence/remote-image-probe/`。
+- 现状归因（L2，生产 `MessageWebView` + `MessageBodyStyle` + 受控 http 源 + 三种 carrier 对照）：开关/CSP 链路正常（放行档 `img-src … http:`、阻断档 0 请求），缺口在传输层。带 bundle `Info.plist` 且无 ATS 例外的载体里，明文 http 图片**一次也不出网**（受控服务端 0 命中、`img.naturalWidth=0`）；同一二进制把 bundle plist 换成含 `NSAllowsArbitraryLoadsInWebContent=true` 后，请求到达、图片解码渲染（品红像素 4096）。`127.0.0.1`/`localhost` 被 ATS 豁免，不能用来判 ATS（无 ATS 载体下 `127.0.0.1` 放行、非本地主机名 0 命中）；裸可执行（`swift run` 形状）无 bundle plist、无 ATS 域策略，本来即可加载。
+- 修改：
+  - 新增受版本管理的 `Resources/Info.plist`（与现 `make-app.sh` heredoc 逐键一致），增加 `<key>NSAppTransportSecurity</key><dict><key>NSAllowsArbitraryLoadsInWebContent</key><true/></dict>`；**不含** `NSAllowsArbitraryLoads`、`NSExceptionDomains`。
+  - `Scripts/make-app.sh` 的 heredoc 改为 `cp Resources/Info.plist "$APP/Contents/Info.plist"`；release 构建、图标、ad-hoc 签名、`build-info.txt`、`dist` 路径不变。
+  - `MessageWebView`/`MessageBodyStyle`/`MessageBodyView`/`MailboxViewModel`/`ComposeEditor` **零改动**：`loadHTMLString(_, baseURL: nil)`、CSP 两档、禁 JS、白底、`lastRender` guard 原样。
+- 安全面（已实测）：ATS 例外只放宽 **WKWebView 内容**（正文 + 撰写编辑器）；两处图片仍由同一 `allowRemoteContent` 放行档 CSP 门控（默认/关闭 0 请求）；URLSession（EAS/附件）明文 http 在加键后**仍被 ATS 拒绝**（`urlsession-matrix.txt`），应用网络路径无变化。全局 `NSAllowsArbitraryLoads` 会放行 URLSession，已否决。
+- `swift run`：无 bundle `Info.plist` → 无 ATS 域策略，明文 http 图片本来即可加载；本次不为它加任何 shim，只把结论写进本规格与 `SCN-0018`。发布/开发统一用 `./Scripts/make-app.sh && open dist/uumail.app`。
+- 尺寸/预算：`Sources/uumail` 行数零变化（无单文件 ≤300 风险）；新增资源文件约 35 行；不新增 target/依赖/第三方库；`Package.swift`、schema、`MailStore`、`CMP-PRES`/`CMP-DOMAIN`/`Scenes` 契约不动。
+- 验证：`SCN-0018` 的 `T-SCN-0018-01`（L2 正例，探针 `.app` 的 plist = `Resources/Info.plist` 原样副本 + 非本地主机名 + 受控 http 源；含无 ATS 负控制、`data:` 正控制）、`T-SCN-0018-02`（L1 键断言 + L2 URLSession 仍受限）、`T-SCN-0018-03`（L1 脚本接线 + dist plist/build-info 一致；L2 裸可执行正例）。回归 `SCN-0013-01..04`、`SCN-0004`/`SCN-0010`/`SCN-0012`/`SCN-0015`/`SCN-0016`。A5 真实样本冒烟为发布前/人工项（脱敏计数，不记录 URL/主机/主题）。
+- 定级与确认：**P2**（交付载体/安全策略单点、无模块/契约/schema/热路径变化）。放宽 ATS 属安全策略变更，按 `REQ-0024` D4 与 `auto-confirm` §3 **必须人工确认**；确认前不实现、不重建 `dist`；本规格不代签确认记录。回退：删除 `NSAppTransportSecurity` 字典、`make-app.sh` 恢复内联 heredoc（或保留资源文件但去键）；无数据/契约迁移；回退后 `SCN-0018` 正例必然失败（这正是要暴露的载体缺口）。
+- 实现进度：未实现（等待 ATS 例外人工确认）。
