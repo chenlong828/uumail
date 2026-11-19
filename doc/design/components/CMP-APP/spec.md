@@ -2,7 +2,7 @@
 layer: design
 module: app
 status: active
-updated: 2026-11-18
+updated: 2026-11-19
 component: CMP-APP
 ---
 
@@ -242,11 +242,12 @@ component: CMP-APP
 
 ## 设计增量：候选行显示名的可读宽度（REQ-0023 / SCN-0017，2026-11-19，P3 默认确认）
 
-- 来源：`REQ-0023`（`quality`，`accepted`）/ `SCN-0017`（2026-11-19 转 `designed`）；完整论证、现状归因、方案族与设计期 L2 实测见 `task-spaces/20261119-164437/design.md` 与 `evidence/name-width-probe/`。
-- 现状归因（L2 实测）：字段宽 = sheet 宽 − 71（480→409、700→629、900→829），浮层宽 `max(字段宽, 200)` 恒等于字段宽、右侧已到 sheet 内容右缘；行宽跟随浮层宽。`SuggestionRowView.layout` 的名字列 `min(固有宽, 可用宽 × 0.45)` 是唯一起作用的约束：100%×480 下 15 字组织名只显示 13.6/14.9 字；145%/175%/225%×480 分别只剩 9.4/7.8/5.8 字（225% 即「周…」级）。
-- 修改（仅 `Sources/uumail/RecipientTextField+AppKit.swift#SuggestionRowView.layout`）：新增 internal `enum RecipientSuggestionColumns`，常量 `horizontalInset=8`、`gap=6`、`addressFloorPreferred=130`、`addressFloorMinimum=90`、`representativeNameCharacters=15`；`available = max(0, rowWidth-16)`；有名字 → `addressFloor = max(90, min(130, available-6-15×名字字号))`、`name = min(max(0, nameIntrinsic), max(0, available-6-addressFloor))`、`address = max(0, available-6-name)`；无名字 → `name=0`、`address=available`。130/90 与 15 都是列宽分配参数/代表样例，不写成「超 N 必截断」的契约。
-- 不改：浮层宽/锚点/高度 cap（`panelSize`）、`RecipientSuggestionRow.sizeThatFits`、行高 24×scale、sheet 宽高、`.help`、无障碍标签、字体/语义色、候选数据/匹配/排序/上限/插入、键盘/IME/点击/失焦；不改 `RecipientForm.swift`/`RecipientTextField.swift`。
-- 设计候选实测（生产源 + 设计 diff 副本；实现期换生产源复跑）：100%×480 的 15 字名 `176.8→193.5`（13.6→14.9 字，完整）、邮箱 193.5；700/900/1200 的 15 字名不变（原本完整）；40 字名 100%×480 `176.8→257`、邮箱 130（`long-name@corp.test` 127.5 完整）；145%×480 名字 `176.8→280.5`（9.4→14.9 字，看全）、邮箱 106.5；175%×480 名字 `176.8→297`（7.8→13.1 字）、邮箱 90；225%×480 名字 `169.2→280`（5.8→9.6 字）、邮箱 90、行高 54。无名字行邮箱仍占满可用宽（393）。
-- 尺寸：`RecipientTextField+AppKit.swift` 265 → 约 285 行（≤300）；不新增文件/target/依赖；`Package.swift`、schema、`MailStore`、发送链路不动。
-- 验证：`T-SCN-0017-03`（L2）新增 `.nameWidthsAtMinAndDefaultSheet`/`.longNameKeepsAddressFloor`/`.nameWidthsAt225Percent`/`.columnWidthsEdgeClamp`；断言用名字标签 `frame.width` 与 `intrinsicContentSize` 比较（`stringValue` 是完整文本，不能单靠它判截断）；证据入 `task-spaces/<run>/evidence/compose-autocomplete-probe/`。`T-SCN-0017-04` 不新增。
-- 定级与确认：**P3**（单组件内部布局、无 public 契约/schema/依赖/热路径失败语义变化）；默认确认 D1–D5（无人值守自动确认，**未经人工**；依据 `REQ-0023` D1–D4 与实测，见 `task-spaces/20261119-164437/design.md` §6.2；130/90pt 与 15 字目标是参数，不是契约）。回退：删除本增量与 helper、把「名字优先、邮箱 130/90pt 保底」还原为 `min(名字固有宽, 可用宽 × 0.45)`；无数据/契约迁移。若评审否决 A 族（列宽重分配），按 `design.md` §3 的 B/C/D 族重选，不复用本节数值。
+- 来源：`REQ-0023`（`quality`，`accepted`）/ `SCN-0017`（`designed`）；第 2 轮按 `review.md` B1–B3 修订。完整论证、现状归因、方案族与设计期 L2 实测见 `task-spaces/20261119-164437/design2.md` 与 `evidence/name-width-probe/round2/`。
+- 现状归因（L2 实测，第 1 轮不变）：字段宽 = sheet 宽 − 71（480→409、700→629、900→829），浮层宽 `max(字段宽, 200)` 恒等于字段宽、右侧已到 sheet 内容右缘；行宽跟随浮层宽。`SuggestionRowView.layout` 的名字列 `min(固有宽, 可用宽 × 0.45)` 是唯一起作用的约束：100%×480 下 15 字组织名只显示 13.6/14.9 字；145%/175%/225%×480 分别只剩 9.4/7.8/5.8 字（225% 即「周…」级）。
+- 修改：在 `Sources/uumail/RecipientTextField.swift` 增加 internal `RecipientSuggestionLayout`，常量 `horizontalInset=8`、`gap=6`、`preferredAddressFloor=130`、`representativeNameCharacters=15`；`available = max(0, rowWidth-16)`；有名字 → `targetNameWidth = 15×名字字号`、`addressMinimum = ceil(width(地址首字符 + "…@" + 域名首字符))`、`addressFloor = max(addressMinimum, min(130, available-6-targetNameWidth))`、`name = min(max(0, nameIntrinsic), max(0, available-6-addressFloor))`、`address = max(0, available-6-name)`；无名字 → `name=0`、`address=available`。`layout()` 同时使用返回的 `name` 与 `address`（不再另算地址宽），并用 `shortenedAddress` 写回邮箱显示串。130/`addressMinimum` 与 15 都是列宽分配参数/代表样例，不写成「超 N 必截断」的契约。
+- 地址显示串（新增 internal `shortenedAddress`）：完整地址放不下时，按「本地前缀 + `…` + `@` + 域名前缀」选可见字符最多的组合，保证 `@` 与两侧各至少 1 字符；完整地址保留在 `fullAddress`，`.help`/无障碍/选中仍用完整地址；结果按 `(地址, 宽, 字号)` 缓存。无名字行不缩短。
+- 不改：浮层宽/锚点/高度 cap（`panelSize`）、`RecipientSuggestionRow.sizeThatFits`、行高 24×scale、sheet 宽高、`.help`、无障碍标签、字体/语义色、候选数据/匹配/排序/上限/插入、键盘/IME/点击/失焦；不改 `RecipientForm.swift`。`nameLabel`/`addressLabel` 从 private 改 internal 仅用于 L2 按身份取值，不新增 public。
+- 设计候选实测（第 2 轮，生产源 + 设计 diff 副本；实现期换生产源复跑）：100%×480 的 15 字名 `176.8→193.5`（13.6→14.9 字，完整）、邮箱 193.5（完整 115.5）；700/900/1200 的 15 字名不变（原本完整）；40 字名 100%×480 `176.8→257`、邮箱 130（`long-name@corp.test` 127.2 完整）；145%×480 名字 `176.8→280.5`（9.4→14.9 字，看全）、邮箱 106.5（显示 `hr-…@corp.t`，`@` 两侧可见）；**175%×480 名字 `176.8→325`（7.8→14.9 字，完整，不再降级）**、邮箱 62（`h…@c`）；225%×480 名字 `169.2→298`（5.8→10.7 字）、邮箱 72（`h…@c`）、行高 54。无名字行名字 hidden/宽 0、邮箱仍占满可用宽（393）。
+- 尺寸：`RecipientTextField.swift` 165 → 约 253 行，`RecipientTextField+AppKit.swift` 265 → 约 293 行（均 ≤300）；不新增文件/target/依赖；`Package.swift`、schema、`MailStore`、发送链路不动。
+- 验证：`T-SCN-0017-03`（L2）新增 `.nameWidthsAtMinAndDefaultSheet`/`.longNameKeepsAddressFloor`/`.nameWidthsAt175Percent`/`.nameWidthsAt225Percent`/`.addressKeepsAtVisibleAtZoom`/`.noNameRowUsesLabelIdentity`/`.columnWidthsEdgeClamp`；断言邮箱显示串含 `@` 两侧且 `显示串宽 ≤ 帧宽 + 0.5`，完整地址仍在行上；证据入 `task-spaces/<run>/evidence/compose-autocomplete-probe/`。`T-SCN-0017-04` 不新增。
+- 定级与确认：**P3**（单组件内部布局/显示规则、无 public 契约/schema/依赖/热路径失败语义变化）；默认确认 D1–D6（无人值守自动确认，**未经人工**；依据 `REQ-0023` D1–D4 与实测，见 `task-spaces/20261119-164437/design2.md` §6.2；130/`addressMinimum` 与 15 字目标是参数，不是契约）。回退：删除本增量与 helper、把「名字优先、邮箱 `@` 保底」还原为 `min(名字固有宽, 可用宽 × 0.45)` 与 `byTruncatingMiddle`；无数据/契约迁移。若评审否决 A 族（列宽重分配），按 `design2.md` §3 的 B/C/D 族重选，不复用本节数值。
