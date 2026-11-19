@@ -61,6 +61,9 @@ updated: 2026-11-19
 | R48 | 点击候选行时字段先失焦，候选被清空导致选不中 | `controlTextDidEndEditing` 在 `Button` 的 mouseUp 前触发；`recipientFocusLost()` 清掉 `activeField`/候选 | 鼠标选中路径不可用，只能键盘；L2 点击用例红 | `ComposeRecipientForm` 用 `suggestionClickInFlight` 守卫把失焦清空延后到下一 runloop；点击用原字段 index 完成选中后再还焦点；`T-SCN-0017-03` 的 `.clickAfterFocusLoss` 必测 | `design/components/CMP-APP/spec.md`、`SCN-0017` |
 | R49 | 首次聚焦同步聚合 5,000 封信封阻塞主线程 | 大邮箱首次聚焦时 UI 停顿，或 `T-SCN-0017` 性能夹具超过设计目标 | 输入/取消/发送被拖慢，违反「不阻塞撰写」 | 已设每文件夹 500、总计 5,000 上限；实现期用 5,000 封夹具记录首次加载耗时（目标 ≤100ms）；超目标回设计改异步加载或降上限，不在输入路径查库 | `design/components/CMP-PRES/spec.md`、`CMP-SCN-COMPOSE/spec.md`、`SCN-0017` |
 | R50 | 候选行邮箱列保底内显示串被缩短；175%/225%×480 只能显示 `h…@c` 级最低形态 | 名字加宽后邮箱变窄；若只读 `stringValue` 或只断言帧宽，会把「显示截断/`@` 不可见」误判为通过 | 用户难以用邮箱区分同名联系人；A2 断言假绿/假红 | 第 2 轮改为「保留 `@` 的显式中间缩短」：`addressLabel.stringValue` 就是已缩短的显示串，断言含 `@` 且两侧各至少 1 字符、显示串宽 ≤ 帧宽 + 0.5；完整地址另存在 `fullAddress` 供 `.help`/无障碍；175%/225% 的 `h…@c` 是名字优先下的最低可辨形态，不写成「任意地址固定字符数」契约；若产品要求邮箱更完整，需改需求取舍或浮层/换行方案 | `CMP-APP/spec.md` 设计增量、`SCN-0017` T-03、`task-spaces/20261119-164437/design2.md` §4/§9、`evidence/name-width-probe/round2/` |
+| R51 | 交付载体 plist 丢失 ATS 键（`Resources/Info.plist` 被删/改回内联 heredoc/构建时未装机） | `plutil -extract NSAppTransportSecurity.NSAllowsArbitraryLoadsInWebContent` 非 `true`；`cmp dist/uumail.app/Contents/Info.plist Resources/Info.plist` 非 0；远程图片重新空白 | 放行开关仍工作但图片始终空白，功能静默失效，用户误以为开关坏了 | plist 单一来源 + `Scripts/make-app.sh` 只 `cp`（缺文件即失败，不静默生成）；`T-SCN-0018-02/03` 的 `plutil`/`cmp`/脚本接线断言；里程碑重建后核对 `dist/build-info.txt` 与构建时 HEAD；发布前按 `SCN-0018` 复跑 L2 | `design/components/CMP-APP/spec.md` 设计增量、`SCN-0018`、`Scripts/make-app.sh`、`Resources/Info.plist` |
+| R52 | 测试误用 `127.0.0.1`/`localhost` 判 ATS，或省略无 ATS 负控制 | 本地主机名/IP 字面量被 ATS 豁免，放行档「命中」；或负控制在无 ATS bundle 下也命中 | ATS 根因与修复被假绿掩盖，或把主机名/载体配置错误判成通过 | 探针图片 URL 用解析到受控服务的非本地主机名（`127.0.0.1.nip.io` 一类）；无 ATS 负控制必须 0 命中；`data:` 正控制必须渲染；离线无法解析时登记跳过，不退回 IP 字面量 | `SCN-0018` §测试、`test.md`/`test2.md`、`evidence/carrier-verify/`、`history/decisions/2026-11-19-remote-image-ats.md` |
+| R53 | 载体契约没有 CI 回归守护 | `uumail` 是可执行 target，`Package.swift` 无对应测试 target；探针只在 task-space，不入库；ATS 键/`cp` 接线回归靠里程碑手动断言 | 后续重构 `make-app.sh` 或 plist 时可能静默回退，直到用户再次遇到空白才发现 | 不新增 target/依赖（设计边界）；在 `SCN-0018` 与 `CMP-APP` 增量保留 L1 静态断言命令；里程碑/发布前按 `SCN-0018` 复跑；若将来改 `ComposeEditor` 的 WebView 配置，另拆探针任务，不静默扩 | `SCN-0018`、`task-spaces/20261119-213812/review4.md` §7 N6、`plan/roadmap.md` §W-M3-11 |
 
 2026-11-17 设计处置（run `20261117-071134`，`REQ-0020`/`SCN-0015`；**未关闭**，实现/验证时按场景卡复核；第 2 轮按评审 fail 修订）：
 
@@ -74,7 +77,7 @@ updated: 2026-11-19
 ## 风险等级口径
 
 - 高：直接使项目不可用或造成合规事故（R1、R2、R11）。
-- 中：影响关键旅程但可降级（R3、R4、R5、R6、R8、R12、R13、R18、R19、R21、R22、R23、R24、R27、R28、R29、R31、R32、R33、R34、R35、R36、R37、R38、R39、R40、R41、R42、R43、R44、R45、R47、R48、R49、R50）。
+- 中：影响关键旅程但可降级（R3、R4、R5、R6、R8、R12、R13、R18、R19、R21、R22、R23、R24、R27、R28、R29、R31、R32、R33、R34、R35、R36、R37、R38、R39、R40、R41、R42、R43、R44、R45、R47、R48、R49、R50、R51、R52、R53）。
 - 低：局部体验或可回滚（R7、R9、R10、R15、R25、R26、R30、R46）。
 
 R14 已于 2026-11-14 关闭（T-1114-02：网关 Sync 信封实测返回 `Cc`）。R16/R17/R20 已于 2026-11-14 关闭（真机写命令、预算拆分、写响应语义）。R27–R31 为 2026-11-16 阅读页信封头新增，**未关闭**；落点与缓解见各行。
@@ -88,3 +91,5 @@ R39–R44 为 2026-11-17 需求分析新增（`REQ-0020` 字体大小），**未
 R45–R49 为 2026-11-18 需求分析/设计新增（`REQ-0022` 收件人联想），**未关闭**；落点与缓解见各行。R45 的现状证据见 `task-spaces/20261118-082503/evidence/design-baseline.log`（`MailStore` 四文件合计 1008 行）；R46 的已接受降级见决策记录 D2；R47 的布局部分已由设计探针 `task-spaces/20261118-082503/evidence/design-probe/overlay-probe.txt` 证 `.overlay` 不改变布局，实现期仍需按 `SCN-0017` 的 L2 探针复核行文本/点击；R48/R49 留实现期 L2/性能夹具。
 
 R50 为 2026-11-19 设计新增（`REQ-0023` 候选行显示名宽度），**未关闭**；第 2 轮改为「邮箱 `@` 两侧可见的最小保底 + 地址显式缩短」，见 `task-spaces/20261119-164437/design2.md` §4。设计期 L2 探针已证：当前行宽=浮层宽（409/629）、200 兜底未命中、45% 上限是唯一约束；设计候选在 100%/145%/**175%**×480 把 15 字名看全（14.9 字）、225%×480 为约 10.7 字（授权降级）；145%/175%/225%×480 的邮箱显示串均含 `@` 两侧且放得下（`hr-…@corp.t` / `h…@c` / `h…@c`），完整地址保留在行上（生产源 + 设计 diff 副本，`evidence/name-width-probe/round2/`，250 CHECK/0 FAIL）；实现期必须换生产源复跑 `T-SCN-0017-03`。
+
+R51–R53 为 2026-11-19 W-M3-11（`REQ-0024`/`SCN-0018` 交付载体 ATS 例外）收尾同步新增，**未关闭**；R51 的载体断言与 R52 的负控制/正控制已在 `T-SCN-0018-02/03` 与 `T-SCN-0018-01` 落地，证据见 `task-spaces/20261119-213812/`；R53 的「无 CI 守护」是已知流程残余，若需 CI 化另拆任务，不在本批静默扩 target。

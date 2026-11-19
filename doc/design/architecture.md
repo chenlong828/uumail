@@ -30,7 +30,7 @@ macOS 原生邮件客户端，只支持 EAS（Exchange ActiveSync），以「一
 | 浏览与阅读 | `ReadScene` | 选文件夹、选邮件 | 列表与正文 | 读路径不触网；缓存优先；缺正文先占位后补拉 | messages、message_bodies | 占位 + 重试入口 | 高频 | 热 | 已实现；P95 未复测 |
 | 列表停留自动已读 | `ReadScene` + `MailboxDwell` + `MailboxViewModel.performMarkRead` | 选中未读、前台连续 3 秒 | 本地已读、蓝点消失、后台回写 | 本地先行；写回与同步共享 key 串行；失败不回滚、不提示；计时器只计时 | messages、sync_state | 静默保留本地已读 | 中 | 热（本地）+ 冷（回写） | 已实现（T-1114-11…18，2026-11-14）；2026-11-16 由 10 秒改为 3 秒，待重验 |
 | 手动标记已读 | `ReadScene` + `MailboxViewModel` + `MailboxToolbar` | 主工具栏「标记为已读」 | 本地立即已读、蓝点消失、后台回写一次 | 仅当前选中未读；本地先行；仅 0→1 回写；已读/无选中禁用；回写失败静默；本地失败非 `MailError` 归一后显示中文 | messages、sync_state | 本地失败保持未读 + 提示；回写失败静默 | 中 | 热（本地）+ 冷（回写） | 已实现（2026-11-16，T-1116-12/13；P2 已确认，待三卡重验） |
-| 远程图片放行 | `MailboxViewModel` + `MailboxToolbar` | 主工具栏「加载远程图片」 | 当前正文以放行档 CSP 重渲染 | 默认关；仅当前邮件；切邮件重置；不写偏好；禁 JS/白底/其它 CSP 档不变 | 无（会话内视图状态） | 无正文/未加载/失败不可用；图片失败不弹错 | 低 | 热 | 已实现（2026-11-16，T-1116-12/13；P2 已确认，待三卡重验） |
+| 远程图片放行 | `MailboxViewModel` + `MailboxToolbar` | 主工具栏「加载远程图片」 | 当前正文以放行档 CSP 重渲染；放行后远程图片实际请求并渲染（交付载体带 WebView 内容 ATS 例外） | 默认关；仅当前邮件；切邮件重置；不写偏好；禁 JS/白底/其它 CSP 档不变 | 无（会话内视图状态） | 无正文/未加载/失败不可用；图片失败不弹错 | 低 | 热 | 已实现并验证（2026-11-16，T-1116-12/13；2026-11-19 交付载体 ATS 例外 T-1119-04/05，`SCN-0018` `verified`/`REQ-0024` `delivered`；A5 发布前人工冒烟待办） |
 | 键盘删除 | `ReadScene` + `MailboxViewModel` | 列表聚焦 Delete/Backspace | 行消失、服务器删除、本地软删 | 服务器确认后原子软删；失败恢复并提示；单飞 | messages、sync_state | 恢复行/选中 + 中文错误 | 中 | 热（隐藏）+ 冷（写） | 已实现（T-1114-11…18，2026-11-14）；已验证（T-1114-20，2026-11-15） |
 | 附件 | `ReadScene` | 点附件 | 本地文件并打开 | 同一附件单飞；缓存 2 GB 最旧优先 | attachments、附件文件 | 提示失败可重试 | 中 | 冷 | 部分：无 25MB 上限、续传、名称回退 |
 | 本地搜索 | `ReadScene` | 输入关键字 | 结果列表 | 本地优先；<3 字符走 LIKE | messages、fts | 空结果/错误提示 | 中 | 热 | 已实现 |
@@ -429,9 +429,9 @@ CommandLineComposition（127 行）
 
 D10 的决策记录：`history/decisions/2026-11-13-fetched-body-contract.md`。D1–D10 的评审与裁决过程：`history/works/2026-11-10-scene-refactor/review.md` 与同目录 `result.md`（过程记忆，不作设计依据）。
 
-### 8.2 2026-11-09 技术选择（T1–T13）
+### 8.2 2026-11-09 技术选择（T1–T14）
 
-> 2026-11-09 经人确认（记录见 `history/decisions/2026-11-09-scope-baseline.md`）。为与本次结构决策 D1–D10 区分，本表改用 T 编号；冻结记录仍用当时的 D 编号。
+> 2026-11-09 经人确认（记录见 `history/decisions/2026-11-09-scope-baseline.md`）。为与本次结构决策 D1–D10 区分，本表改用 T 编号；冻结记录仍用当时的 D 编号。T14 为 2026-11-19 追加（ATS WebView 内容例外，人工确认记录 `history/decisions/2026-11-19-remote-image-ats.md`）。
 
 | ID | 选择 | 理由 | 否决 |
 |---|---|---|---|
@@ -448,6 +448,7 @@ D10 的决策记录：`history/decisions/2026-11-13-fetched-body-contract.md`。
 | T11 | 发送失败件保留 24h / 100 条 | 弱网可补发，队列不无限堆积 | 永久保留：易误以为已发出 |
 | T12 | 联系人只做本机通讯录 + 收件人历史 | GAL 实测不可用 | 继续排查 GAL：无保证且推迟 M3 |
 | T13 | 不做 OAuth/Graph 抽象 | 目标是私有化 Exchange 的 EAS 客户端 | 预留 OAuth 端口：为不存在的需求付费 |
+| T14 | release app bundle 加 `NSAppTransportSecurity/NSAllowsArbitraryLoadsInWebContent=true`（仅 WKWebView 内容）；plist 抽为 `Resources/Info.plist` 单一来源 | 明文 http 图片在 ATS 下仍可由 WebView 内容加载；URLSession/EAS 不放宽；`swift run` 裸可执行无 bundle plist、本即可加载 | 全局 `NSAllowsArbitraryLoads`/`NSExceptionDomains`：放宽 EAS 网络路径；代理/URL 改写：扩范围 |
 
 ## 9. 实施阶段
 
