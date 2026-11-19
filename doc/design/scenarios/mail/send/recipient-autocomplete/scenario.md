@@ -2,7 +2,7 @@
 layer: design
 module: mail
 scope: project:uumail
-status: designed
+status: verified
 updated: 2026-11-19
 flow: mail/send
 scenario: SCN-0017
@@ -109,7 +109,7 @@ scenario: SCN-0017
 
 ## 状态
 
-`designed`（2026-11-19，REQ-0023 显示宽度增量落卡；第 2 轮按评审 B1–B3 修订运行序第 5 步与 `T-SCN-0017-03`：邮箱 `@` 两侧可见的最小保底 + 地址显式缩短、**175% 不降级**、仅 225%×480 授权降级；把卡从 `verified` 转回 `designed`，待实现后重新验证）。设计论证与 L2 实测见 `task-spaces/20261119-164437/design2.md`（P3 默认确认 D1–D6，未经人工）。
+`verified`（2026-11-19，收尾按 `task-spaces/20261119-164437/review4.md` §7 清单翻转；`T-SCN-0017-01..04` 逐例有结果、生产源 L2 147/0（20/21，实跑环境见 N9）+ 补充 16/16、全量 327/54、依赖回归 72/7、架构 4/4；证据见同目录 `test.md` §10、`review4.md` §2–§3、`evidence/verify/` 与 `evidence/verify-accept/`）。原 `designed`（2026-11-19，REQ-0023 显示宽度增量落卡；第 2 轮按评审 B1–B3 修订运行序第 5 步与 `T-SCN-0017-03`：邮箱 `@` 两侧可见的最小保底 + 地址显式缩短、**175% 不降级**、仅 225%×480 授权降级；把卡从 `verified` 转回 `designed`，待实现后重新验证）。设计论证与 L2 实测见 `task-spaces/20261119-164437/design2.md`（P3 默认确认 D1–D6，未经人工）。
 
 历史：`verified`（2026-11-18，T-1118-02 验证，收尾按 `task-spaces/20261118-190035/review.md` §F 清单翻转；`T-1118-02` 为无人值守默认任务号、未经人工）。原 `designed`（2026-11-18，设计落卡）。四元素齐：入口、运行序、不可变引用、测试均 `present`；`T-SCN-0017-01..04` 为 3 正 1 反可执行 ID，T-01/T-02/T-04 最低 L1、T-03 最低 L2。2026-11-18 的 `verified` 判据只覆盖 REQ-0022 交付面，不覆盖 2026-11-19 新增的显示宽度断言；本卡需按 `T-SCN-0017-03` 的新断言重验。
 
