@@ -163,3 +163,91 @@ struct RecipientSuggestionList: View {
         contact.name.map { "\($0), \(contact.address)" } ?? contact.address
     }
 }
+
+/// REQ-0023: name-first column allocation and address shortening for a candidate row.
+/// Internal layout rules kept beside the field view so the AppKit carrier stays within
+/// the single-file budget. Neither type is public; no behavior outside the row changes.
+enum RecipientSuggestionLayout {
+    static let horizontalInset: CGFloat = 8
+    static let gap: CGFloat = 6
+    static let preferredAddressFloor: CGFloat = 130
+    static let representativeNameCharacters: CGFloat = 15
+
+    /// Name gets its intrinsic width; the address gets at least the width needed to
+    /// render `@` with one character on each side. The 130pt preferred floor is a
+    /// parameter (keeps short addresses whole at 100%), not an address-width contract.
+    static func widths(
+        rowWidth: CGFloat,
+        nameIntrinsic: CGFloat,
+        hasName: Bool,
+        nameFontSize: CGFloat,
+        address: String,
+        addressFont: NSFont
+    ) -> (name: CGFloat, address: CGFloat) {
+        let available = max(0, rowWidth - horizontalInset * 2)
+        guard hasName, available > 0 else { return (0, available) }
+        let targetNameWidth = representativeNameCharacters * nameFontSize
+        let addressMinimum = ceil(textWidth(minimumAddressForm(for: address), font: addressFont))
+        let addressFloor = max(
+            addressMinimum,
+            min(preferredAddressFloor, available - gap - targetNameWidth)
+        )
+        let name = min(max(0, nameIntrinsic), max(0, available - gap - addressFloor))
+        return (name, max(0, available - gap - name))
+    }
+
+    /// The smallest display form we reserve room for: local head, ellipsis, `@`, domain
+    /// head. Measured with the address's own first characters so a wide glyph does not
+    /// silently clip the side after `@`.
+    static func minimumAddressForm(for address: String) -> String {
+        guard let at = address.firstIndex(of: "@"), at != address.startIndex else { return "x…@y" }
+        let after = address.index(after: at)
+        guard after != address.endIndex else { return "x…@y" }
+        return String(address[..<at].prefix(1)) + "…@" + String(address[after...].prefix(1))
+    }
+
+    /// Middle-shortens an address while keeping `@` and at least one character on each
+    /// side. The full address stays in `.help` / the accessibility label; only the
+    /// rendered label text changes. Returns the input unchanged when it already fits.
+    static func shortenedAddress(_ address: String, maxWidth: CGFloat, font: NSFont) -> String {
+        guard textWidth(address, font: font) > maxWidth else { return address }
+        guard let at = address.firstIndex(of: "@") else { return address }
+        let local = address[..<at]
+        let domain = address[address.index(after: at)...]
+        guard !local.isEmpty, !domain.isEmpty else { return address }
+
+        // Prefer keeping the whole domain and shortening only the local part.
+        if local.count > 1 {
+            for head in stride(from: local.count - 1, through: 1, by: -1) {
+                let candidate = String(local.prefix(head)) + "…@" + String(domain)
+                if textWidth(candidate, font: font) <= maxWidth { return candidate }
+            }
+        }
+        // Otherwise pick the fitting candidate with the most visible characters,
+        // preferring a usable domain prefix (its first label) and a local head of at
+        // least two characters; a trailing domain dot is not a useful last character.
+        var best: (text: String, head: Int, tail: Int, score: Int)?
+        for head in 1...local.count {
+            for tail in 1...domain.count {
+                let candidate = String(local.prefix(head)) + "…@" + String(domain.prefix(tail))
+                guard textWidth(candidate, font: font) <= maxWidth else { continue }
+                let score = (head + tail) * 1_000
+                    + (tail >= min(4, domain.count) ? 100 : 0)
+                    + (head >= 2 ? 50 : 0)
+                    + head
+                    - (candidate.hasSuffix(".") ? 500 : 0)
+                if best == nil || score > best!.score {
+                    best = (candidate, head, tail, score)
+                }
+            }
+        }
+        if let best { return best.text }
+        let minimal = String(local.prefix(1)) + "…@" + String(domain.prefix(1))
+        if textWidth(minimal, font: font) <= maxWidth { return minimal }
+        return String(local.prefix(1)) + "@" + String(domain.prefix(1))
+    }
+
+    static func textWidth(_ text: String, font: NSFont) -> CGFloat {
+        (text as NSString).size(withAttributes: [.font: font]).width
+    }
+}

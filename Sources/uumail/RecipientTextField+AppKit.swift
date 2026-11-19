@@ -194,10 +194,15 @@ struct RecipientSuggestionRow: NSViewRepresentable {
 }
 
 final class SuggestionRowView: NSView {
-    private let nameLabel = NSTextField(labelWithString: "")
-    private let addressLabel = NSTextField(labelWithString: "")
+    // Internal for the L2 probe: read the labels by identity, never by visibility.
+    let nameLabel = NSTextField(labelWithString: "")
+    let addressLabel = NSTextField(labelWithString: "")
     private var hasName = false
     private var factor: CGFloat = 1
+    private(set) var fullAddress = ""
+    /// Shortening is O(address length²) text measurements; cache it so repeated
+    /// layout passes during typing/resize are O(1) for an unchanged row.
+    private var cachedAddressDisplay: (full: String, width: CGFloat, fontSize: CGFloat, display: String)?
 
     override var isFlipped: Bool { true }
 
@@ -229,6 +234,7 @@ final class SuggestionRowView: NSView {
     func configure(contact: ContactAddress, scale: CGFloat) {
         factor = max(scale, 0.5)
         hasName = contact.name.map { !$0.isEmpty } ?? false
+        fullAddress = contact.address
         nameLabel.stringValue = contact.name ?? ""
         nameLabel.isHidden = !hasName
         nameLabel.font = .systemFont(ofSize: 13 * factor)
@@ -241,25 +247,47 @@ final class SuggestionRowView: NSView {
 
     override func layout() {
         super.layout()
-        let inset: CGFloat = 8
-        let gap: CGFloat = 6
+        let inset = RecipientSuggestionLayout.horizontalInset
         let labelHeight = min(bounds.height, 17 * factor)
         let y = (bounds.height - labelHeight) / 2
-        let available = max(0, bounds.width - inset * 2)
-        let nameWidth: CGFloat
+        let addressFont = addressLabel.font ?? .systemFont(ofSize: 12.5 * factor)
+        let columns = RecipientSuggestionLayout.widths(
+            rowWidth: bounds.width,
+            nameIntrinsic: nameLabel.intrinsicContentSize.width,
+            hasName: hasName,
+            nameFontSize: 13 * factor,
+            address: fullAddress,
+            addressFont: addressFont
+        )
         if hasName {
-            nameWidth = min(nameLabel.intrinsicContentSize.width, available * 0.45)
-            nameLabel.frame = NSRect(x: inset, y: y, width: nameWidth, height: labelHeight)
+            nameLabel.frame = NSRect(x: inset, y: y, width: columns.name, height: labelHeight)
         } else {
-            nameWidth = 0
             nameLabel.frame = .zero
         }
-        let addressX = hasName ? inset + nameWidth + gap : inset
+        let addressX = hasName ? inset + columns.name + RecipientSuggestionLayout.gap : inset
         addressLabel.frame = NSRect(
             x: addressX,
             y: y,
-            width: max(0, bounds.width - addressX - inset),
+            width: max(0, columns.address),
             height: labelHeight
         )
+        let display: String
+        if let cached = cachedAddressDisplay,
+           cached.full == fullAddress,
+           cached.width == columns.address,
+           cached.fontSize == addressFont.pointSize {
+            display = cached.display
+        } else {
+            let shortened = RecipientSuggestionLayout.shortenedAddress(
+                fullAddress,
+                maxWidth: max(0, columns.address),
+                font: addressFont
+            )
+            cachedAddressDisplay = (fullAddress, columns.address, addressFont.pointSize, shortened)
+            display = shortened
+        }
+        if addressLabel.stringValue != display {
+            addressLabel.stringValue = display
+        }
     }
 }
