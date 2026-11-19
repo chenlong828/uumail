@@ -75,7 +75,7 @@ scenario: SCN-0018
 
 `designed`（2026-11-19，设计落卡；`REQ-0024` `accepted`）。四元素：入口 `present`（含交付载体）、运行序 `present`（含失败路径）、不可变引用 `present`、测试 `present`（2 正 1 反，`T-SCN-0018-01..03`，最低 L2）。
 
-依赖：`SCN-0013`（`verified`，本卡只读引用，不重开）；`SCN-0004`/`SCN-0010`/`SCN-0012`/`SCN-0015`/`SCN-0016` 只回归。定级 **P2**（交付载体/安全策略单点）；ATS 例外属安全策略变更，**必须人工确认**后才能实现（`REQ-0024` D4；问题与依据见 `task-spaces/20261119-213812/design.md` §12）。本卡不代签确认记录。
+依赖：`SCN-0013`（`verified`，本卡只读引用，不重开）；`SCN-0004`/`SCN-0010`/`SCN-0012`/`SCN-0015`/`SCN-0016` 只回归。定级 **P2**（交付载体/安全策略单点）。ATS 例外属安全策略变更，已按 `REQ-0024` D4 取得**人工确认**（问题：是否批准加 `NSAllowsArbitraryLoadsInWebContent=true`；决定 pass；意见「批准：仅加 `NSAllowsArbitraryLoadsInWebContent=true`（推荐）」；2026-11-19，`doc/history/decisions/2026-11-19-remote-image-ats.md`）。实现可接力；状态位仍由收尾按评审清单翻转。
 
 ## 与相邻场景的边界
 
