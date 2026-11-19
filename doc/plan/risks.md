@@ -60,6 +60,7 @@ updated: 2026-11-18
 | R47 | L2 候选浮层探针读不到 SwiftUI 行文本/位置，或浮层被后续兄弟覆盖/裁剪 | 离屏 `NSHostingView` 下 `RecipientSuggestionList` 的行没有 `NSTextField`/`NSTextView` 承载；或 `.overlay` 被 `VStack` 后续的格式栏/编辑器盖住、hit-testing 出界 | `SCN-0017` 的「可见候选/人名+邮箱/无名字回退/点击」无法按 L2 验收，可能被迫升 L3 或退化成 L1 映射 | 设计把候选浮层改为 Form 的 `.overlay`（不参与布局，`task-spaces/20261118-082503/evidence/design-probe/overlay-probe.txt` 已证 ZStack 会下推布局、overlay 不会），并给 `ComposeRecipientForm` 在 `ComposeView` 的 VStack 中 `.zIndex(10)`；探针先断言行/字段存在再比对文本、frame 与点击；若仍读不到，由 `SCN-0017` 改声明 L3 并写理由，**不得**静默降级或跳过 | `design/components/CMP-APP/spec.md` 设计增量、`SCN-0017`、`task-spaces/20261118-082503/` |
 | R48 | 点击候选行时字段先失焦，候选被清空导致选不中 | `controlTextDidEndEditing` 在 `Button` 的 mouseUp 前触发；`recipientFocusLost()` 清掉 `activeField`/候选 | 鼠标选中路径不可用，只能键盘；L2 点击用例红 | `ComposeRecipientForm` 用 `suggestionClickInFlight` 守卫把失焦清空延后到下一 runloop；点击用原字段 index 完成选中后再还焦点；`T-SCN-0017-03` 的 `.clickAfterFocusLoss` 必测 | `design/components/CMP-APP/spec.md`、`SCN-0017` |
 | R49 | 首次聚焦同步聚合 5,000 封信封阻塞主线程 | 大邮箱首次聚焦时 UI 停顿，或 `T-SCN-0017` 性能夹具超过设计目标 | 输入/取消/发送被拖慢，违反「不阻塞撰写」 | 已设每文件夹 500、总计 5,000 上限；实现期用 5,000 封夹具记录首次加载耗时（目标 ≤100ms）；超目标回设计改异步加载或降上限，不在输入路径查库 | `design/components/CMP-PRES/spec.md`、`CMP-SCN-COMPOSE/spec.md`、`SCN-0017` |
+| R50 | 候选行邮箱列 130/90pt 保底内用中间省略，超长地址可能看不到 `@` | 名字加宽后邮箱变窄；`NSTextField` 的 `stringValue` 仍是完整地址，探针若只读 `stringValue` 会把「显示截断」误判为通过 | 用户难以用邮箱区分同名联系人；A2 断言假绿/假红 | 130pt 对 100% 夹具地址完整（最长 127.5；放大时保底退到 90pt）；显示宽度断言用 `frame.width` 与 `intrinsicContentSize` 比较，不只读 `stringValue`；超长地址的 `@` 可见性不写成跨所有地址契约，`.help` 保留完整「名字 <地址>」；若产品要求任意地址都见 `@`，另立显示格式化设计 | `design/components/CMP-APP/spec.md` 设计增量、`SCN-0017` T-03、`task-spaces/20261119-164437/design.md` §9 |
 
 2026-11-17 设计处置（run `20261117-071134`，`REQ-0020`/`SCN-0015`；**未关闭**，实现/验证时按场景卡复核；第 2 轮按评审 fail 修订）：
 
@@ -73,7 +74,7 @@ updated: 2026-11-18
 ## 风险等级口径
 
 - 高：直接使项目不可用或造成合规事故（R1、R2、R11）。
-- 中：影响关键旅程但可降级（R3、R4、R5、R6、R8、R12、R13、R18、R19、R21、R22、R23、R24、R27、R28、R29、R31、R32、R33、R34、R35、R36、R37、R38、R39、R40、R41、R42、R43、R44、R45、R47、R48、R49）。
+- 中：影响关键旅程但可降级（R3、R4、R5、R6、R8、R12、R13、R18、R19、R21、R22、R23、R24、R27、R28、R29、R31、R32、R33、R34、R35、R36、R37、R38、R39、R40、R41、R42、R43、R44、R45、R47、R48、R49、R50）。
 - 低：局部体验或可回滚（R7、R9、R10、R15、R25、R26、R30、R46）。
 
 R14 已于 2026-11-14 关闭（T-1114-02：网关 Sync 信封实测返回 `Cc`）。R16/R17/R20 已于 2026-11-14 关闭（真机写命令、预算拆分、写响应语义）。R27–R31 为 2026-11-16 阅读页信封头新增，**未关闭**；落点与缓解见各行。
@@ -85,3 +86,5 @@ R32–R38 为 2026-11-16 需求分析/设计新增（远程图片开关归位、
 R39–R44 为 2026-11-17 需求分析新增（`REQ-0020` 字体大小），**未关闭**；落点与缓解见各行。现状证据见 `task-spaces/20261117-071134/evidence/current-state.txt`（无既有字号实现、正文 13px 固定、`lastRender` 不含字号、头部 44pt 固定宽、工具栏 7 项）；设计待答清单见同目录 `brief.md` §7。R43 的 L2 度量 seam 已由 2026-11-17 设计探针证通（见上「2026-11-17 设计处置」；225% 为生产源+设计 diff 副本，生产源复跑留实现期），剩余为实现期复跑；若实现期 seam 失效，由 `SCN-0015` 声明 L3 并写理由。
 
 R45–R49 为 2026-11-18 需求分析/设计新增（`REQ-0022` 收件人联想），**未关闭**；落点与缓解见各行。R45 的现状证据见 `task-spaces/20261118-082503/evidence/design-baseline.log`（`MailStore` 四文件合计 1008 行）；R46 的已接受降级见决策记录 D2；R47 的布局部分已由设计探针 `task-spaces/20261118-082503/evidence/design-probe/overlay-probe.txt` 证 `.overlay` 不改变布局，实现期仍需按 `SCN-0017` 的 L2 探针复核行文本/点击；R48/R49 留实现期 L2/性能夹具。
+
+R50 为 2026-11-19 设计新增（`REQ-0023` 候选行显示名宽度），**未关闭**；130/90pt 邮箱保底与名字优先规则见 `task-spaces/20261119-164437/design.md` §4。设计期 L2 探针已证：当前行宽=浮层宽（409/629）、200 兜底未命中、45% 上限是唯一约束；设计候选在 100%×480 与 145%×480 把 15 字名看全（14.9 字）、225%×480 从 5.8 提到 9.6 字（生产源 + 设计 diff 副本，`evidence/name-width-probe/`）；实现期必须换生产源复跑 `T-SCN-0017-03`。
