@@ -142,7 +142,12 @@ public struct EASAdapter: MailGateway, MailWriteGateway {
             importance: message.importance,
             bodyPreview: message.bodyPreview,
             attachments: message.attachments.map {
-                Attachment(displayName: $0.displayName, fileReference: $0.fileReference, size: $0.size)
+                Attachment(
+                    displayName: $0.displayName,
+                    fileReference: $0.fileReference,
+                    size: $0.size,
+                    contentID: $0.contentID
+                )
             },
             cc: message.cc
         )

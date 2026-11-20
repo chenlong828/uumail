@@ -2,7 +2,7 @@
 layer: design
 module: mail
 status: verified
-updated: 2026-11-20
+updated: 2026-11-21
 flow: mail/read
 scenario: SCN-0019
 ---
@@ -22,7 +22,8 @@ scenario: SCN-0019
 - `CMP-PRES#MailboxViewModel.inlineImageHTML`（新增只读状态）与 `MailboxViewModel+Body` 的图片任务
 - `CMP-APP#MessageBodyView`（新增 `inlineImageHTML` 入参，只换显示串）/ `#MessageWebView`（既有，**不改**：CSP、禁 JS、`loadHTMLString(_, baseURL: nil)`、`lastRender` 原样）
 - 既有入口：`CMP-SCN-READ#open`/`#bodyIfCached`/`#downloadAttachment`、`CMP-STORE#attachments`/`#markAttachmentCached`、`CMP-PRES#MailboxViewModel.openSelected`
-- 不涉及：`MailGateway`/`MailWriteGateway`、`EASClient`/`EASAdapter`、`attachments` schema、`Attachment` 公开字段、`MessageBodyStyle`（CSP/sanitized）、远程开关状态机、附件条与 `NSWorkspace` 打开
+- 不涉及：`MailGateway`/`MailWriteGateway`、`MessageBodyStyle`（CSP/sanitized）、远程开关状态机、附件条与 `NSWorkspace` 打开
+- 2026-11-21 增量：`EASClient#sync` 的附件元数据（`ContentId`）、`MailDomain#Attachment.contentID`、`MailStore#attachments` v11 持久化进入本场景的匹配输入
 
 ## 运行序
 
@@ -31,7 +32,7 @@ scenario: SCN-0019
 1. 既有同步已落信封与附件元数据（`displayName`/`fileReference`/`size`）；打开邮件取正文（缓存优先，否则补拉落库），与 `SCN-0004` 相同。
 2. `MailboxViewModel` 得到 `.loaded(rawHTML)`；`inlineImageHTML` 为空，正文先按原样显示（有文字则文字可见）。
 3. 正文含 `cid:` 时启动图片任务；`InlineImageHTML.sources` 只提取 `src` 属性的 `cid:` 值（去重）。无引用 → 不触网、不启动。
-4. 对每个引用，`InlineImageHTML.matches` 在当前邮件附件里匹配：`displayName`、`cid` 的 `@` 前 local part，或（`displayName` 带已知图片扩展名时）去扩展名的 `displayName` 与之规范化后相等，且唯一；0 个/多个 → 跳过。
+4. 对每个引用，`InlineImageHTML.matches` 在当前邮件附件里匹配：**先按 `Attachment.contentID`（同步信封的 `ContentId`）与 `cid` 规范化后全串相等**；无命中时回退到 `displayName`、`cid` 的 `@` 前 local part，或（`displayName` 带已知图片扩展名时）去扩展名的 `displayName` 与之规范化后相等。命中的候选集合按 `fileReference` 去重后须唯一；0 个/多个 → 跳过。
 5. 每个唯一匹配的附件经 `ReadScene.downloadAttachment` 取负载：`AttachmentFiles.cachedURL` 命中直接读；未命中按 `fileReference` 单飞 `fetchAttachment` → 原子落盘 → `markAttachmentCached`。同一附件被多次引用只取一次；单张失败/超时/超限/取消 → 跳过该张。
 6. 字节按图片魔数嗅探（PNG/JPEG/GIF/WebP/BMP/TIFF/HEIC）生成 `data:` URL；`InlineImageHTML.replacingSources` 只替换对应 `src` 值，`ReadScene.renderInlineImages` 返回改写后的 HTML（无可用替换时返回 `nil`）；PRES 赋给 `inlineImageHTML`。任务完成时当前选中/正文仍是发起时那封才落状态，否则丢弃。
 7. `MessageBodyView` 用 `inlineImageHTML ?? rawHTML` 交给既有 `MessageWebView` → `MessageBodyStyle.sanitized`（CSP 不变）→ `loadHTMLString`。`data:` 在两档 CSP 的 `img-src` 里都已允许；远程 `http(s)` 仍由开关决定。`inlineImageHTML` 到达时 `lastRender` 变化，重载一次。
@@ -53,7 +54,10 @@ scenario: SCN-0019
 - `SCN-0004`：正文基本渲染、正文补拉与 `<script>` 不执行仍归该卡；本卡的「失败正文可读」只覆盖内联图片失败。
 - `SCN-0015`：`WKWebView.pageZoom` 与 175/225% 元数据区 cap 不变。
 - `SCN-0010`：阅读窗格白底、作者样式不重写。
-- 数据/契约：不改 `attachments` schema、不加 `ContentId`/`IsInline` 列、不改 `Attachment`/`EASAttachment`/`MailDomain`/`MailGateway`、不改数据所有权；`inlineImageHTML` 是视图状态，不持久化；原始 `message_bodies` 与 `MailboxViewModel.body` 保持 raw HTML。
+- 数据/契约（2026-11-21 修订，原「不改 schema/不持久化 ContentId」作废）：`attachments` schema v11 增加 `content_id`；
+  `Attachment`/`EASAttachment` 增加 `contentID`（兼容扩展，默认 `nil`）；`MailStore` 是唯一写入口，读取带回。
+  `IsInline` 仍不解析、不落库。`inlineImageHTML` 仍是视图状态；原始 `message_bodies` 与 `MailboxViewModel.body` 保持 raw HTML。
+  决策见 `history/decisions/2026-11-21-inline-image-content-id.md`。
 - 隐私：只取当前正文实际引用的内联附件；不预取未引用附件；不因 `cid:` 向第三方发请求；不伪造 Referer/Cookie。
 - 预算：`MailStore`/`EASClient`/`EASAdapter` 0 行；`Scenes`/`Presentation`/`uumail` 按设计增量，单文件 ≤300/400 行；不新增 target/依赖/第三方库。
 
@@ -64,6 +68,7 @@ scenario: SCN-0019
 | `T-SCN-0019-01` | 正 | **L1 + L2** | L1：受控 HTML（可见文字 + `<img src="cid:logo@test">`）+ 假附件 `logo.png`（假 PNG，非空白像素；覆盖去扩展名匹配），`InlineImageHTML` 提取/规范化/唯一匹配，`ReadScene.renderInlineImages` 只取被引用附件，`InlineImageHTML.dataURL` 生成 `data:image/png;base64,...`，返回串含 data URL 且正文其余字节不变。L2：把生产 `InlineImageHTML` 的改写结果交给生产 `MessageWebView`（离屏 `NSWindow`），断言 `img.naturalWidth/naturalHeight>0`、快照非白/品红像素 >0、`requests=0`；不需要点附件条、不需要开远程开关。 | `InlineImageHTMLTests.sourcesFindCIDSourcesOnly`、`InlineImageHTMLTests.normalizationHandlesCasePercentAndBrackets`、`InlineImageHTMLTests.matchesDisplayNameAndLocalPart`、`InlineImageHTMLTests.matchesStemWhenCIDOmitsExtension`、`ReadSceneInlineImageTests.fetchesOnlyReferencedAttachments`、`InlineImageProbe.productionRewriteRenders` |
 | `T-SCN-0019-02` | 正 | **L1 + L2** | 同页再含一张 `http://` 远程图：开关默认关 → 内联 `cid:` 图可见、远程 0 请求；打开「加载远程图片」→ 内联图仍可见、不新增内联负载请求/第三方请求。远程图开启后的实际加载归 `SCN-0018`，本卡只回归。 | `MailboxViewModelInlineImageTests.remoteGateDoesNotAffectInlineImages`、`InlineImageProbe.remoteStillBlocked` |
 | `T-SCN-0019-03` | 正 | **L1 + L2** | 打开 A（含内联图）→ 切到 B → 返回 A；或关闭重开同一邮件：A 的图片仍可见；同一附件只下载一次（fake gateway 调用计数 / `AttachmentFiles` 缓存）；切换期间无第三方请求。远程开关复位归 `SCN-0013`。 | `ReadSceneInlineImageTests.reusesCachedFileAndSingleFlight`、`MailboxViewModelInlineImageTests.switchingMessageDropsStaleInlineImages`、`InlineImageProbe.reopenRenders` |
+| `T-SCN-0019-05` | 正 | **L1** | 不透明 `cid:`（`_Foxmail.1@<uuid>` 形态）不在附件名里：带 `contentID` 的附件按 `ContentId` 命中，正文替换为 `data:`；`ContentId` 缺失时不出图（回到名字规则）；两个附件同 `ContentId` 仍按歧义跳过。 | `InlineImageHTMLTests.matchesOpaqueCIDByContentID`、`InlineImageHTMLTests.contentIDTakesPrecedenceOverNames`、`InlineImageHTMLTests.duplicateContentIDIsIgnored`、`ReadSceneInlineImageTests.opaqueCIDUsesContentID` |
 | `T-SCN-0019-04` | 反 | **L1 + L2** | 四类失败：①引用无对应附件；②取负载失败/超时；③坏 base64/非图片字节；④同名多附件（歧义）。断言：**有文字时**正文文字必显示、可滚动；纯图片邮件的外部失败仍空白属**已接受降级**（不判 fail、不要求所有图可见）；不崩、不无限重试；远程图仍按开关阻止；下一封不受影响。L2 同页需有纯文字基线，用于区分「文字照常渲染」与「被阻止的破图占位」。 | `ReadSceneInlineImageTests.failedPayloadIsSkipped`、`ReadSceneInlineImageTests.oversizedAttachmentIsSkipped`、`InlineImageHTMLTests.ambiguousReferenceIsIgnored`、`MailboxViewModelInlineImageTests.emptyOrFailedPayloadsLeaveRawHTML`、`InlineImageProbe.failedImageKeepsText` |
 
 证据层级：最低 **L1**（映射/改写/失败分支）+ **L2**（生产 `MessageWebView` 实际渲染）。不上 L3/L4；
@@ -77,16 +82,19 @@ scenario: SCN-0019
 
 ## 状态
 
-`verified`（2026-11-20 实现并验证：`T-SCN-0019-01..04` L1+L2 全 PASS，第 5 轮实现鉴定 **pass**，
-见 `task-spaces/20261120-111818/review5.md` §7；2026-11-20 设计落卡；第 2 轮按评审 B1/B2 修订；
-四元素齐，`T-SCN-0019-01..04` 有可执行 ID/层级）。`REQ-0025` 已随本卡转 `delivered`（2026-11-20 收尾，
-按评审清单）。定级 **P2**；匹配族/载体族选择见 `task-spaces/20261120-111818/design.md` §3。
-公开面 `ReadScene.renderInlineImages(for:html:)` 与 `MailboxViewModel.inlineImageHTML` 为 additive public，
-已**人工确认 pass（选项 A，2026-11-20）**，记录见
+`verified`（2026-11-21 增补 `ContentId` 持久化并通过新用例；2026-11-20 首版实现并验证：`T-SCN-0019-01..04`
+L1+L2 全 PASS，第 5 轮实现鉴定 **pass**，见 `task-spaces/20261120-111818/review5.md` §7；四元素齐，
+`T-SCN-0019-01..05` 有可执行 ID/层级）。`REQ-0025` 于 2026-11-20 首次 `delivered`，2026-11-21 重开后按增量
+重新交付。首版定级 **P2**；2026-11-21 的 `ContentId` 持久化按 **P1**（核心 schema + 公开契约）处理，已人工确认
+（C1、旧邮件重同步生效、内联附件保留），见 `history/decisions/2026-11-21-inline-image-content-id.md`；
+该增量改 `attachments` v11 与 `Attachment` 公开字段。匹配族/载体族选择见
+`task-spaces/20261120-111818/design.md` §3。公开面 `ReadScene.renderInlineImages(for:html:)` 与
+`MailboxViewModel.inlineImageHTML` 为 additive public，已**人工确认 pass（选项 A，2026-11-20）**，记录见
 `doc/history/decisions/2026-11-20-inline-image-render-public-surface.md`；D1–D8 仍为默认确认（未经人工），
-见 `task-spaces/20261120-111818/design2.md` §8。不改 schema/`MailDomain` 公开契约。失败口径按
-「有文字时正文文字必显示、可滚动；纯图片邮件外部失败仍空白是已接受降级」统一（B2，2026-11-20）。
-样本事实与 L2 方向证据见 `task-spaces/20261120-111818/evidence/inline-image-current-state-design.md`。
+见 `task-spaces/20261120-111818/design2.md` §8。失败口径按「有文字时正文文字必显示、可滚动；纯图片邮件外部失败
+仍空白是已接受降级」统一（B2，2026-11-20）。样本事实与 L2 方向证据见
+`task-spaces/20261120-111818/evidence/inline-image-current-state-design.md`；2026-11-21 的样本证据见
+`task-spaces/20261121-0705-inline-images/evidence/`。
 
 ## 与相邻场景的边界
 

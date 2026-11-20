@@ -3,7 +3,7 @@ layer: requirements
 module: mail
 scope: project:uumail
 status: delivered
-updated: 2026-11-20
+updated: 2026-11-21
 ---
 
 # REQ-0025 HTML 正文内联图片（`cid:`）显示
@@ -53,7 +53,13 @@ updated: 2026-11-20
   - D5 协议/契约（假设，未经人工）：优先复用既有 `ItemOperations` Fetch `FileReference` 路径，不改服务器/协议；若必须新增 schema 列或改公开 `Attachment` 契约，按 `auto-confirm` §3 提人工确认。回退：确认被拒则走不改 schema 的方案（如渲染期按 `cid` 与 `displayName`/`ContentId` 解析、内存映射），并在设计中写残余风险。
   - D6 边界（假设，未经人工）：不做图片查看器/图库/离线保存；本卡只要求正文内图片可见，附件条行为（是否隐藏内联附件）由设计按最小改动决定，不默认重做。
   - D7 样本使用（默认确认，未经人工）：用户样本只做冒烟与形态核对；自动化夹具用假 HTML + 受控内联附件（假 `ContentId`/假 PNG），不把真实邮件字段写进测试或 evidence。
+  - 2026-11-21 重开（人工确认）：真实样本（Foxmail 发出）的 `cid:` 是不透明 `_Foxmail.1@<uuid>`；生产 `EASClient.sync`
+    实测 `Attachments` 返回 `ContentId`/`IsInline`，证伪 D5 的「无证据表明该网关返回 `ContentId`」前提。用户确认：
+    ① 接受 C1（schema v11 + `Attachment.contentID`）；② 接受「新邮件立即生效、旧邮件重开/重同步后生效」；
+    ③ 内联附件继续列在附件条；④ 修改设计、内联图片需支持持久化。决策
+    `history/decisions/2026-11-21-inline-image-content-id.md`；验收新增 `T-SCN-0019-05`（不透明 cid 按 `ContentId` 命中）。
   - D8 失败口径澄清（2026-11-20 设计评审 B2 回退，未经人工）：把「不整页空白」收窄为「**有文字时**文字必显示、可滚动」；纯图片邮件在图片外部失败时仍空白是已接受降级，不把「所有图片必可见」写成契约。依据：用户样本是 0 可见文字的纯图片邮件，原句在该样本上自相矛盾；本澄清与 `SCN-0019` 结果段/失败路径/`T-SCN-0019-04`、`task-spaces/20261120-111818/design2.md` §4.7 统一，不降低有文字邮件的可读性要求。回退：若发起人要求「所有图片必可见」，另立方案并按契约变更走确认。
-- **状态**：`delivered`（2026-11-20 需求分析落卡；同日设计/实现/验证完成并收尾：`SCN-0019` 已 `verified`，`T-SCN-0019-01..04`（3 正 1 反）L1+L2 全 PASS，第 5 轮实现鉴定 **pass**，见 `task-spaces/20261120-111818/review5.md` §7）。设计/实现/收尾按 `af-flow-rule` §3/§7 推进状态位。
+- **状态**：`delivered`（2026-11-21 重开后按增量重新交付：`SCN-0019` 增补 `T-SCN-0019-05` 并转回 `verified`，
+  `T-1121-02`…`T-1121-06` 完成；2026-11-20 首次交付：同日设计/实现/验证完成并收尾：`SCN-0019` 已 `verified`，`T-SCN-0019-01..04`（3 正 1 反）L1+L2 全 PASS，第 5 轮实现鉴定 **pass**，见 `task-spaces/20261120-111818/review5.md` §7）。设计/实现/收尾按 `af-flow-rule` §3/§7 推进状态位。
 - **文档同步**：`doc/README.md` 的 REQ 计数/导航已写至 `REQ-0025`（2026-11-20 收尾同步）；`doc/plan/roadmap.md` 的新批次表由设计/拆分落表时更新。本节点不改项目级 README/roadmap/architecture，也不改任何状态位。
 - **验收归属**：新场景（建议 `SCN-0019`）的 3 正 1 反（ID 由设计定）通过，且 `SCN-0013`/`SCN-0018`/`SCN-0005`/`SCN-0010`/`SCN-0015` 回归不退化；本卡约束逐条无违反。需求不另立测试。

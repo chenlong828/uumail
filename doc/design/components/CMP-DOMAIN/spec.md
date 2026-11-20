@@ -84,6 +84,13 @@ component: CMP-DOMAIN
 - 错误模式：`storage`、`invalidInput`；凭据错误不吞。
 - 契约测试：`FileAttachmentFilesTests`、`CompositionTests` 的装配冒烟；时钟替身让轮询测试即时。
 
+## 设计增量（2026-11-21，Attachment.contentID）
+
+- `Attachment` 增加 `contentID: String?`（MIME `Content-ID`，正文 `cid:` 指向它）；两个 `init` 都带默认值 `nil`，
+  属兼容扩展，现有构造点不受影响。
+- `EASAdapter` 从 `EASAttachment.contentID` 映射；`MailStore` v11 持久化并在 `attachments(...)` 读回。
+- 消费方：`InlineImageHTML.matches` 以 `contentID` 优先匹配（见 `CMP-SCN-READ`）。
+
 ## 实现进度（2026-11-14）
 
 | 契约 | 代码 | 测试 |

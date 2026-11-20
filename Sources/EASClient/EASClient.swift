@@ -91,11 +91,14 @@ public struct EASAttachment: Equatable, Sendable {
     public var displayName: String
     public var fileReference: String
     public var size: Int?
+    /// `ContentId`: the MIME content id the body's `cid:` references point at.
+    public var contentID: String?
 
-    public init(displayName: String, fileReference: String, size: Int?) {
+    public init(displayName: String, fileReference: String, size: Int?, contentID: String? = nil) {
         self.displayName = displayName
         self.fileReference = fileReference
         self.size = size
+        self.contentID = contentID
     }
 }
 
@@ -504,7 +507,8 @@ public actor EASClient {
                     displayName: node.child("DisplayName")?.stringValue() ?? "attachment",
                     fileReference: reference,
                     size: node.child("EstimatedDataSize").flatMap { Int($0.stringValue() ?? "") }
-                        ?? node.child("AttSize").flatMap { Int($0.stringValue() ?? "") }
+                        ?? node.child("AttSize").flatMap { Int($0.stringValue() ?? "") },
+                    contentID: node.child("ContentId")?.stringValue()
                 )
             },
             cc: nonBlank("Cc")

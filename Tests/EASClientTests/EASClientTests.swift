@@ -635,6 +635,8 @@ struct EASAttachmentTests {
                                         .text("DisplayName", "report.pdf"),
                                         .text("FileReference", "ref-1"),
                                         .text("EstimatedDataSize", "72084"),
+                                        .text("ContentId", "report@corp.test"),
+                                        .text("IsInline", "1"),
                                     ]),
                                 ]),
                             ]),
@@ -650,6 +652,7 @@ struct EASAttachmentTests {
         #expect(attachment.displayName == "report.pdf")
         #expect(attachment.fileReference == "ref-1")
         #expect(attachment.size == 72084)
+        #expect(attachment.contentID == "report@corp.test")
     }
 
     @Test("fetchAttachment reads the Response/Fetch/Properties/Data shape Exchange returns")

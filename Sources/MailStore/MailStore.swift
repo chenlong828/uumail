@@ -300,13 +300,17 @@ public final class MailStore: @unchecked Sendable {
                 try db.execute(
                     sql: """
                         INSERT INTO attachments
-                            (account_id, folder_id, message_id, file_reference, display_name, size, cache_path, downloaded_at)
-                        VALUES (?, ?, ?, ?, ?, ?, NULL, NULL)
+                            (account_id, folder_id, message_id, file_reference, display_name, size, content_id, cache_path, downloaded_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL)
                         ON CONFLICT(account_id, folder_id, message_id, file_reference) DO UPDATE SET
                             display_name = excluded.display_name,
-                            size = excluded.size
+                            size = excluded.size,
+                            content_id = COALESCE(excluded.content_id, attachments.content_id)
                         """,
-                    arguments: [id.raw, folderID, message.serverID, attachment.fileReference, attachment.displayName, attachment.size]
+                    arguments: [
+                        id.raw, folderID, message.serverID, attachment.fileReference,
+                        attachment.displayName, attachment.size, attachment.contentID,
+                    ]
                 )
             }
             try Self.reindexMessage(db, account: id, folder: folderID, serverID: message.serverID)
@@ -424,7 +428,7 @@ public final class MailStore: @unchecked Sendable {
             try Row.fetchAll(
                 db,
                 sql: """
-                    SELECT message_id, display_name, file_reference, size, cache_path
+                    SELECT message_id, display_name, file_reference, size, cache_path, content_id
                     FROM attachments WHERE account_id = ? AND folder_id = ? AND message_id = ?
                     ORDER BY display_name
                     """,
@@ -435,7 +439,8 @@ public final class MailStore: @unchecked Sendable {
                     displayName: row["display_name"],
                     fileReference: row["file_reference"],
                     size: row["size"],
-                    cachePath: row["cache_path"]
+                    cachePath: row["cache_path"],
+                    contentID: row["content_id"]
                 )
             }
         }

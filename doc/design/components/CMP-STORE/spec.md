@@ -39,7 +39,7 @@ component: CMP-STORE
 - 幂等 / 顺序 / 并发：批次幂等；单写队列；跨进程靠 SQL 原子更新与租约。
 - 超时 / 取消 / 背压：单事务目标 ≤2s；批次大小由 `SyncEngine` 控制。
 - 一致性 / 可见性：提交后立即可见；信封与正文同生同灭。
-- 兼容性 / 废弃：schema 只前进；v9 只加 `messages.cc` 可空列并把非 `folders` 的 `sync_key` 置 `"0"`，v10 只加 `outbox.body_html` 可空列（REQ-0021），旧库可前滚。`MailStore/Values.swift` 仍保留指向 `MailDomain` 的过渡 `typealias`（未删，见 `design/architecture.md` §10）。
+- 兼容性 / 废弃：schema 只前进；v9 只加 `messages.cc` 可空列并把非 `folders` 的 `sync_key` 置 `"0"`，v10 只加 `outbox.body_html` 可空列（REQ-0021），v11 只加 `attachments.content_id` 可空列（REQ-0025，2026-11-21），旧库可前滚。`MailStore/Values.swift` 仍保留指向 `MailDomain` 的过渡 `typealias`（未删，见 `design/architecture.md` §10）。
 - 契约测试：`MailStoreTests` 38 例、`MigrationTests` 2、`PerformanceTests` 1、`Smoke` 1。
 
 ## 数据所有权
@@ -54,6 +54,16 @@ component: CMP-STORE
 | fts | CMP-STORE | 随批次/正文事务增量 | 搜索 | 最终（同事务） |
 
 本地库为明文 SQLite（WAL + FTS5），附件缓存同样明文；加密依赖 FileVault，不做 SQLCipher、无审计日志——2026-11-09 安全审计的已知接受项（`plan/risks.md` R12）。
+
+## 设计增量：附件 ContentId（REQ-0025 / SCN-0019，2026-11-21）
+
+- v11：`ALTER TABLE attachments ADD COLUMN content_id TEXT`（additive、forward-only）。
+- `applySyncBatch` 的附件 upsert 写入 `content_id`；冲突时
+  `content_id = COALESCE(excluded.content_id, attachments.content_id)`，避免只带信封的 `Change` 清空已有值。
+  `attachments(...)` 的 SELECT 读回该列。
+- 旧行（v11 之前同步）保持 `NULL`，不伪造；下一次 Sync 窗口 upsert 后才有值。
+- 迁移测试：pre-v9 fixture 打开后旧附件读 `nil`；同一消息重新 `applySyncBatch`（带 `contentID`）后可读；
+  另断言省略 `ContentId` 的 upsert 不清掉已存值。`MailStoreTests` 同步补 round-trip 用例。
 
 ## 实现进度（2026-11-14）
 

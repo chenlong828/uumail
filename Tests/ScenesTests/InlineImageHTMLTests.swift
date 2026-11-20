@@ -123,6 +123,45 @@ struct InlineImageHTMLTests {
         #expect(matches.map(\.attachment.fileReference) == ["ref-logo"])
     }
 
+    @Test("an opaque cid resolves through the server-reported ContentId")
+    func matchesOpaqueCIDByContentID() {
+        let gif = Attachment(
+            displayName: "36979_logo.gif",
+            fileReference: "ref-gif",
+            contentID: "_Foxmail.1@7a87418d-f138-f35c-c054-5119d6c76d05"
+        )
+        let html = "<img src=\"cid:_Foxmail.1@7a87418d-f138-f35c-c054-5119d6c76d05\">"
+
+        let matches = InlineImageHTML.matches(inHTML: html, attachments: [gif, photo])
+
+        #expect(matches.map(\.attachment.fileReference) == ["ref-gif"])
+    }
+
+    @Test("ContentId wins over a display-name match when both candidates exist")
+    func contentIDTakesPrecedenceOverNames() {
+        let namedLogo = Attachment(displayName: "logo@test", fileReference: "ref-named")
+        let typedLogo = Attachment(
+            displayName: "other.png",
+            fileReference: "ref-typed",
+            contentID: "logo@test"
+        )
+        let html = "<img src=\"cid:logo@test\">"
+
+        let matches = InlineImageHTML.matches(inHTML: html, attachments: [namedLogo, typedLogo])
+
+        #expect(matches.map(\.attachment.fileReference) == ["ref-typed"])
+    }
+
+    @Test("two attachments sharing a ContentId stay ambiguous and are skipped")
+    func duplicateContentIDIsIgnored() {
+        let first = Attachment(displayName: "a.gif", fileReference: "ref-a", contentID: "shared@test")
+        let second = Attachment(displayName: "b.gif", fileReference: "ref-b", contentID: "shared@test")
+        let html = "<img src=\"cid:shared@test\">"
+
+        #expect(InlineImageHTML.matches(inHTML: html, attachments: [first, second]).isEmpty)
+        #expect(InlineImageHTML.matches(inHTML: html, attachments: [first]).count == 1)
+    }
+
     @Test("zero or several candidate attachments are skipped")
     func ambiguousReferenceIsIgnored() {
         let html = """

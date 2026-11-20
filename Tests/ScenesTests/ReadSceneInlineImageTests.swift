@@ -64,6 +64,24 @@ struct ReadSceneInlineImageTests {
         #expect(await gateway.calls == [.attachment(fileReference: "ref-logo")])
     }
 
+    @Test("an opaque cid resolves through ContentId and still downloads once")
+    func opaqueCIDUsesContentID() async throws {
+        let gif = MailDomain.Attachment(
+            displayName: "36979_logo.gif",
+            fileReference: "ref-gif",
+            contentID: "_Foxmail.1@7a87418d"
+        )
+        let gateway = FakeGateway(attachmentPayloads: ["ref-gif": Data("GIF89a".utf8)])
+        let scene = try seeded(attachments: [gif], gateway: gateway)
+        let html = "<p>正文</p><img src=\"cid:_Foxmail.1@7a87418d\">"
+
+        let rendered = try #require(await scene.renderInlineImages(for: ref, html: html))
+
+        #expect(rendered.contains("data:image/gif;base64,"))
+        #expect(!rendered.contains("cid:_Foxmail.1@7a87418d"))
+        #expect(await gateway.calls == [.attachment(fileReference: "ref-gif")])
+    }
+
     @Test("repeated references share one download and the disk cache serves a reopen")
     func reusesCachedFileAndSingleFlight() async throws {
         let files = FakeAttachmentFiles()

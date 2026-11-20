@@ -34,7 +34,7 @@ component: CMP-EAS
 | `CMP-EAS#options` | `OPTIONS` | ✅ | 必须裸 URL，返回协议版本、命令列表与 `Set-Cookie` |
 | `CMP-EAS#provision` | `Provision` | ✅ | 两步；PolicyKey 常驻 header，只在实例内存 |
 | `CMP-EAS#folderSync` | `FolderSync` | ✅ | 每次取全量树；增量 key 只用于监测变更 |
-| `CMP-EAS#sync` | `Sync` | ✅ | 请求体最小化；窗口 25 |
+| `CMP-EAS#sync` | `Sync` | ✅ | 请求体最小化；窗口 25；附件元数据解析 `DisplayName`/`FileReference`/`EstimatedDataSize`/`ContentId`（2026-11-21） |
 | `CMP-EAS#syncWrite` | `Sync` + `Commands` | ✅ 已实现并真机取证（T-1114-12，2026-11-14） | `Change/Read=1` 与 `Delete`；网关接受并返回新 key（R16 已关闭，证据见任务证据 `r16-real-gateway.txt`） |
 | `CMP-EAS#fetchBody` | `ItemOperations`/`Fetch` | ✅ | 先取 20 万字符 HTML；`Truncated=1` 才免上限重取；返回 `FetchedBody{text,isHTML,isTruncated}` |
 | `CMP-EAS#fetchAttachment` | `ItemOperations` | ✅ | `FileReference` 直取，base64 解码；payload 在 `Response/Fetch/Properties/Data`（playbook §5.5） |
@@ -115,6 +115,16 @@ component: CMP-EAS
 - 25MB 上限（`T-SCN-0005-02`）本批**不实现**，维持既有欠账；`AttachmentName` 回退与断点续传同样未动（网关不支持 `Range`）。
 
 证据：`task-spaces/20261121-0639-attachment-fetch/evidence/`（原始 WBXML、解码后的 xlsx、耗时与失效引用响应）。
+
+## 设计增量（2026-11-21，附件 ContentId）
+
+`Sync` 的 `<Attachment>` 实测还带 `<ContentId>`（与正文 `cid:` 逐字一致）与 `<IsInline>`（内联附件为 1）；
+首版只解析 `DisplayName`/`FileReference`/`EstimatedDataSize`，Foxmail 这类不透明 `cid:` 因此无法定位附件。
+
+- `EASAttachment` 增加 `contentID`，`parseMessage` 读 `ContentId`；`IsInline` 暂不解析、不落库。
+- 由 `EASAdapter` 映射到 `MailDomain.Attachment.contentID`，`MailStore` v11 持久化；
+  匹配规则见 `CMP-SCN-READ`，决策见 `history/decisions/2026-11-21-inline-image-content-id.md`。
+- 不改命令形状、不增加请求；网关不返回 `ContentId` 时保持 `nil`，旧匹配规则照旧。
 
 ## 实现进度（2026-11-14）
 

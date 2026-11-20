@@ -39,17 +39,30 @@ enum InlineImageHTML {
         return normalizedToken(value)
     }
     /// One `Match` per referenced cid whose attachment match is unambiguous.
+    ///
+    /// The server-reported `ContentId` wins when present (Foxmail/Outlook style opaque
+    /// `cid:` values carry no file name); the older display-name rules remain the fallback
+    /// for gateways and mail synced before schema v11.
     static func matches(inHTML html: String, attachments: [Attachment]) -> [Match] {
         sources(inHTML: html).compactMap { source in
             let cid = normalizedCID(source)
             guard !cid.isEmpty else { return nil }
-            let local = cid.split(separator: "@", maxSplits: 1).first.map(String.init) ?? cid
-            let candidates = attachments.filter { attachment in
-                let display = normalizedToken(attachment.displayName)
-                if display == cid || display == local { return true }
-                guard hasImageExtension(attachment.displayName) else { return false }
-                let stem = (attachment.displayName as NSString).deletingPathExtension
-                return normalizedToken(stem) == local
+            let byContentID = attachments.filter { attachment in
+                guard let contentID = attachment.contentID else { return false }
+                return normalizedToken(contentID) == cid
+            }
+            let candidates: [Attachment]
+            if byContentID.isEmpty {
+                let local = cid.split(separator: "@", maxSplits: 1).first.map(String.init) ?? cid
+                candidates = attachments.filter { attachment in
+                    let display = normalizedToken(attachment.displayName)
+                    if display == cid || display == local { return true }
+                    guard hasImageExtension(attachment.displayName) else { return false }
+                    let stem = (attachment.displayName as NSString).deletingPathExtension
+                    return normalizedToken(stem) == local
+                }
+            } else {
+                candidates = byContentID
             }
             let unique = Dictionary(candidates.map { ($0.fileReference, $0) }, uniquingKeysWith: { first, _ in first })
             guard unique.count == 1, let attachment = unique.values.first else { return nil }

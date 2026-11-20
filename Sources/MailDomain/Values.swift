@@ -48,21 +48,33 @@ public struct Attachment: Equatable, Sendable, Identifiable {
     public var fileReference: String
     public var size: Int?
     public var cachePath: String?
+    /// The MIME `Content-ID` the server reports for an inline attachment; the body refers
+    /// to it as `cid:`. Nil for mail synced before schema v11 and for gateways that omit it.
+    public var contentID: String?
 
     public var id: String { fileReference }
 
-    public init(displayName: String, fileReference: String, size: Int? = nil) {
+    public init(displayName: String, fileReference: String, size: Int? = nil, contentID: String? = nil) {
         self.displayName = displayName
         self.fileReference = fileReference
         self.size = size
+        self.contentID = contentID
     }
 
-    public init(messageID: String, displayName: String, fileReference: String, size: Int?, cachePath: String?) {
+    public init(
+        messageID: String,
+        displayName: String,
+        fileReference: String,
+        size: Int?,
+        cachePath: String?,
+        contentID: String? = nil
+    ) {
         self.messageID = messageID
         self.displayName = displayName
         self.fileReference = fileReference
         self.size = size
         self.cachePath = cachePath
+        self.contentID = contentID
     }
 }
 

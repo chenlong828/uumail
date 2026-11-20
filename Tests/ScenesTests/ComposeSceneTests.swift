@@ -534,6 +534,18 @@ private func makePreV9Database(at path: String) throws {
                 subject, sender, body, tokenize='trigram'
             );
 
+            CREATE TABLE attachments (
+                account_id TEXT NOT NULL,
+                folder_id TEXT NOT NULL,
+                message_id TEXT NOT NULL,
+                file_reference TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                size INTEGER,
+                cache_path TEXT,
+                downloaded_at REAL,
+                PRIMARY KEY (account_id, folder_id, message_id, file_reference)
+            );
+
             CREATE TABLE outbox (
                 id TEXT PRIMARY KEY,
                 account_id TEXT NOT NULL,

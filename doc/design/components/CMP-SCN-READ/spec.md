@@ -144,7 +144,7 @@ component: CMP-SCN-READ
 
   - `sources`：只提取**独立属性名** `src`（不匹配 `data-src`/`srcset`）里以 `cid:` 开头的值（大小写无关），按出现顺序去重，返回原始拼写；不匹配正文文本/`href`/CSS。
   - `normalizedCID`：去首尾空白 → 去 `cid:` 前缀 → 去外层 `<>` → 百分号解码 → 小写。
-  - `matches`：候选 = `normalize(displayName) == normalize(cid)`、`== normalize(cid 的 @ 前 local part)`，或 `displayName` 带已知图片扩展名时 `normalize(去扩展名的 displayName) == normalize(cid 的 @ 前 local part)`；按 `fileReference` 去重后恰好 1 个才返回，0/≥2 个跳过。不猜、不按顺序兜底、不跨邮件；非图片扩展名不做去扩展名匹配。
+  - `matches`：先按**服务器返回的 `contentID`** 精确匹配（`normalize(contentID) == normalize(cid)`，含 `@` 全串；2026-11-21 起）。`contentID` 命中集合非空时只用它；否则回退到既有名字规则：`normalize(displayName) == normalize(cid)`、`== normalize(cid 的 @ 前 local part)`，或 `displayName` 带已知图片扩展名时 `normalize(去扩展名的 displayName) == normalize(cid 的 @ 前 local part)`。按 `fileReference` 去重后恰好 1 个才返回，0/≥2 个跳过。不猜、不按顺序兜底、不跨邮件；非图片扩展名不做去扩展名匹配。
   - `dataURL`：按图片魔数（PNG/JPEG/GIF/WebP/BMP/TIFF/HEIC）生成 `data:image/...;base64,...`；非图片返回 nil。
   - `replacingSources`：一次 `NSRegularExpression` 匹配**独立属性名** `src`（不匹配 `data-src`/`srcset`；单/双/无引号），只替换值区间；没有替换项的引用保持原样；保留引号、其它属性、其余字节；相同引用多次出现都替换。
 - 新增 public 方法（`Sources/Scenes/ReadScene+InlineImages.swift`；`ReadScene` 仍是值类型，不新增依赖）：
@@ -167,8 +167,16 @@ component: CMP-SCN-READ
   - 不改 `downloadAttachment` 的签名/语义；不 import `EASClient`/`EASAdapter`/`Presentation`/WebKit；`MailGateway`/`MailStore`/`MailDomain` 契约不变。
 - 尺寸：`InlineImageHTML.swift` 约 120 行、`ReadScene+InlineImages.swift` 约 50 行（均 <300）；`Scenes` 由 1006 → 约 1176（既有 800 行预算已超，登记为既有欠账）。
 - 测试：`ScenesTests/InlineImageHTMLTests`（提取/规范化/唯一匹配含去扩展名/歧义/嗅探/只改 `src` 值）与 `ScenesTests/ReadSceneInlineImageTests`（只取被引用附件、同附件多次引用只取一次、缓存命中 0 次 gateway、单张失败跳过、超限跳过、取消提前返回）；fake gateway/files 记录调用集。
-- 定级/确认：**P2**（场景公开面 additive + internal 纯函数；无 schema/`MailDomain` 契约/依赖/热路径依赖变更）。`renderInlineImages(for:html:)` 公开面已**人工确认 pass（A，2026-11-20）**，记录见 `doc/history/decisions/2026-11-20-inline-image-render-public-surface.md`；D2/D4/D7 仍为默认确认（未经人工），见 `task-spaces/20261120-111818/design2.md` §8。
+- 2026-11-21 增量（REQ-0025 / `T-1121-02`）：`Attachment.contentID` 由 `EASClient` 解析、`MailStore` v11 持久化后，
+  `matches` 以它为首选匹配（见上）；名字规则保留为回退。`ContentId` 与 `cid:` 都是不透明串，只做规范化后的全串相等；
+  同 `ContentId` 多附件仍按歧义跳过。旧邮件（v11 前同步）`contentID == nil`，行为与 2026-11-20 版一致。
+- 定级/确认：**P2**（首版：场景公开面 additive + internal 纯函数；无 schema/`MailDomain` 契约/依赖/热路径依赖变更）。
+  2026-11-21 的 `ContentId` 持久化按 **P1** 处理（`attachments` schema + `Attachment` 公开契约），已人工确认，见
+  `doc/history/decisions/2026-11-21-inline-image-content-id.md`。`renderInlineImages(for:html:)` 公开面已**人工确认 pass（A，2026-11-20）**，记录见 `doc/history/decisions/2026-11-20-inline-image-render-public-surface.md`；D2/D4/D7 仍为默认确认（未经人工），见 `task-spaces/20261120-111818/design2.md` §8。
 
+- 实现进度（2026-11-21，`T-1121-05`）：`InlineImageHTML.matches` 增加 `contentID` 优先匹配（名字规则保留为回退）；
+  新增 `InlineImageHTMLTests.matchesOpaqueCIDByContentID`、`contentIDTakesPrecedenceOverNames`、`duplicateContentIDIsIgnored`
+  与 `ReadSceneInlineImageTests.opaqueCIDUsesContentID`；`Scenes` 合计 1188 行（低于 1200 拆分触发线）。
 - 实现进度（2026-11-20，`T-1120-01`）：已新增 `Sources/Scenes/InlineImageHTML.swift`（120 行，internal 纯函数）与 `Tests/ScenesTests/InlineImageHTMLTests.swift`（7 例：`sourcesFindCIDSourcesOnly`、`normalizationHandlesCasePercentAndBrackets`、`matchesDisplayNameAndLocalPart`、`matchesStemWhenCIDOmitsExtension`、`ambiguousReferenceIsIgnored`、`replacingOnlyTouchesSourceValues`、`dataURLSniffsCommonImageFormats`）；`ScenesTests` 绿、架构 4 门 PASS；N6 像素 guard 按 D1 未实现。
 - 实现进度（2026-11-20，`T-1120-02`）：已新增 `Sources/Scenes/ReadScene+InlineImages.swift`（32 行，public `renderInlineImages(for:html:)`）与 `Tests/ScenesTests/ReadSceneInlineImageTests.swift`（5 例）；复用 `downloadAttachment`/`AttachmentFiles`/`FlightBoard`；20MB 字节 guard 保留，单张失败/坏字节/取消跳过；`Scenes` 合计 1158 行（本批新增 152，≤170）；`ScenesTests` 51 例绿、架构 4 门 PASS。
 - 实现进度（2026-11-20，`T-1120-01` B2 修复）：`InlineImageHTML` 的 `sources`/`replacingSources` 改为先定位 `<img>` 标签、再在其内匹配独立 `src` 属性；标签内其它属性值先掩码，正文文本/其它标签/属性值内的 ` src=` 不再被收集或改写；无引号自闭合 `/>` 的 `/` 保留在替换值之外；`src=" cid:x "` 的 key 统一 trim。`InlineImageHTMLTests` 增至 11 例（新增正文空白、其它属性值、`<video>`/`<image>`、无引号自闭合、引号内空白 4 例）；`Scenes` 合计 1175 行，`InlineImageHTML.swift` 137 行；`ScenesTests` 绿、全量 347 tests / 57 suites、架构 4 门 PASS。

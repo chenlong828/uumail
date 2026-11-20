@@ -645,6 +645,49 @@ struct MailStoreWritePathTests {
         MessageDelta(added: added, changed: changed, removedServerIDs: removed, syncKey: key, moreAvailable: false)
     }
 
+    @Test("attachment ContentId is stored, read back, and kept when a resync omits it")
+    func attachmentContentIDRoundTrip() throws {
+        let store = try MailStore.inMemory()
+        let id = try store.createAccount(
+            NewAccount(displayName: "工作", address: "jdoe@corp.test", host: "mail.corp.test")
+        )
+        try store.applyFolderSnapshot(
+            account: id,
+            folders: [MailFolder(serverID: "13", parentID: "0", displayName: "收件箱", type: 2)],
+            syncKey: "1"
+        )
+        let logo = Attachment(
+            displayName: "36979_logo.gif",
+            fileReference: "ref-gif",
+            contentID: "_Foxmail.1@7a87418d"
+        )
+        try store.applySyncBatch(
+            account: id,
+            folder: "13",
+            added: [MailMessage(serverID: "101", receivedRaw: "2026-11-20T09:24:45.000Z", attachments: [logo])],
+            changed: [],
+            removedServerIDs: [],
+            syncKey: "2"
+        )
+        #expect(try store.attachments(account: id, folder: "13", messageID: "101").first?.contentID == "_Foxmail.1@7a87418d")
+
+        // A later envelope without ContentId (older gateway or a partial update) must not
+        // wipe the stored value: the render path depends on it.
+        try store.applySyncBatch(
+            account: id,
+            folder: "13",
+            added: [],
+            changed: [MailMessage(
+                serverID: "101",
+                receivedRaw: "2026-11-20T09:24:45.000Z",
+                attachments: [Attachment(displayName: "36979_logo.gif", fileReference: "ref-gif")]
+            )],
+            removedServerIDs: [],
+            syncKey: "3"
+        )
+        #expect(try store.attachments(account: id, folder: "13", messageID: "101").first?.contentID == "_Foxmail.1@7a87418d")
+    }
+
     @Test("markRead flips only the target unread row, is idempotent and leaves the key alone")
     func markReadOnlyTarget() throws {
         let (store, id) = try seeded()

@@ -163,5 +163,11 @@ enum MailStoreMigrations {
         migrator.registerMigration("v10_outbox_html") { db in
             try db.execute(sql: "ALTER TABLE outbox ADD COLUMN body_html TEXT")
         }
+        // Inline images (REQ-0025 / SCN-0019, 2026-11-21): persist the MIME ContentId the
+        // gateway reports so `cid:` references resolve without leaning on file names.
+        // Additive and forward-only: rows synced before v11 keep NULL until the next sync.
+        migrator.registerMigration("v11_attachment_content_id") { db in
+            try db.execute(sql: "ALTER TABLE attachments ADD COLUMN content_id TEXT")
+        }
     }
 }

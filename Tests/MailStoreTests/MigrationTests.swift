@@ -97,6 +97,36 @@ struct MigrationTests {
         #expect(try store.body(account: account, folder: "13", serverID: "101")?.text == "<p>正文</p>")
         #expect(try store.attachments(account: account, folder: "13", messageID: "101").first?.cachePath == "/tmp/101-1.pdf")
     }
+
+    @Test("pre-v11 attachments read a nil ContentId and the next sync fills it")
+    func v11AttachmentContentIDMigration() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("uumail-migration-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let path = directory.appendingPathComponent("pre-v11.sqlite").path
+
+        try makePreV9Database(at: path)
+        let store = try MailStore(path: path)
+        let account = AccountID("account-1")
+
+        // The additive v11 column exists and old rows have no value yet.
+        #expect(try store.attachments(account: account, folder: "13", messageID: "101").first?.contentID == nil)
+
+        try store.applySyncBatch(
+            account: account,
+            folder: "13",
+            added: [],
+            changed: [MailMessage(
+                serverID: "101",
+                receivedRaw: "2026-11-08T05:11:18.000Z",
+                attachments: [Attachment(displayName: "a.pdf", fileReference: "1", contentID: "a@corp.test")]
+            )],
+            removedServerIDs: [],
+            syncKey: "1"
+        )
+        #expect(try store.attachments(account: account, folder: "13", messageID: "101").first?.contentID == "a@corp.test")
+    }
 }
 
 // MARK: - Fixture
@@ -163,6 +193,18 @@ private func makePreV8Database(at path: String) throws {
                 last_sync_at REAL,
                 last_error TEXT,
                 PRIMARY KEY (account_id, collection)
+            );
+
+            CREATE TABLE attachments (
+                account_id TEXT NOT NULL,
+                folder_id TEXT NOT NULL,
+                message_id TEXT NOT NULL,
+                file_reference TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                size INTEGER,
+                cache_path TEXT,
+                downloaded_at REAL,
+                PRIMARY KEY (account_id, folder_id, message_id, file_reference)
             );
 
             INSERT INTO accounts (id, display_name, address, host, state, created_at)
