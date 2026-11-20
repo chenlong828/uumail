@@ -6,6 +6,9 @@ import WebKit
 struct MessageBodyView: View {
     let header: MessageHeaderPresentation?
     let bodyPresentation: BodyPresentation
+    /// The current body with inline `cid:` sources already rewritten to `data:` URLs. The
+    /// view only swaps the display string; it never parses HTML or fetches attachments.
+    let inlineImageHTML: String?
     let notice: BodyNotice?
     let attachments: [Attachment]
     /// Session-only permission owned by `MailboxViewModel`; the body view never owns it
@@ -66,7 +69,7 @@ struct MessageBodyView: View {
             Divider()
             if case .loaded(let html, _) = bodyPresentation {
                 MessageWebView(
-                    html: html,
+                    html: inlineImageHTML ?? html,
                     allowRemoteContent: allowRemoteContent,
                     fontSize: fontSize
                 )
@@ -87,7 +90,7 @@ struct MessageBodyView: View {
                 bannerRow(isTruncated: isTruncated)
                 Divider()
                 MessageWebView(
-                    html: html,
+                    html: inlineImageHTML ?? html,
                     allowRemoteContent: allowRemoteContent,
                     fontSize: fontSize
                 )

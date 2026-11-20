@@ -79,6 +79,7 @@ struct MailboxView: View {
                 MessageBodyView(
                     header: viewModel.headerPresentation,
                     bodyPresentation: viewModel.body,
+                    inlineImageHTML: viewModel.inlineImageHTML,
                     notice: viewModel.bodyNotice,
                     attachments: viewModel.attachments,
                     allowRemoteContent: viewModel.allowsRemoteContent,

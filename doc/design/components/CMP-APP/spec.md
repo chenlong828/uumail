@@ -281,3 +281,4 @@ component: CMP-APP
 - 尺寸：`MessageBodyView` 256 → 约 259；`MailboxView` 218 → 约 219；均 ≤300。
 - 测试：L2 探针编译生产 `MessageBodyView`/`MessageBodyStyle` + 生产改写函数，断言 `img.naturalWidth>0`、快照像素、0 请求；视图层不做 L1 单测。
 - 定级/确认：**P2**（跨 `Presentation`→视图接线，无 public 契约/schema/依赖变更）。D3/D8 为默认确认（未经人工），见 `task-spaces/20261120-111818/design2.md` §8；所消费的 `MailboxViewModel.inlineImageHTML` 公开面已**人工确认 pass（A，2026-11-20）**，记录见 `doc/history/decisions/2026-11-20-inline-image-render-public-surface.md`。
+- 实现进度（2026-11-20，`T-1120-04`）：`MessageBodyView` 新增 internal `inlineImageHTML` 入参，`.loaded` 的 `natural`/`capped` 两处改用 `inlineImageHTML ?? html`；`MailboxView` 透传 `viewModel.inlineImageHTML`；`MessageWebView`/`MessageBodyStyle`/CSP 两档/`baseURL`/`lastRender` 零改动。L2 证据 `task-spaces/20261120-111818/evidence/inline-image-view/`（负控制 raw `naturalWidth=0`；生产改写串 `naturalWidth=32`、`magenta_px=4096`、`requests_delta=0`；纯文字基线 images=0）PASS；全量 343 例绿、架构 4 门 PASS。
