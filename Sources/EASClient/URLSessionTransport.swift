@@ -1,28 +1,25 @@
 import Foundation
 
-/// URLSession-backed transport. Owns its own session so sync traffic never shares
+/// URLSession-backed transport. Owns its own sessions so sync traffic never shares
 /// queues or connection pools with the app shell.
+///
+/// One session per total-time budget: commands keep the 120 s default, while attachment
+/// downloads ask for a longer budget through `EASHTTPRequest.resourceTimeout` because the
+/// gateway needs minutes to produce a large base64 payload.
 public final class URLSessionTransport: EASHTTPTransport, @unchecked Sendable {
-    private let session: URLSession
+    public static let defaultResourceTimeout: TimeInterval = 120
+    private static let requestTimeout: TimeInterval = 60
+
+    private let configuration: EASConfiguration
+    private let lock = NSLock()
+    private var sessions: [TimeInterval: URLSession] = [:]
 
     public init(configuration: EASConfiguration) {
-        let sessionConfiguration = URLSessionConfiguration.ephemeral
-        sessionConfiguration.timeoutIntervalForRequest = 60
-        sessionConfiguration.timeoutIntervalForResource = 120
-        sessionConfiguration.httpShouldSetCookies = false
-        sessionConfiguration.requestCachePolicy = .reloadIgnoringLocalCacheData
-        if configuration.allowInsecureTLS {
-            self.session = URLSession(
-                configuration: sessionConfiguration,
-                delegate: InsecureTrustDelegate(),
-                delegateQueue: nil
-            )
-        } else {
-            self.session = URLSession(configuration: sessionConfiguration)
-        }
+        self.configuration = configuration
     }
 
     public func send(_ request: EASHTTPRequest) async throws -> EASHTTPResponse {
+        let session = session(resourceTimeout: request.resourceTimeout ?? Self.defaultResourceTimeout)
         var urlRequest = URLRequest(url: request.url)
         urlRequest.httpMethod = request.method
         urlRequest.httpBody = request.body
@@ -39,6 +36,33 @@ public final class URLSessionTransport: EASHTTPTransport, @unchecked Sendable {
             headers[String(describing: key).lowercased()] = String(describing: value)
         }
         return EASHTTPResponse(status: http.statusCode, headers: headers, body: data)
+    }
+
+    /// Creates (and caches) the session for one total-time budget. The idle timeout stays
+    /// at 60 s for every budget; only the overall budget changes.
+    private func session(resourceTimeout: TimeInterval) -> URLSession {
+        lock.withLock {
+            if let existing = sessions[resourceTimeout] {
+                return existing
+            }
+            let sessionConfiguration = URLSessionConfiguration.ephemeral
+            sessionConfiguration.timeoutIntervalForRequest = Self.requestTimeout
+            sessionConfiguration.timeoutIntervalForResource = resourceTimeout
+            sessionConfiguration.httpShouldSetCookies = false
+            sessionConfiguration.requestCachePolicy = .reloadIgnoringLocalCacheData
+            let session: URLSession
+            if configuration.allowInsecureTLS {
+                session = URLSession(
+                    configuration: sessionConfiguration,
+                    delegate: InsecureTrustDelegate(),
+                    delegateQueue: nil
+                )
+            } else {
+                session = URLSession(configuration: sessionConfiguration)
+            }
+            sessions[resourceTimeout] = session
+            return session
+        }
     }
 }
 

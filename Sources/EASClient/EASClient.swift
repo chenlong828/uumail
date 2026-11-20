@@ -178,12 +178,23 @@ public struct EASHTTPRequest: Sendable {
     public var method: String
     public var headers: [String: String]
     public var body: Data?
+    /// Overrides the transport's total-time budget for this request. Attachment payloads
+    /// arrive as one base64 blob and the gateway is slow, so they ask for more than the
+    /// default; nil keeps the transport default.
+    public var resourceTimeout: TimeInterval?
 
-    public init(url: URL, method: String, headers: [String: String], body: Data?) {
+    public init(
+        url: URL,
+        method: String,
+        headers: [String: String],
+        body: Data?,
+        resourceTimeout: TimeInterval? = nil
+    ) {
         self.url = url
         self.method = method
         self.headers = headers
         self.body = body
+        self.resourceTimeout = resourceTimeout
     }
 }
 
@@ -210,6 +221,11 @@ public protocol EASHTTPTransport: Sendable {
 // MARK: - Client
 
 public actor EASClient {
+    /// Attachment payloads come back as one base64 blob; the gateway needs roughly 6 s per
+    /// MB, so the 120 s transport default cuts off anything over ~15 MB. Downloads get a
+    /// single long budget; every other command keeps the default.
+    public static let attachmentResourceTimeout: TimeInterval = 600
+
     public let configuration: EASConfiguration
     private let transport: any EASHTTPTransport
     private let codec: WBXMLCodec
@@ -629,8 +645,11 @@ public actor EASClient {
 
     // MARK: Attachments
 
-    /// Downloads one attachment by its `FileReference`. The payload comes back as base64
-    /// text in `ItemOperations/Data` (see pyactivesync's fetch_attachment).
+    /// Downloads one attachment by its `FileReference`.
+    ///
+    /// Exchange nests the payload at `ItemOperations/Response/Fetch/Properties/Data`
+    /// (MS-ASCMD 2.2.3.39.2, verified against the gateway on 2026-11-21); a gateway that
+    /// puts `Data` directly under `ItemOperations` is still accepted.
     public func fetchAttachment(fileReference: String) async throws -> Data {
         if policyKey == nil {
             try await provision()
@@ -641,7 +660,11 @@ public actor EASClient {
                 .text("FileReference", fileReference),
             ]),
         ]))
-        let response = try await call("ItemOperations", body: body)
+        let response = try await call(
+            "ItemOperations",
+            body: body,
+            resourceTimeout: Self.attachmentResourceTimeout
+        )
         let document = try decode(response)
         guard let status = document.path("ItemOperations", "Status")?.stringValue() else {
             throw EASError.malformedResponse("ItemOperations: missing Status")
@@ -649,7 +672,14 @@ public actor EASClient {
         guard status == "1" else {
             throw EASError.permanent(status: response.status, detail: "ItemOperations status=\(status)")
         }
-        guard let encoded = document.path("ItemOperations", "Data")?.stringValue() else {
+        let fetch = document.path("ItemOperations", "Response", "Fetch")
+        if let fetchStatus = fetch?.child("Status")?.stringValue(), fetchStatus != "1" {
+            // 6 = the FileReference is invalid or expired; keep the code in the detail.
+            throw EASError.permanent(status: response.status, detail: "Fetch status=\(fetchStatus)")
+        }
+        let encoded = fetch?.path("Properties", "Data")?.stringValue()
+            ?? document.path("ItemOperations", "Data")?.stringValue()
+        guard let encoded else {
             throw EASError.malformedResponse("ItemOperations: missing Data")
         }
         guard let data = Data(base64Encoded: encoded) else {
@@ -688,7 +718,8 @@ public actor EASClient {
         extraParameters: [String: String] = [:],
         treatEmptyBodyAsSuccess: Bool = false,
         isWrite: Bool = false,
-        emptyBodyError: EASError = .deviceNotRegistered
+        emptyBodyError: EASError = .deviceNotRegistered,
+        resourceTimeout: TimeInterval? = nil
     ) async throws -> EASHTTPResponse {
         var components = URLComponents(url: configuration.endpoint, resolvingAgainstBaseURL: false)!
         var items = [
@@ -703,7 +734,8 @@ public actor EASClient {
             url: components.url!,
             method: "POST",
             headers: baseHeaders(policyKey: overrideKey ?? policyKey, includeContentType: true),
-            body: body
+            body: body,
+            resourceTimeout: resourceTimeout
         )
         let (response, elapsed) = try await perform(request)
         captureCookie(from: response)

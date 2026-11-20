@@ -86,7 +86,7 @@ EAS 用 WBXML 1.3。以下四点按**实测字节**而非规范字面实现：
 |---|---|---|
 | 邮件列表 | ✅ | 30 封，主题/发件人/时间/已读 |
 | HTML 正文 | ✅ | `ItemOperations` 取到约 2 万字符 HTML |
-| 附件下载 | ✅ | `FileReference` 直取，72KB 落盘 |
+| 附件下载 | ✅ 已验证（2026-11-21 真机） | `FileReference` 直取；payload 在 `Response/Fetch/Properties/Data`，见 §5.5 |
 | 发信（含附件） | ✅ | 发给自己 + 抄送外部地址，`200` + 0B |
 | 回复 | ✅ | 同一 `SendMail` 通道 + `In-Reply-To`/`References` 头 |
 | 建/删文件夹 | ✅ | `FolderCreate` / `FolderDelete` 均 `Status=1` |
@@ -128,6 +128,21 @@ EAS 用 WBXML 1.3。以下四点按**实测字节**而非规范字面实现：
   - `Delete`：HTTP 200，`Status=1`，新 key，整页 `Add`；收件箱的新窗口不再返回该 `ServerId`；在 `Type=4`「已删除邮件」里按 `FilterType=1` 找到同一封（新 `ServerId`），确认是 move-to-deleted，不是永久删除。
   - 同一 `ServerId` 再删一次：仍 `Status=1` + 新 key，not-found 为成功 no-op，没有独立的逐条状态可映射。
 - 结论：写命令路径可交付；`MoreAvailable` 是正常分页信号，写响应必须提交 delta+key（不能拒绝）；不需要 `DeletesAsMoves=1`。证据：`task-spaces/20261114-232232/evidence/r16-real-gateway.txt`、`r16-probe.swift`、`r16-extract.swift`。
+
+## 5.5 ItemOperations 取附件的实测坑（2026-11-21）
+
+- **payload 在 `Response/Fetch/Properties/Data`，不是直挂 `ItemOperations/Data`。** 真机响应（200，wbxml）结构为
+  `ItemOperations/Status=1 → Response/Fetch/Status=1 + FileReference → Properties/ContentType + Properties/Data(base64)`。
+  按 MS-ASCMD 2.2.3.39.2，`Data` 就是 `Properties` 的子元素。客户端曾只找直挂 `ItemOperations/Data`，于是每封附件都抛
+  `malformedResponse("ItemOperations: missing Data")`（UI 显示「网关返回了暂不支持的结果」），数据其实已经完整到货
+  （2026-11-21 修正为嵌套优先、直挂兼容，见 `CMP-EAS` §设计增量）。
+- **`Response/Fetch/Status=6` 表示 `FileReference` 失效/过期**，响应体里没有 `Data`。必须先判 `Fetch/Status` 再找 payload，
+  否则同一条「缺 Data」会盖住真实原因。
+- **不支持 `Options/Range`。** 在 `Fetch` 下加 `Options/Range=0-1048575` 只回 `ItemOperations/Status=2`（13 字节）：
+  附件只能整包取，没有分段，也没有断点续传。
+- **整包 base64 很慢，约 6 s/MB。** 实测 4.5MB→23.7s、9.4MB→55.2s（响应体比文件大 1/3）；28.7MB 在旧的 120s
+  资源超时处被切断，现给附件请求单独 600s 预算（`EASClient.attachmentResourceTimeout`），其余命令仍 120s。
+- **`EstimatedDataSize` 只是估算**：大附件与 payload 大小基本吻合，小附件可差 20–40%，不能当完整性校验。
 
 ## 6. 设备登记与失效处理
 

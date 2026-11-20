@@ -2,7 +2,7 @@
 layer: design
 module: eas
 status: active
-updated: 2026-11-17
+updated: 2026-11-21
 component: CMP-EAS
 ---
 
@@ -23,7 +23,7 @@ component: CMP-EAS
 - 入口：`Sources/EASClient/EASClient.swift#EASClient`、`WBXML.swift#WBXML`、`URLSessionTransport.swift#URLSessionTransport`
 - 依赖：Foundation（URLSession）、WBXML 编解码、传输层。扇出 0 本仓 target。
 - 冷热：冷；独立 URLSession、连接数受限。
-- 尺寸预算：≤1500 行；当前 **1227 行**（含 WBXML 与传输；2026-11-14 实测）。
+- 尺寸预算：≤1500 行；当前 **1297 行**（含 WBXML 与传输；2026-11-21 实测）。
 - 单独运行：`./Scripts/swiftw test --filter EASClientTests`；协议探活另有命令行入口，见 playbook §7。
 - 删除测试：删掉后 `EASAdapter` 要自己拼 HTTP 与 WBXML，版本降级复制两份 → 复杂度集中，是真边界。
 
@@ -37,7 +37,7 @@ component: CMP-EAS
 | `CMP-EAS#sync` | `Sync` | ✅ | 请求体最小化；窗口 25 |
 | `CMP-EAS#syncWrite` | `Sync` + `Commands` | ✅ 已实现并真机取证（T-1114-12，2026-11-14） | `Change/Read=1` 与 `Delete`；网关接受并返回新 key（R16 已关闭，证据见任务证据 `r16-real-gateway.txt`） |
 | `CMP-EAS#fetchBody` | `ItemOperations`/`Fetch` | ✅ | 先取 20 万字符 HTML；`Truncated=1` 才免上限重取；返回 `FetchedBody{text,isHTML,isTruncated}` |
-| `CMP-EAS#fetchAttachment` | `ItemOperations` | ✅ | `FileReference` 直取，base64 解码 |
+| `CMP-EAS#fetchAttachment` | `ItemOperations` | ✅ | `FileReference` 直取，base64 解码；payload 在 `Response/Fetch/Properties/Data`（playbook §5.5） |
 | `CMP-EAS#send` | `SendMail` | ✅ | MIME 为 opaque 原始字节；返回 `200` + 0B 判成功 |
 | `CMP-EAS#ping` | `Ping` | ✅ 方法存在 / ❌ 网关不支持长轮询 | 三档心跳均 `Status=4`（playbook §5.2）；方法仅作复测 |
 | `CMP-EAS#moveItems` | `MoveItems` | ⬜ 未实现 | 移动留 `PendingOps` 工序；本批删除走 Sync `Delete`，不用 `MoveItems` |
@@ -81,11 +81,12 @@ component: CMP-EAS
   | HTTP 503 + `Retry-After` | `throttled` | 是 |
   | HTTP 502（约 20s 后） | `protocolRejected` | 否 |
   | HTTP 444 | `gatewayRejected` | 否 |
+  | `ItemOperations` 的 `Fetch/Status≠1`（如 6=引用失效） | `permanent`（detail 带状态码） | 否 |
   | 网络超时 | `transient` | 是 |
   | 其它 4xx/5xx | `permanent` / `malformedResponse` | 视码 |
 
 - 幂等 / 顺序 / 并发：`send` 带 `ClientId`；同账号串行由调用方保证；本层不做跨账号并发假设。
-- 超时 / 取消 / 背压：命令级 60s；取消传播到 URLSession；附件整包读取（未流式落盘）。
+- 超时 / 取消 / 背压：命令级 60s；附件请求单独 600s 资源预算（`EASClient.attachmentResourceTimeout`，2026-11-21）；取消传播到 URLSession；附件整包读取（未流式落盘）。
 - 一致性 / 可见性：只做单次请求语义。
 - 兼容性：协议版本按 `16.1 → 14.1 → 14.0` 降级并持久化；PolicyKey 不持久化（见模块卡）。
 - 契约测试：`EASClientTests` 21 例 + `WBXMLTests` 6 例（golden 字节、错误映射表、401/449/503/空 200/坏 body、截断重取）。
@@ -99,6 +100,22 @@ component: CMP-EAS
 - `EASClient.sync` 的 `200` 空 body 与「缺 `Collection/Status`」都抛 `syncKeyInvalid`，走 `SyncEngine` 既有的 `resetCollection` → key `0` 重建；`FolderSync`/`ItemOperations`/`Provision` 的空 body 仍抛 `deviceNotRegistered`，设备级信号由每次 `syncOnce` 的第一条命令 `FolderSync` 保证先后顺序。
 - 同一设备并发两条 `Sync` 时实测一条正常、另一条回 12 字节残缺体（无 `Collection/Status`）；该残缺体的归类同上，由重建吸收。
 
+## 设计增量（2026-11-21，附件下载修复）
+
+真机（`mail.hundsun.com`，直接跑生产 `EASClient.fetchAttachment`）取证：网关把附件内容放在
+`ItemOperations/Response/Fetch/Properties/Data`；客户端此前只读直挂 `ItemOperations/Data`，于是所有附件都抛
+`malformedResponse`（经 `EASAdapter` → `.unsupported` →「网关返回了暂不支持的结果」），而数据其实已完整返回。
+
+改动：
+
+- `fetchAttachment` 先判 `ItemOperations/Status` 与 `Response/Fetch/Status`（`≠1` 抛 `permanent`，detail 带状态码；
+  `6` = `FileReference` 失效），再取 `Response/Fetch/Properties/Data`；直挂 `ItemOperations/Data` 保留为兼容路径。
+- 附件请求携带 `EASHTTPRequest.resourceTimeout = EASClient.attachmentResourceTimeout`（600 秒）；`URLSessionTransport`
+  按预算缓存会话，其它命令仍是 120 秒。依据：网关约 6 s/MB、整包 base64，28.7MB 在旧 120s 预算下会被切断。
+- 25MB 上限（`T-SCN-0005-02`）本批**不实现**，维持既有欠账；`AttachmentName` 回退与断点续传同样未动（网关不支持 `Range`）。
+
+证据：`task-spaces/20261121-0639-attachment-fetch/evidence/`（原始 WBXML、解码后的 xlsx、耗时与失效引用响应）。
+
 ## 实现进度（2026-11-14）
 
 | 能力 | 代码 | 测试 |
@@ -108,7 +125,7 @@ component: CMP-EAS
 | `sync`（信封、key、status 3/4、MoreAvailable） | ✅ | 5 例（含 `To`/`Cc` 回放、空白归一；Collection 内与顶层两种 `MoreAvailable`） |
 | Sync 写命令（`Change/Read=1`、`Delete`） | ✅ 已实现并真机取证（T-1114-12，2026-11-14） | golden 请求 + 写 401/3/4 测试绿；真机 `Read=1`/`Delete` 均 `Collection/Status=1` 并返回新 key；删除目标进入「已删除邮件」 |
 | `fetchBody`（HTML/纯文本/截断重取） | ✅ | 3 例 |
-| `fetchAttachment` / `send` | ✅ | 1 例 + 3 例 |
+| `fetchAttachment` / `send` | ✅（2026-11-21 真机取证：`Response/Fetch/Properties/Data`） | 4 例（嵌套/直挂/`Fetch/Status=6`/600s 预算）+ 3 例 |
 | `ping` | ✅ 方法 | 真机三档均 `Status=4` |
 | `moveItems` / `search` | ⬜ / ❌ | — |
 

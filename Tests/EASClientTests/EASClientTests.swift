@@ -652,8 +652,37 @@ struct EASAttachmentTests {
         #expect(attachment.size == 72084)
     }
 
-    @Test("fetchAttachment decodes the base64 payload")
-    func fetchesAttachment() async throws {
+    @Test("fetchAttachment reads the Response/Fetch/Properties/Data shape Exchange returns")
+    func fetchesAttachmentFromExchangeShape() async throws {
+        let payload = Data([0x50, 0x4B, 0x03, 0x04]) // PK..
+        let codec = try! WBXMLCodec.standard()
+        let response = try! codec.encode(.children("ItemOperations", [
+            .text("Status", "1"),
+            .children("Response", [
+                .children("Fetch", [
+                    .text("Status", "1"),
+                    .text("FileReference", "ref-1"),
+                    .children("Properties", [
+                        .text("ContentType", "application/vnd.ms-excel"),
+                        .text("Data", payload.base64EncodedString()),
+                    ]),
+                ]),
+            ]),
+        ]))
+        let stub = StubTransport(responses: [EASHTTPResponse(status: 200, headers: [:], body: response)])
+        let client = EASClient(configuration: makeConfiguration(), transport: stub, policyKey: "1")
+        let data = try await client.fetchAttachment(fileReference: "ref-1")
+        #expect(data == payload)
+
+        let request = try #require(await stub.recorded.first?.request)
+        #expect(request.resourceTimeout == EASClient.attachmentResourceTimeout)
+        let doc = try codec.decode(try #require(request.body))
+        #expect(doc.path("ItemOperations", "Fetch", "Store")?.stringValue() == "Mailbox")
+        #expect(doc.path("ItemOperations", "Fetch", "FileReference")?.stringValue() == "ref-1")
+    }
+
+    @Test("fetchAttachment still accepts Data directly under ItemOperations")
+    func fetchesAttachmentFromLegacyShape() async throws {
         let payload = Data([0x25, 0x50, 0x44, 0x46]) // %PDF
         let codec = try! WBXMLCodec.standard()
         let response = try! codec.encode(.children("ItemOperations", [
@@ -662,13 +691,26 @@ struct EASAttachmentTests {
         ]))
         let stub = StubTransport(responses: [EASHTTPResponse(status: 200, headers: [:], body: response)])
         let client = EASClient(configuration: makeConfiguration(), transport: stub, policyKey: "1")
-        let data = try await client.fetchAttachment(fileReference: "ref-1")
-        #expect(data == payload)
+        #expect(try await client.fetchAttachment(fileReference: "ref-1") == payload)
+    }
 
-        let request = try #require(await stub.recorded.first?.request)
-        let doc = try codec.decode(try #require(request.body))
-        #expect(doc.path("ItemOperations", "Fetch", "Store")?.stringValue() == "Mailbox")
-        #expect(doc.path("ItemOperations", "Fetch", "FileReference")?.stringValue() == "ref-1")
+    @Test("fetchAttachment surfaces a non-1 Fetch status instead of a missing payload")
+    func fetchesAttachmentReportsFetchStatus() async throws {
+        let codec = try! WBXMLCodec.standard()
+        let response = try! codec.encode(.children("ItemOperations", [
+            .text("Status", "1"),
+            .children("Response", [
+                .children("Fetch", [
+                    .text("Status", "6"),
+                    .text("FileReference", "ref-1"),
+                ]),
+            ]),
+        ]))
+        let stub = StubTransport(responses: [EASHTTPResponse(status: 200, headers: [:], body: response)])
+        let client = EASClient(configuration: makeConfiguration(), transport: stub, policyKey: "1")
+        await #expect(throws: EASError.permanent(status: 200, detail: "Fetch status=6")) {
+            _ = try await client.fetchAttachment(fileReference: "ref-1")
+        }
     }
 }
 
