@@ -89,8 +89,12 @@ final class PresentationFakeGateway: MailGateway, @unchecked Sendable {
     nonisolated(unsafe) var provisionError: MailError?
     nonisolated(unsafe) var folderError: MailError?
     nonisolated(unsafe) var attachmentData = Data()
+    nonisolated(unsafe) var attachmentPayloads: [String: Data] = [:]
+    nonisolated(unsafe) var attachmentError: MailError?
+    nonisolated(unsafe) var attachmentGate: WriteGate?
     nonisolated(unsafe) var bodyDelay: Duration?
     nonisolated(unsafe) private(set) var bodyCalls = 0
+    nonisolated(unsafe) private(set) var attachmentCalls = 0
     nonisolated(unsafe) private(set) var sendCalls = 0
 
     init(
@@ -132,7 +136,10 @@ final class PresentationFakeGateway: MailGateway, @unchecked Sendable {
     }
 
     func fetchAttachment(fileReference: String) async throws -> Data {
-        attachmentData
+        attachmentCalls += 1
+        if let attachmentGate { await attachmentGate.wait() }
+        if let attachmentError { throw attachmentError }
+        return attachmentPayloads[fileReference] ?? attachmentData
     }
 
     func send(mime: Data, clientID: String) async throws {
@@ -156,8 +163,12 @@ final class PresentationFakeAttachmentFiles: AttachmentFiles, @unchecked Sendabl
     }
 
     func store(_ data: Data, for reference: AttachmentRef) throws -> URL {
-        let url = FileManager.default.temporaryDirectory
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("uumail-presentation-tests")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory
             .appendingPathComponent("\(reference.fileReference)-\(reference.displayName)")
+        try data.write(to: url, options: .atomic)
         cache[reference.fileReference] = url
         return url
     }

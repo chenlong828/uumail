@@ -12,6 +12,9 @@ public final class MailboxViewModel {
     public private(set) var folders: [Folder] = []
     public private(set) var messages: [Message] = []
     public internal(set) var body: BodyPresentation = .none
+    /// Current body with `cid:` image sources replaced by `data:` URLs. View state only:
+    /// never persisted and never copied into `body`/`quotableHTML` (REQ-0025 / SCN-0019).
+    public internal(set) var inlineImageHTML: String?
     public internal(set) var bodyNotice: BodyNotice?
     public internal(set) var attachments: [Attachment] = []
     public private(set) var sync = SyncPresentation()
@@ -53,6 +56,7 @@ public final class MailboxViewModel {
     @ObservationIgnored var isDeleteInFlight = false
     private var autoRefreshTask: Task<Void, Never>?
     var bodyTask: Task<Void, Never>?
+    @ObservationIgnored var inlineImageTask: Task<Void, Never>?
     var openingRef: MessageRef?
     var openedBody: MessageRef?
 

@@ -21,6 +21,7 @@ extension MailboxViewModel {
 
         bodyTask?.cancel()
         bodyTask = nil
+        cancelInlineImageRender()
         openingRef = ref
         openedBody = nil
         body = .none
@@ -37,6 +38,7 @@ extension MailboxViewModel {
             body = .loaded(html: cached, truncated: false)
             openedBody = ref
             openingRef = nil
+            startInlineImageRender(ref, html: cached)
             return
         }
 
@@ -73,10 +75,12 @@ extension MailboxViewModel {
             body = .loaded(html: html, truncated: false)
             bodyNotice = nil
             openedBody = ref
+            startInlineImageRender(ref, html: html)
         case .loaded(let fetched):
             body = .loaded(html: fetched.text, truncated: fetched.isTruncated)
             bodyNotice = nil
             openedBody = ref
+            startInlineImageRender(ref, html: fetched.text)
         case .failed(let error):
             let text = ErrorText.text(for: error)
             if case .loaded(let html, let truncated) = body, bodyNotice != nil {
@@ -93,11 +97,38 @@ extension MailboxViewModel {
     func clearBody() {
         bodyTask?.cancel()
         bodyTask = nil
+        cancelInlineImageRender()
         openingRef = nil
         openedBody = nil
         body = .none
         bodyNotice = nil
         attachments = []
+    }
+
+    /// Starts the cold image render for the body now on screen. The result is applied only
+    /// when the selection and the loaded HTML are still the ones this task started from.
+    func startInlineImageRender(_ ref: MessageRef, html: String) {
+        inlineImageTask?.cancel()
+        inlineImageHTML = nil
+        inlineImageTask = Task { [weak self] in
+            guard let self else { return }
+            let rendered = await self.read.renderInlineImages(for: ref, html: html)
+            guard !Task.isCancelled else { return }
+            self.applyInlineImageRender(rendered, ref: ref, sourceHTML: html)
+        }
+    }
+
+    func cancelInlineImageRender() {
+        inlineImageTask?.cancel()
+        inlineImageTask = nil
+        inlineImageHTML = nil
+    }
+
+    private func applyInlineImageRender(_ rendered: String?, ref: MessageRef, sourceHTML: String) {
+        guard selectedRef == ref, openedBody == ref,
+              case .loaded(let html, _) = body, html == sourceHTML,
+              let rendered else { return }
+        inlineImageHTML = rendered
     }
 
     static func previewHTML(for preview: String?) -> String? {
