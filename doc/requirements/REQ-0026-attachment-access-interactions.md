@@ -2,7 +2,7 @@
 layer: requirements
 module: mail
 scope: project:uumail
-status: accepted
+status: delivered
 updated: 2026-11-20
 ---
 
@@ -74,6 +74,6 @@ updated: 2026-11-20
     - 以上均为失败路径/实现契约收窄，不改本卡 A1–A8 的用户可见结果与约束；标**默认确认（未经人工）**，
       依据 `review2` B1–B3 + `FlightBoard` 现状；回退见 `task-spaces/20261120-160446/design3.md` §10。
   - 设计依据：`task-spaces/20261120-160446/design3.md`（第 3 轮；第 2 轮见 `design2.md`）；方向性探针 `evidence/attachment-interaction-probe/`、`evidence/attachment-save-probe/`。
-- **状态**：`accepted`（2026-11-20 需求分析落卡；设计/实现/验证/收尾按 `af-flow-rule` 推进；本节点不改任何状态位）。
+- **状态**：`delivered`（2026-11-20 需求分析落卡并交付；`SCN-0020` 已验证，`T-SCN-0020-01..10` 全 PASS；证据 `task-spaces/20261120-160446/test.md`/`test2.md`/`review7.md` §8）。
 - **文档同步**：`doc/README.md` 的 REQ 计数与导航由收尾同步；`roadmap.md` 由设计/拆分落表；本节点不改。
 - **验收归属**：`SCN-0020` 3 正 1 反（`T-SCN-0020-01..04`）通过 + `T-SCN-0020-05..10`（A1/A8 回归、生产接线、异步复制、迟到结果、APP 动作代际/取消）通过 + `SCN-0019` 回归 + 上述约束逐条无违反。`SCN-0005` 保持 `designed`，本卡不替其补欠账。

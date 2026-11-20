@@ -1,7 +1,7 @@
 ---
 layer: design
 module: mail
-status: designed
+status: verified
 updated: 2026-11-20
 flow: mail/read
 scenario: SCN-0020
@@ -160,12 +160,13 @@ scenario: SCN-0020
 
 ## 状态
 
-`designed`（2026-11-20 设计落卡；**第 2 轮按方案评审 `review.md` B1–B4 修订**；
+`verified`（2026-11-20 设计落卡；**第 2 轮按方案评审 `review.md` B1–B4 修订**；
 **第 3 轮按 `review2.md` B1–B3 修订：APP 动作代际、N3/源缺失 guard、取消收窄、T-05 编译文件**；
-未实现、未验证）。实现完成后由收尾在评审 pass 时统一翻 `verified`；本节点不翻状态位。
+2026-11-20 实现并验证：`T-SCN-0020-01..10` 全 PASS，L1 `360/58`、L2 `83 PASS`、架构 4/4）。
+收尾按实现鉴定 `review7.md` §8 翻转；证据见 `task-spaces/20261120-160446/test.md`/`test2.md`/`review7.md`。
 
-- 实现：待 task-split 拆任务；不改 `Sources/`（本节点）。
-- 未实现项：本场景 01–10 全部待实现；`SCN-0005` 的 25MB/续传/名称回退仍为其欠账，不在本场景。
+- 实现：`T-1120-06`…`T-1120-10` 完成（7 commit，`220cb21`…`3eb3e9b`）；`T-1120-11` 独立复验 PASS。
+- 未实现项：`SCN-0005` 的 25MB/续传/名称回退仍为其欠账，不在本场景。
 - 设计依据：`task-spaces/20261120-160446/design3.md` §4/§6（第 3 轮；第 2 轮见 `design2.md`）；
   公开面确认 `history/decisions/2026-11-20-attachment-error-surface.md`；B1 取代口径见 §与相邻场景的边界。
 
