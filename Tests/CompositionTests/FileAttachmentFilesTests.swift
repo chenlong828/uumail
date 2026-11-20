@@ -48,6 +48,29 @@ struct FileAttachmentFilesTests {
         #expect(FileManager.default.fileExists(atPath: directory.appendingPathComponent("new.bin").path))
     }
 
+    @Test("T-SCN-0020-03a: a small budget makes store evict the oldest file")
+    func storePrunesWithSmallBudget() throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        // 64 KB budget: two 40 KB stores cannot both stay, without writing a real 2 GB.
+        let files = FileAttachmentFiles(directory: directory, maxBytes: 64 * 1024)
+        let oldReference = AttachmentRef(fileReference: "old", displayName: "old.bin")
+        let newReference = AttachmentRef(fileReference: "new", displayName: "new.bin")
+
+        let oldURL = try files.store(Data(repeating: 0x61, count: 40 * 1024), for: oldReference)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSince1970: 1_000)],
+            ofItemAtPath: oldURL.path
+        )
+        let newURL = try files.store(Data(repeating: 0x62, count: 40 * 1024), for: newReference)
+
+        #expect(!FileManager.default.fileExists(atPath: oldURL.path), "the oldest file is evicted")
+        #expect(files.cachedURL(for: oldReference) == nil)
+        #expect(FileManager.default.fileExists(atPath: newURL.path), "the new file survives")
+        #expect(try Data(contentsOf: newURL) == Data(repeating: 0x62, count: 40 * 1024))
+        #expect(files.cachedURL(for: newReference) == newURL)
+    }
+
     @Test("a prune under budget removes nothing")
     func pruneNoopUnderBudget() throws {
         let directory = temporaryDirectory()

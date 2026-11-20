@@ -325,6 +325,11 @@ final class FakeAttachmentFiles: AttachmentFiles, @unchecked Sendable {
         cache[reference.fileReference] = url
     }
 
+    /// Simulates an external deletion: the cache entry is gone, so `cachedURL` misses.
+    func forget(_ reference: AttachmentRef) {
+        cache[reference.fileReference] = nil
+    }
+
     func preload(_ data: Data, for reference: AttachmentRef) throws {
         cache[reference.fileReference] = try store(data, for: reference)
     }

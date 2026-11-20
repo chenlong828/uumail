@@ -130,6 +130,82 @@ struct ReadSceneTests {
         #expect(try scene.attachments(for: ref).first?.cachePath == url.path)
     }
 
+    @Test("T-SCN-0020-03b: an externally deleted cache file is fetched and stored again")
+    func externallyDeletedAttachmentRefetches() async throws {
+        let (store, account) = try seededReadStore()
+        try store.applySyncBatch(
+            account: account,
+            folder: "13",
+            added: [
+                Message(
+                    serverID: "m1",
+                    subject: "带附件",
+                    attachments: [Attachment(displayName: "报表.pdf", fileReference: "ref-1")]
+                )
+            ],
+            changed: [],
+            removedServerIDs: [],
+            syncKey: "1"
+        )
+        let files = FakeAttachmentFiles()
+        let reference = AttachmentRef(fileReference: "ref-1", displayName: "报表.pdf")
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("uumail-scenes-deleted-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let stale = directory.appendingPathComponent("stale-ref-1-报表.pdf")
+        try Data("stale".utf8).write(to: stale)
+        files.preload(stale, for: reference)
+        try FileManager.default.removeItem(at: stale)
+        files.forget(reference)
+
+        let gateway = FakeGateway(attachmentData: Data("fresh".utf8))
+        let scene = makeScene(store: store, account: account, gateway: gateway, files: files)
+        let attachment = try #require(scene.attachments(for: ref).first)
+
+        let fresh = try await scene.downloadAttachment(attachment, in: ref)
+
+        #expect(await gateway.attachmentCalls == 1, "a missing file is a cache miss")
+        #expect(files.storeCalls == 1)
+        #expect(try Data(contentsOf: fresh) == Data("fresh".utf8))
+        #expect(fresh != stale)
+        #expect(try scene.attachments(for: ref).first?.cachePath == fresh.path)
+    }
+
+    @Test("T-SCN-0020-04a: concurrent downloads of one attachment share one fetch and URL")
+    func concurrentAttachmentDownloadsSingleFlight() async throws {
+        let (store, account) = try seededReadStore()
+        try store.applySyncBatch(
+            account: account,
+            folder: "13",
+            added: [
+                Message(
+                    serverID: "m1",
+                    subject: "带附件",
+                    attachments: [Attachment(displayName: "报表.pdf", fileReference: "ref-1")]
+                )
+            ],
+            changed: [],
+            removedServerIDs: [],
+            syncKey: "1"
+        )
+        let files = FakeAttachmentFiles()
+        let gate = AttachmentGate()
+        let gateway = FakeGateway(attachmentData: Data("payload".utf8), attachmentGate: gate)
+        let scene = makeScene(store: store, account: account, gateway: gateway, files: files)
+        let attachment = try #require(scene.attachments(for: ref).first)
+
+        async let first = scene.downloadAttachment(attachment, in: ref)
+        async let second = scene.downloadAttachment(attachment, in: ref)
+        await gate.waitUntilWaiting()
+        await gate.open()
+        let (firstURL, secondURL) = try await (first, second)
+
+        #expect(firstURL == secondURL)
+        #expect(await gateway.attachmentCalls == 1)
+        #expect(files.storeCalls == 1)
+    }
+
     @Test("folders and search read the local store only")
     func localReads() async throws {
         let (store, account) = try seededReadStore()
