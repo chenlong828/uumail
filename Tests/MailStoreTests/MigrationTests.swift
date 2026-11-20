@@ -112,6 +112,10 @@ struct MigrationTests {
 
         // The additive v11 column exists and old rows have no value yet.
         #expect(try store.attachments(account: account, folder: "13", messageID: "101").first?.contentID == nil)
+        // Message cursors rewind so the next sync re-pulls the window; folders keep their key.
+        #expect(try store.syncKey(account: account, collection: "13") == "0")
+        #expect(try store.syncKey(account: account, collection: "drafts") == "0")
+        #expect(try store.syncKey(account: account, collection: "folders") == "folders-key-9")
 
         try store.applySyncBatch(
             account: account,

@@ -61,7 +61,8 @@ component: CMP-STORE
 - `applySyncBatch` 的附件 upsert 写入 `content_id`；冲突时
   `content_id = COALESCE(excluded.content_id, attachments.content_id)`，避免只带信封的 `Change` 清空已有值。
   `attachments(...)` 的 SELECT 读回该列。
-- 旧行（v11 之前同步）保持 `NULL`，不伪造；下一次 Sync 窗口 upsert 后才有值。
+- 旧行（v11 之前同步）保持 `NULL`，不伪造；v11 同时把非 `folders` 的 `sync_key` 置 `"0"`，升级后首轮
+  按窗口重拉最近 ≤125 封并 upsert，`content_id` 随之补齐（正文与附件缓存不动，机制同 v9）。
 - 迁移测试：pre-v9 fixture 打开后旧附件读 `nil`；同一消息重新 `applySyncBatch`（带 `contentID`）后可读；
   另断言省略 `ContentId` 的 upsert 不清掉已存值。`MailStoreTests` 同步补 round-trip 用例。
 

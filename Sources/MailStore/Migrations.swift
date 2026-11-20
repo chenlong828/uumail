@@ -168,6 +168,11 @@ enum MailStoreMigrations {
         // Additive and forward-only: rows synced before v11 keep NULL until the next sync.
         migrator.registerMigration("v11_attachment_content_id") { db in
             try db.execute(sql: "ALTER TABLE attachments ADD COLUMN content_id TEXT")
+            // Old attachment rows have no ContentId, and an incremental Sync only returns
+            // items that changed. Rewind the message cursors so the next run re-pulls the
+            // recent window once and fills the column; bodies and the attachment cache are
+            // untouched (same mechanism as v9).
+            try db.execute(sql: "UPDATE sync_state SET sync_key = '0' WHERE collection <> 'folders'")
         }
     }
 }

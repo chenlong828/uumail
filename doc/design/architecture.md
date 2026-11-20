@@ -487,7 +487,7 @@ D10 的决策记录：`history/decisions/2026-11-13-fetched-body-contract.md`。
 8. **失败件保留上限（24h / 100 条，T11）无清理实现**：outbox 行会保留到成功、取消或手动重试。
 9. **`backup/pre-autosquash` 分支保留**，不删。
 10. **收件人联想为会话内投影**（REQ-0022/SCN-0017，2026-11-18 设计）：不持久、不改 schema；每文件夹最多 500 封、总计最多 5,000 封，超出部分的旧邮件联系人、已清理邮件或未同步文件夹中的联系人不出现，当前已接受；若产品要求持久联系人，另立 v11 `contacts` 需求并先解决 `MailStore` 1008/1000 的预算问题（R45）。
-11. **内联图片已持久化 `ContentId`**（REQ-0025/SCN-0019，2026-11-21，P1）：`attachments` v11 增加 `content_id` 可空列；`Attachment.contentID` 由 `EASClient` 从 `ContentId` 解析、`MailStore` 读回；`InlineImageHTML.matches` 以它优先，名字规则保留为回退。旧邮件在新 Sync 窗口 upsert 后生效；`IsInline` 仍不解析、不落库。决策 `history/decisions/2026-11-21-inline-image-content-id.md`。
+11. **内联图片已持久化 `ContentId`**（REQ-0025/SCN-0019，2026-11-21，P1）：`attachments` v11 增加 `content_id` 可空列；`Attachment.contentID` 由 `EASClient` 从 `ContentId` 解析、`MailStore` 读回；`InlineImageHTML.matches` 以它优先，名字规则保留为回退。v11 迁移把消息游标置 `"0"`，升级后首轮按窗口重拉 ≤125 封补齐旧行；`IsInline` 仍不解析、不落库。决策 `history/decisions/2026-11-21-inline-image-content-id.md`。
 12. **`Scenes` 组件超过 800 行历史预算**（2026-11-20 实测 1006；本设计 +约 170）：属既有超出，本设计登记不静默调预算；task-split 须写上限（本批新增 ≤170 行）与拆分触发（再改 `Scenes` 使其 >1200 行，或出现第二个 HTML 纯工具时，另立 P1 任务拆 `HTMLText`/`InlineImageHTML` 到纯工具组件）。
 
 ### 10.3 定级与冻结
