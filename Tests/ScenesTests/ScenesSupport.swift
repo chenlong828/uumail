@@ -303,8 +303,14 @@ final class FakeAttachmentFiles: AttachmentFiles, @unchecked Sendable {
 
     private let directory: URL
 
-    init(directory: URL = FileManager.default.temporaryDirectory.appendingPathComponent("uumail-scenes-tests")) {
+    /// Each fake owns a unique directory so parallel tests cannot overwrite one another.
+    init(directory: URL = FileManager.default.temporaryDirectory
+        .appendingPathComponent("uumail-scenes-tests-\(UUID().uuidString)")) {
         self.directory = directory
+    }
+
+    deinit {
+        try? FileManager.default.removeItem(at: directory)
     }
 
     func cachedURL(for reference: AttachmentRef) -> URL? {
