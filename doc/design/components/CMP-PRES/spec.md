@@ -27,7 +27,7 @@ component: CMP-PRES
 - 入口：`Sources/Presentation/MailboxViewModel.swift#MailboxViewModel`、`ComposeViewModel.swift#ComposeViewModel`（2026-11-18 新增收件人联想成员）、`AccountSetupViewModel.swift#AccountSetupViewModel`、`ErrorText.swift#ErrorText`、`PresentationTypes.swift#BodyPresentation`、`ThemePreference.swift#ThemePreference/#ThemePreferenceStore`、`FontSizePreference.swift#FontSizePreference/#FontSizePreferenceStore`（2026-11-17 设计新增）、`MessageHeaderPresentation.swift#MessageHeaderPresentation`（2026-11-16 新增）
 - 依赖：`Scenes`、`MailDomain`、`Observation`、`Foundation`（`UserDefaults`；不算新组件依赖）。扇出 1。
 - 冷热：热（主线程）；主题与字号偏好的读/写都是低频冷路径（启动一次 + 选择一次），不与 VM 热路径共享状态；收件人候选是撰写页主线程内存过滤，不查库、不触网。
-- 尺寸预算：单文件 ≤400 行；当前（2026-11-18 实测）`MailboxViewModel` **378**、`ComposeViewModel` **263**、`AccountSetupViewModel` 100、`ThemePreference` 50、`MailboxDwell` 59、`FontSizePreference` 约 55；`Presentation` 共 **1508** 行（2026-11-18 实测，含 Body/Delete/Compose/Dwell/Deletion 拆分）。本次设计预计 `ComposeViewModel` +80–100 行 → 约 360，仍 ≤400；不新增 `MailboxViewModel` 成员、不改 `MailboxDwell`。
+- 尺寸预算：单文件 ≤400 行；当前（2026-11-20 实测）`MailboxViewModel` **381**、`MailboxViewModel+Body` **109**、`ComposeViewModel` **263**、`AccountSetupViewModel` 100、`ThemePreference` 50、`MailboxDwell` 59、`FontSizePreference` 约 55；`Presentation` 共 **1669** 行。2026-11-20 设计新增 `MailboxViewModel` 约 +8、`MailboxViewModel+Body` 约 +30；不新增文件；单文件仍 ≤400。
 - 单独运行：`./Scripts/swiftw test --filter PresentationTests`
 - 删除测试：删掉后视图直接持有场景并写展示逻辑，测试无法覆盖状态机 → 复杂度集中，是真边界。
 
@@ -42,6 +42,8 @@ component: CMP-PRES
       public private(set) var body: BodyPresentation
       public private(set) var bodyNotice: BodyNotice?
       public private(set) var attachments: [Attachment]
+      /// 2026-11-20 新增：当前正文的渲染投影（`cid:` 已替换为 `data:`）；不持久化，回复引用仍用 `body`。
+      public private(set) var inlineImageHTML: String?
       public private(set) var sync: SyncPresentation
       public private(set) var selection: Selection
       // T-1114-10 设计新增（已实现）：
@@ -447,3 +449,23 @@ component: CMP-PRES
 - 兼容性：`ComposeViewModel` 既有 `Mode`/`Status`/`to`/`cc`/`subject`/`body`/`bodyHTML`/`send`/`saveDraft`/`hasEdits` 不变；新成员不影响既有调用；不新增依赖/文件；单文件仍 ≤400。
 - 测试：`PresentationTests/ComposeViewModelTests.suggestionsRefreshWithFragment`、`.selectionReplacesTailOnly`、`.ccIsIndependent`、`.selectionWritesPureAddressIntoDraft`、`.noPerKeystrokeDirectoryLoad`（`@testable import Presentation` 断言 `directoryLoadCount` 在多次输入后仍为 1）、`.directoryLoadsOncePerCompose`、`.middleCaretHidesSuggestions`、`.noDefaultHighlightSoReturnDoesNotCommit`、`.escapeDismissesSuggestions`、`.duplicateNotSuggested`、`.rapidTypingUsesLatestFragment`、`.emptyFragmentHasNoSuggestions`、`.blurClearsSuggestions`；既有 `sendEnqueues`/`replyAll*` 不回归。
 - 定级/确认：P1（`ComposeViewModel` public 面新增 + 依赖平台级 `MailDomain` 值类型）；默认确认（未经人工）见 `history/decisions/2026-11-18-recipient-autocomplete.md`；A5/A6 见 `history/decisions/2026-11-18-recipient-autocomplete-design-addendum.md`。
+
+
+## 设计增量：内联图片渲染投影（REQ-0025 / SCN-0019，2026-11-20）
+
+- 来源：`REQ-0025`（`feature`，`accepted`）/ 新场景 `SCN-0019`（`designed`）。完整论证、方案族与 L2 方向证据见 `task-spaces/20261120-111818/design.md`、`evidence/inline-image-current-state-design.md`。
+- 新增状态（additive public，只读）：
+  - `public private(set) var inlineImageHTML: String?`：当前正文 `cid:` 已替换为 `data:` 的渲染串（由 `ReadScene.renderInlineImages` 返回）；`nil` 表示没有可用替换（无引用/全部失败/尚未完成）。
+  - `@ObservationIgnored private var inlineImageTask: Task<Void, Never>?`：当前邮件的图片任务句柄；不进 public 契约。
+- 生命周期：
+  - `openSelected`/`.cached`/`.loaded` 设置 `body` 后启动 `startInlineImageRender(ref, html)`；`.loading`/`.failed`/临时预览不启动；无被引用的 `src` 时 scene 直接返回 `nil`，不触网。
+  - 任务：`let rendered = await read.renderInlineImages(for: ref, html: html)` → 回主线程 → stale guard：`selectedRef == ref && openedBody == ref` 且当前 `.loaded` 的 html 仍是发起时那份；`rendered != nil` 才赋 `inlineImageHTML`，否则保持 `nil`。
+  - 切换邮件/清空/重新打开：`inlineImageTask?.cancel()`，`inlineImageHTML = nil`；迟到结果不写到新邮件。
+  - 失败/空结果：保持 `inlineImageHTML = nil`，不改 `body`、不弹错、不重试循环；重开同一邮件走附件缓存。
+- 不变量：
+  - `body` 与 `quotableHTML` **始终是原始 HTML**；data URL 不进 `body`、不进回复引用、不进草稿/外发。
+  - 不改 `BodyPresentation`/`BodyNotice`/`attachments`/远程开关状态；图片任务不阻塞 `openSelected` 的正文显示。
+  - 不 import `MailStore`/`EASClient`/WebKit；图片只经 `ReadScene` 取；不在 PRES 解析 HTML/读文件。
+- 尺寸：`MailboxViewModel` 381 → 约 389；`MailboxViewModel+Body` 109 → 约 139；不新增文件；单文件 ≤400。
+- 测试：`PresentationTests/MailboxViewModelInlineImageTests` 覆盖「图片到达后 `inlineImageHTML` 含 data URL 而 `body`/`quotableHTML` 不含」「切换/清空丢弃迟到结果」「空/失败结果保持 raw HTML」「远程开关不影响内联 data URL」。
+- 定级/确认：**P2**（视图模型公开面 additive、跨组件接线；无 schema/`MailDomain` 契约/依赖/热路径失败语义变更）。默认确认（未经人工）见 `design.md` §8 D3–D6/D9。

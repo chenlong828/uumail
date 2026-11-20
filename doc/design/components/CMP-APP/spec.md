@@ -26,7 +26,7 @@ component: CMP-APP
 - 入口：`Sources/uumail/UumailApp.swift#UumailApp`、`MailboxView.swift#MailboxView`、`MailboxToolbar.swift#MailboxToolbar`（2026-11-16 设计新增）、`MessageBodyView.swift#MessageBodyView`、`ComposeView.swift#ComposeView`、`RecipientForm.swift#ComposeRecipientForm`（2026-11-18 设计新增，internal；方案设计复核从 `ComposeView.swift` 拆出，供 L2 探针单独编译）、`RecipientTextField.swift#RecipientTextField`/`#RecipientSuggestionList`（2026-11-18 设计新增，internal）、`AccountSetupView.swift#AccountSetupView`、`FontSizeStyle.swift#EnvironmentValues.fontSizePreference`/`#View.scaledFont(_:)`/`#View.scaledInheritedFont(_:)`/`#FontSizePreference.font(for:)`、`FontSizeCommands.swift#FontSizeCommands`、`EmptyState.swift#EmptyState`（2026-11-17 设计新增，internal；第 2 轮修正入口符号）
 - 依赖：`Presentation`、`Composition`（仅 `UumailApp.swift`）、SwiftUI/AppKit/WebKit。扇出 2。
 - 冷热：热（读本地库）；收件人候选只读 VM 内存状态，不触网、不查库。
-- 尺寸预算：单文件 ≤300 行；当前 `uumail` 共 **1490 行**（2026-11-18 实测：`MailboxView` 218、`MessageBodyView` 256、`UumailApp` 69、`MessageHeaderView` 34、`ComposeView` 172、`ComposeEditor` 173、`ComposeFormatBar` 75、`AccountSetupView` 66、`MailboxToolbar` 75、`MessageBodyStyle` 41、`ThemeCommands` 45、`FontSizeStyle` 106、`FontSizeCommands` 33、`EmptyState` 127）；2026-11-18 收件人联想设计预计 +280–340（`RecipientTextField.swift` 约 200、`RecipientForm.swift` 约 80、`ComposeView` 约 180）→ 约 1770，单文件仍 ≤300，不新增 target/依赖。
+- 尺寸预算：单文件 ≤300 行；当前 `uumail` 共约 **1770 行**（2026-11-18 收件人联想落地后；`MessageBodyView` 256、`MailboxView` 218、其余见文末增量）。2026-11-20 内联图片设计预计 `MessageBodyView` +3（引用渲染串）、`MailboxView` +1（透传）→ 单文件仍 ≤300，不新增 target/依赖。
 - 单独运行：`./Scripts/make-app.sh && open dist/uumail.app`（release 构建，产物不入库）；`swift run` 为无 bundle `Info.plist` 的可执行，**没有 ATS 域策略**，明文 http 图片本来即可加载（REQ-0024 L2 实测，见文末 2026-11-19 增量）
 - 删除测试：删掉则只能命令行看信，对终端用户等于没有产品。
 
@@ -267,3 +267,17 @@ component: CMP-APP
 - 验证：`SCN-0018` 的 `T-SCN-0018-01`（L2 正例，探针 `.app` 的 plist = `Resources/Info.plist` 原样副本 + 非本地主机名 + 受控 http 源；含无 ATS 负控制、`data:` 正控制）、`T-SCN-0018-02`（L1 键断言 + L2 URLSession 仍受限）、`T-SCN-0018-03`（L1 脚本接线 + dist plist/build-info 一致；L2 裸可执行正例）。回归 `SCN-0013-01..04`、`SCN-0004`/`SCN-0010`/`SCN-0012`/`SCN-0015`/`SCN-0016`。A5 真实样本冒烟为发布前/人工项（脱敏计数，不记录 URL/主机/主题）。
 - 定级与确认：**P2**（交付载体/安全策略单点、无模块/契约/schema/热路径变化）。放宽 ATS 属安全策略变更，按 `REQ-0024` D4 与 `auto-confirm` §3 已取得**人工确认**（人工确认：是否批准加 `NSAllowsArbitraryLoadsInWebContent=true`；决定 pass；意见「批准：仅加 `NSAllowsArbitraryLoadsInWebContent=true`（推荐）」；2026-11-19，`doc/history/decisions/2026-11-19-remote-image-ats.md`）。回退：删除 `NSAppTransportSecurity` 字典、`make-app.sh` 恢复内联 heredoc（或保留资源文件但去键）；无数据/契约迁移；回退后 `SCN-0018` 正例必然失败（这正是要暴露的载体缺口）。
 - 实现进度：已实现（2026-11-19，`T-1119-04`）：新增 `Resources/Info.plist`（与历史 `make-app.sh` heredoc 逐键一致，另加 `NSAppTransportSecurity/NSAllowsArbitraryLoadsInWebContent=true`，不含 `NSAllowsArbitraryLoads`/`NSExceptionDomains`），`Scripts/make-app.sh` 改为 `cp "Resources/Info.plist"`；`plutil` 键断言、`grep` 脚本接线断言、`./Scripts/swiftw build` 与架构 4 门通过。按任务卡时序，实现 commit 后运行 `./Scripts/make-app.sh` 重建 `dist`，并断言 `cmp` 字节一致、`build-info` commit = HEAD（命令输出见 `task-spaces/20261119-213812/evidence/carrier/` 与 `dev.md`）。
+
+
+## 设计增量：内联图片渲染串透传（REQ-0025 / SCN-0019，2026-11-20）
+
+- 来源：`REQ-0025`（`feature`，`accepted`）/ 新场景 `SCN-0019`（`designed`）。完整论证见 `task-spaces/20261120-111818/design.md`。
+- 修改：
+  - `Sources/uumail/MessageBodyView.swift#MessageBodyView` 新增 `let inlineImageHTML: String?`；`.loaded` 分支（`natural` 与 `capped` 两处）用 `inlineImageHTML ?? html` 交给既有 `MessageWebView`。
+  - `Sources/uumail/MailboxView.swift` 把 `viewModel.inlineImageHTML` 传入 `MessageBodyView`。
+  - `MessageWebView` / `MessageBodyStyle` **零改动**：CSP 两档值、`sanitized`、禁 JS、`.nonPersistent()`、白底、`lastRender` guard、`loadHTMLString(_, baseURL: nil)` 全部原样；`data:` 本就在两档 `img-src` 中。
+- 不变量：视图不解析 `cid:`、不取负载、不判断附件；只消费视图模型算好的渲染串。`MessageBodyView` 既有信封头/附件条/截断 banner/字号分支不变。
+- 视觉：`lastRender` 由 `"\(allowRemoteContent)|\(html)"` 自然包含渲染串；图片任务到达时重载一次；不逐图增量重载。
+- 尺寸：`MessageBodyView` 256 → 约 259；`MailboxView` 218 → 约 219；均 ≤300。
+- 测试：L2 探针编译生产 `MessageBodyView`/`MessageBodyStyle` + 生产改写函数，断言 `img.naturalWidth>0`、快照像素、0 请求；视图层不做 L1 单测。
+- 定级/确认：**P2**（跨 `Presentation`→视图接线，无 public 契约/schema/依赖变更）。默认确认（未经人工）见 `design.md` §8 D3/D8。

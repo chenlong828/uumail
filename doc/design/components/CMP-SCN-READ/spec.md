@@ -14,7 +14,7 @@ component: CMP-SCN-READ
 - 单元：组件（场景，`Sendable` 值类型）
 - 层 / 类型：L2；阅读、搜索与附件
 - 业务价值：把「读本地零网络、缺正文先占位后补拉、补拉先落库再通知、附件单飞与缓存」收在一处；视图与 VM 不再决定先读库还是先拉网。
-- 负责 X：`folders/messages/search/attachments` 本地读、`bodyIfCached`、`open` 的补拉事件流、`downloadAttachment` 的缓存/下载/落路径；T-1114-10 设计新增 `markReadLocally`/`writeBackMarkRead`/`deleteMessage` 的写编排（2026-11-14 已实现，T-1114-16）。
+- 负责 X：`folders/messages/search/attachments` 本地读、`bodyIfCached`、`open` 的补拉事件流、`downloadAttachment` 的缓存/下载/落路径；T-1114-10 设计新增 `markReadLocally`/`writeBackMarkRead`/`deleteMessage` 的写编排（2026-11-14 已实现，T-1114-16）；2026-11-20 设计新增 `renderInlineImages(for:html:)`（只取当前正文引用的内联附件，复用 `downloadAttachment`，返回 `data:` 改写后的 HTML）与 internal `InlineImageHTML`（`cid:` 提取/匹配/嗅探/改写）。
 - 不负责 Y：选择状态与格式化（`Presentation`）、协议、缓存目录细节（`AttachmentFiles`）。
 - 内部逻辑：
   - 本地读方法零网络；`bodyIfCached` 读不到返回 `nil`；纯文本正文在场景内转 HTML（`HTMLText.fromPlainText`）。
@@ -22,11 +22,11 @@ component: CMP-SCN-READ
   - `downloadAttachment`：先查缓存；未命中按 `fileReference` 单飞下载 → `AttachmentFiles.store` → `markAttachmentCached` → 返回 URL；文件先落盘再标记。
 - 拥有的数据：无持久数据；在飞请求表（`FlightBoard`）。
 - 变化轴：读取策略（远端兜底搜索、附件预览）。
-- 公开契约：`CMP-SCN-READ#folders`、`#messages`、`#search`、`#attachments`、`#bodyIfCached`、`#open`、`#downloadAttachment`；T-1114-10 设计新增 `#markReadLocally`、`#writeBackMarkRead`、`#deleteMessage`（2026-11-14 已实现）
+- 公开契约：`CMP-SCN-READ#folders`、`#messages`、`#search`、`#attachments`、`#bodyIfCached`、`#open`、`#downloadAttachment`；T-1114-10 设计新增 `#markReadLocally`、`#writeBackMarkRead`、`#deleteMessage`（2026-11-14 已实现）；2026-11-20 设计新增 `#renderInlineImages(for:html:)`（`#InlineImageHTML` 为 internal，不进入 public 契约）
 - 入口：`Sources/Scenes/ReadScene.swift#ReadScene`、`#MessageRef`、`#BodyEvent`
 - 依赖：`MailStore`、`MailDomain`（`MailGateway`、`AttachmentFiles`）、`SyncEngine`（写路径；T-1114-10 设计，2026-11-14 已实现）。扇出 3 + 端口；T-1114-10 把场景扇出预算由 1–2 上调至 1–3，仅因 `ReadScene` 新增 `SyncEngine` 直接依赖，P1 已确认（2026-11-14 决策记录；替代方案窄 `SyncWriting` 端口保持扇出 2 仍为被否决项）。
 - 冷热：读热、补拉/附件冷。
-- 尺寸预算：≤800 行；当前随 `Scenes` 共 691 行。
+- 尺寸预算：≤800 行；当前随 `Scenes` 共 1006 行（2026-11-20 `wc -l`，**既有超限**，见 `design/architecture.md` §10 与 `task-spaces/20261120-111818/design.md` §6 R4）；2026-11-20 设计新增 `InlineImageHTML.swift` 约 120 行 + `ReadScene+InlineImages.swift` 约 50 行 → 约 1176 行；本增量不新增 target/依赖，超限登记为既有欠账（`design.md` §6 R4）。
 - 单独运行：`./Scripts/swiftw test --filter ScenesTests`
 - 删除测试：删掉后视图与 VM 各自决定读库/拉网与落库 → 规则散落，是真边界。
 
@@ -124,3 +124,47 @@ component: CMP-SCN-READ
 - 并发/幂等由 `MailboxViewModel` 的 `@MainActor` 串行与 `markReadLocally` 的 0→1 返回值保证：第二次调用返回 false，不启动第二次回写。
 - 错误类型：本增量**不改变** `markReadLocally` 的 `throws` 表面（仍原样抛存储错误）；用户在 `markReadErrorText` 看到的中文由 `MailboxViewModel.performMarkRead` 归一后交给 `ErrorText`，`ReadScene` 不 import PRES、不拼文案。若后续把 `markReadLocally` 也统一 `classify` 为 `MailError`，调用方归一仍兼容，但不是本批范围。
 - 不改 `ReadScene.deleteMessage`、附件、正文打开/缓存/补拉；本增量只登记调用方变化，不新增场景断言。
+
+
+## 设计增量：内联图片渲染（REQ-0025 / SCN-0019，2026-11-20）
+
+- 来源：`REQ-0025`（`feature`，`accepted`）/ 新场景 `SCN-0019`（`designed`）。完整论证见 `task-spaces/20261120-111818/design.md`。
+- 新增 internal 纯函数（`Sources/Scenes/InlineImageHTML.swift`，只 import Foundation + `MailDomain`）：
+
+  ```swift
+  enum InlineImageHTML {
+      struct Match { let source: String; let attachment: Attachment }
+      static func sources(inHTML html: String) -> [String]
+      static func normalizedCID(_ cid: String) -> String
+      static func matches(inHTML html: String, attachments: [Attachment]) -> [Match]
+      static func dataURL(for data: Data) -> String?
+      static func replacingSources(inHTML html: String, with replacements: [String: String]) -> String
+  }
+  ```
+
+  - `sources`：只提取**独立属性名** `src`（不匹配 `data-src`/`srcset`）里以 `cid:` 开头的值（大小写无关），按出现顺序去重，返回原始拼写；不匹配正文文本/`href`/CSS。
+  - `normalizedCID`：去首尾空白 → 去 `cid:` 前缀 → 去外层 `<>` → 百分号解码 → 小写。
+  - `matches`：候选 = `normalize(displayName) == normalize(cid)`、`== normalize(cid 的 @ 前 local part)`，或 `displayName` 带已知图片扩展名时 `normalize(去扩展名的 displayName) == normalize(cid 的 @ 前 local part)`；按 `fileReference` 去重后恰好 1 个才返回，0/≥2 个跳过。不猜、不按顺序兜底、不跨邮件；非图片扩展名不做去扩展名匹配。
+  - `dataURL`：按图片魔数（PNG/JPEG/GIF/WebP/BMP/TIFF/HEIC）生成 `data:image/...;base64,...`；非图片返回 nil。
+  - `replacingSources`：一次 `NSRegularExpression` 匹配**独立属性名** `src`（不匹配 `data-src`/`srcset`；单/双/无引号），只替换值区间；没有替换项的引用保持原样；保留引号、其它属性、其余字节；相同引用多次出现都替换。
+- 新增 public 方法（`Sources/Scenes/ReadScene+InlineImages.swift`；`ReadScene` 仍是值类型，不新增依赖）：
+
+  ```swift
+  extension ReadScene {
+      /// 当前正文实际引用的内联附件 → data: 改写后的 HTML；无可用替换时返回 nil。
+      /// 冷路径；缓存命中不触网；单张失败/超限/取消 → 跳过该张，不抛错。
+      public func renderInlineImages(for ref: MessageRef, html: String) async -> String?
+  }
+  ```
+
+  - 流程：`attachments(for:)` → `InlineImageHTML.matches` → 按 `fileReference` 去重 → 顺序调用既有 `downloadAttachment(attachment, in: ref)`（同一附件单飞 + `AttachmentFiles` 缓存 + `markAttachmentCached`）→ `Data(contentsOf:)` → `InlineImageHTML.dataURL` → `replacingSources`。
+  - 同一附件被多次引用只下载/编码一次；`Task.isCancelled` 在每个附件之间检查；顺序取（不并发打网关）。
+  - 单张失败/坏数据/超过 20MB guard（实现 guard，非验收契约）→ 跳过；全部失败返回 `nil`。
+- 不变量：
+  - `open`/`bodyIfCached`/`attachments` 的语义与零网络性**不变**；本方法不被 `open` 的流等待，由 PRES 另起任务调用。
+  - 只取当前正文实际引用的附件；未引用附件不预取；不因 `cid:` 向第三方发请求。
+  - 同一 `fileReference` 与附件条点击共享 `FlightBoard`/缓存，不重复下载；失败不重试循环。
+  - 不改 `downloadAttachment` 的签名/语义；不 import `EASClient`/`EASAdapter`/`Presentation`/WebKit；`MailGateway`/`MailStore`/`MailDomain` 契约不变。
+- 尺寸：`InlineImageHTML.swift` 约 120 行、`ReadScene+InlineImages.swift` 约 50 行（均 <300）；`Scenes` 由 1006 → 约 1176（既有 800 行预算已超，登记为既有欠账）。
+- 测试：`ScenesTests/InlineImageHTMLTests`（提取/规范化/唯一匹配含去扩展名/歧义/嗅探/只改 `src` 值）与 `ScenesTests/ReadSceneInlineImageTests`（只取被引用附件、同附件多次引用只取一次、缓存命中 0 次 gateway、单张失败跳过、超限跳过、取消提前返回）；fake gateway/files 记录调用集。
+- 定级/确认：**P2**（场景公开面 additive + internal 纯函数；无 schema/`MailDomain` 契约/依赖/热路径依赖变更）。默认确认（未经人工）见 `design.md` §8 D2/D4/D7/D9。
