@@ -3,13 +3,23 @@ import MailDomain
 import Presentation
 import SwiftUI
 
+@MainActor
 struct MailboxView: View {
     @Bindable var viewModel: MailboxViewModel
+    @State private var attachmentActions: AttachmentActionModel
     @State private var compose: ComposeViewModel?
     @State private var searchText = ""
     /// The reading pane's current size; the compose sheet matches it (REQ-0021).
     @State private var readingPaneSize = CGSize(width: 720, height: 560)
     @FocusState private var messageListFocused: Bool
+
+    init(viewModel: MailboxViewModel) {
+        _viewModel = Bindable(wrappedValue: viewModel)
+        _attachmentActions = State(initialValue: AttachmentActionModel(
+            currentKey: { viewModel.selectedListKey },
+            download: { await viewModel.download($0) }
+        ))
+    }
 
     var body: some View {
         NavigationSplitView {
@@ -84,16 +94,22 @@ struct MailboxView: View {
                     attachments: viewModel.attachments,
                     allowRemoteContent: viewModel.allowsRemoteContent,
                     onRetry: { Task { await viewModel.openSelected() } },
-                    onOpenAttachment: { attachment in
-                        if let url = await viewModel.download(attachment) {
-                            NSWorkspace.shared.open(url)
-                        }
-                    }
+                    attachmentErrorText: attachmentActions.saveErrorText
+                        ?? viewModel.attachmentErrorText,
+                    savingAttachmentID: attachmentActions.visibleSavingID,
+                    onOpenAttachment: { await attachmentActions.open($0) },
+                    onSaveAttachment: { attachment in attachmentActions.startSave(attachment) },
+                    onCancelSave: { attachmentActions.cancelSave() }
                 )
                 .onAppear { readingPaneSize = proxy.size }
                 .onChange(of: proxy.size) { _, size in readingPaneSize = size }
             }
             .navigationTitle("阅读")
+        }
+        // Covers internal selection changes (refresh auto-select, delete, clear); the list
+        // binding setter covers the user click synchronously. Both are idempotent.
+        .onChange(of: viewModel.selectedListKey) { _, _ in
+            attachmentActions.syncSelection()
         }
     }
 
@@ -115,6 +131,7 @@ struct MailboxView: View {
             get: { viewModel.selectedListKey },
             set: { listKey in
                 if let listKey { viewModel.select(listKey: listKey) }
+                attachmentActions.syncSelection()
             }
         )
     }

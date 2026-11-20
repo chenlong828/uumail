@@ -15,7 +15,13 @@ struct MessageBodyView: View {
     /// (REQ-0018 / R33). It only forwards the value to the web view's CSP.
     let allowRemoteContent: Bool
     let onRetry: () -> Void
+    /// `saveErrorText ?? attachmentErrorText` from the mailbox; nil means no banner.
+    let attachmentErrorText: String?
+    /// Set only while the panel/copy stage runs for that attachment.
+    let savingAttachmentID: String?
     let onOpenAttachment: (Attachment) async -> Void
+    let onSaveAttachment: (Attachment) async -> Void
+    let onCancelSave: () -> Void
 
     @Environment(\.fontSizePreference) private var fontSize
 
@@ -122,26 +128,15 @@ struct MessageBodyView: View {
         }
     }
 
-    @ViewBuilder
     private var attachmentStrip: some View {
-        if !attachments.isEmpty {
-            HStack(spacing: 8) {
-                ForEach(attachments) { attachment in
-                    Button {
-                        Task { await onOpenAttachment(attachment) }
-                    } label: {
-                        Label(attachment.displayName, systemImage: "paperclip")
-                            .scaledInheritedFont(.body)
-                            .lineLimit(1)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                }
-                Spacer()
-            }
-            .padding(.horizontal, 12)
-            .padding(.top, 6)
-        }
+        AttachmentStripView(
+            attachments: attachments,
+            errorText: attachmentErrorText,
+            savingID: savingAttachmentID,
+            onOpen: onOpenAttachment,
+            onSave: onSaveAttachment,
+            onCancelSave: onCancelSave
+        )
     }
 
     @ViewBuilder
