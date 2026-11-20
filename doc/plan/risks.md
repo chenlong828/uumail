@@ -2,7 +2,7 @@
 layer: plan
 module: global
 status: draft
-updated: 2026-11-19
+updated: 2026-11-20
 ---
 
 # 风险
@@ -64,6 +64,8 @@ updated: 2026-11-19
 | R51 | 交付载体 plist 丢失 ATS 键（`Resources/Info.plist` 被删/改回内联 heredoc/构建时未装机） | `plutil -extract NSAppTransportSecurity.NSAllowsArbitraryLoadsInWebContent` 非 `true`；`cmp dist/uumail.app/Contents/Info.plist Resources/Info.plist` 非 0；远程图片重新空白 | 放行开关仍工作但图片始终空白，功能静默失效，用户误以为开关坏了 | plist 单一来源 + `Scripts/make-app.sh` 只 `cp`（缺文件即失败，不静默生成）；`T-SCN-0018-02/03` 的 `plutil`/`cmp`/脚本接线断言；里程碑重建后核对 `dist/build-info.txt` 与构建时 HEAD；发布前按 `SCN-0018` 复跑 L2 | `design/components/CMP-APP/spec.md` 设计增量、`SCN-0018`、`Scripts/make-app.sh`、`Resources/Info.plist` |
 | R52 | 测试误用 `127.0.0.1`/`localhost` 判 ATS，或省略无 ATS 负控制 | 本地主机名/IP 字面量被 ATS 豁免，放行档「命中」；或负控制在无 ATS bundle 下也命中 | ATS 根因与修复被假绿掩盖，或把主机名/载体配置错误判成通过 | 探针图片 URL 用解析到受控服务的非本地主机名（`127.0.0.1.nip.io` 一类）；无 ATS 负控制必须 0 命中；`data:` 正控制必须渲染；离线无法解析时登记跳过，不退回 IP 字面量 | `SCN-0018` §测试、`test.md`/`test2.md`、`evidence/carrier-verify/`、`history/decisions/2026-11-19-remote-image-ats.md` |
 | R53 | 载体契约没有 CI 回归守护 | `uumail` 是可执行 target，`Package.swift` 无对应测试 target；探针只在 task-space，不入库；ATS 键/`cp` 接线回归靠里程碑手动断言 | 后续重构 `make-app.sh` 或 plist 时可能静默回退，直到用户再次遇到空白才发现 | 不新增 target/依赖（设计边界）；在 `SCN-0018` 与 `CMP-APP` 增量保留 L1 静态断言命令；里程碑/发布前按 `SCN-0018` 复跑；若将来改 `ComposeEditor` 的 WebView 配置，另拆探针任务，不静默扩 | `SCN-0018`、`task-spaces/20261119-213812/review4.md` §7 N6、`plan/roadmap.md` §W-M3-11 |
+| R54 | 像素/解压炸弹 guard 未实现（设计 `design2.md` §6 R11；项目 R11 已被敏感内容占用，故落 R54） | `InlineImageHTML` 只按 20MB 字节 guard 截断，且在 `Data(contentsOf:)` 之后；超像素/畸形大图仍可能交给 WebView | 极端畸形图可能卡顿/渲染失败；不改变正文文字可读性 | `T-SCN-0019-04` 只断言「有文字时正文可读」；后续 P2/独立任务用纯 Foundation 头解析补像素上限，若引入 ImageIO 先过架构门；不写成验收契约 | `task-spaces/20261120-111818/design2.md` §2 N6/§6 R11、`SCN-0019`、`task-spaces/20261120-111818/review5.md` §4 |
+| R55 | 注释/其它属性值内嵌套 `<img src=…>` 仍会被识别（`review4.md` §6 N1） | `InlineImageHTML` 的标签扫描不区分 HTML 注释/其它标签属性值内的字面量；`sources` 会收集、`replacingSources` 会改写 | 不改变可见正文、不产生第三方请求；注释内 `cid:` 若匹配附件会多一次本地 `downloadAttachment` | 后续 P3 把 `imgTagPattern` 限制在标签上下文（跳过注释/其它标签属性值）或换最小 HTML 分词器，补对应 L1；当前不写成已修复 | `task-spaces/20261120-111818/evidence/review4/edge-probe.txt`、`review4.md` §6 N1、`review5.md` §4 |
 
 2026-11-17 设计处置（run `20261117-071134`，`REQ-0020`/`SCN-0015`；**未关闭**，实现/验证时按场景卡复核；第 2 轮按评审 fail 修订）：
 
@@ -77,8 +79,8 @@ updated: 2026-11-19
 ## 风险等级口径
 
 - 高：直接使项目不可用或造成合规事故（R1、R2、R11）。
-- 中：影响关键旅程但可降级（R3、R4、R5、R6、R8、R12、R13、R18、R19、R21、R22、R23、R24、R27、R28、R29、R31、R32、R33、R34、R35、R36、R37、R38、R39、R40、R41、R42、R43、R44、R45、R47、R48、R49、R50、R51、R52、R53）。
-- 低：局部体验或可回滚（R7、R9、R10、R15、R25、R26、R30、R46）。
+- 中：影响关键旅程但可降级（R3、R4、R5、R6、R8、R12、R13、R18、R19、R21、R22、R23、R24、R27、R28、R29、R31、R32、R33、R34、R35、R36、R37、R38、R39、R40、R41、R42、R43、R44、R45、R47、R48、R49、R50、R51、R52、R53、R54）。
+- 低：局部体验或可回滚（R7、R9、R10、R15、R25、R26、R30、R46、R55）。
 
 R14 已于 2026-11-14 关闭（T-1114-02：网关 Sync 信封实测返回 `Cc`）。R16/R17/R20 已于 2026-11-14 关闭（真机写命令、预算拆分、写响应语义）。R27–R31 为 2026-11-16 阅读页信封头新增，**未关闭**；落点与缓解见各行。
 
@@ -93,3 +95,5 @@ R45–R49 为 2026-11-18 需求分析/设计新增（`REQ-0022` 收件人联想�
 R50 为 2026-11-19 设计新增（`REQ-0023` 候选行显示名宽度），**未关闭**；第 2 轮改为「邮箱 `@` 两侧可见的最小保底 + 地址显式缩短」，见 `task-spaces/20261119-164437/design2.md` §4。设计期 L2 探针已证：当前行宽=浮层宽（409/629）、200 兜底未命中、45% 上限是唯一约束；设计候选在 100%/145%/**175%**×480 把 15 字名看全（14.9 字）、225%×480 为约 10.7 字（授权降级）；145%/175%/225%×480 的邮箱显示串均含 `@` 两侧且放得下（`hr-…@corp.t` / `h…@c` / `h…@c`），完整地址保留在行上（生产源 + 设计 diff 副本，`evidence/name-width-probe/round2/`，250 CHECK/0 FAIL）；实现期必须换生产源复跑 `T-SCN-0017-03`。
 
 R51–R53 为 2026-11-19 W-M3-11（`REQ-0024`/`SCN-0018` 交付载体 ATS 例外）收尾同步新增，**未关闭**；R51 的载体断言与 R52 的负控制/正控制已在 `T-SCN-0018-02/03` 与 `T-SCN-0018-01` 落地，证据见 `task-spaces/20261119-213812/`；R53 的「无 CI 守护」是已知流程残余，若需 CI 化另拆任务，不在本批静默扩 target。
+
+R54–R55 为 2026-11-20 W-M3-12（`REQ-0025`/`SCN-0019`）收尾同步新增，**未关闭**；R54 对应设计 `design2.md` §6 R11（项目 R11 已被敏感内容占用，故用新号），R55 对应 `review4.md` §6 N1；均只登记，不写成已修复/已处理。A5 真实样本冒烟仍为发布前/人工项（`roadmap.md` §W-M3-12）；`SCN-0018` ATS carrier 未重建仍是已登记残余。

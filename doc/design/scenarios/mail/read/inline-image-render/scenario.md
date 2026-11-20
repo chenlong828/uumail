@@ -1,7 +1,7 @@
 ---
 layer: design
 module: mail
-status: designed
+status: verified
 updated: 2026-11-20
 flow: mail/read
 scenario: SCN-0019
@@ -77,9 +77,10 @@ scenario: SCN-0019
 
 ## 状态
 
-`designed`（2026-11-20 设计落卡；2026-11-20 第 2 轮按评审 B1/B2 修订；四元素齐，`T-SCN-0019-01..04`
-有可执行 ID/层级）。`REQ-0025` 保持 `accepted`；实现/验证通过后由收尾按评审清单转 `verified`，`REQ-0025`
-才可 `delivered`。定级 **P2**；匹配族/载体族选择见 `task-spaces/20261120-111818/design.md` §3。
+`verified`（2026-11-20 实现并验证：`T-SCN-0019-01..04` L1+L2 全 PASS，第 5 轮实现鉴定 **pass**，
+见 `task-spaces/20261120-111818/review5.md` §7；2026-11-20 设计落卡；第 2 轮按评审 B1/B2 修订；
+四元素齐，`T-SCN-0019-01..04` 有可执行 ID/层级）。`REQ-0025` 已随本卡转 `delivered`（2026-11-20 收尾，
+按评审清单）。定级 **P2**；匹配族/载体族选择见 `task-spaces/20261120-111818/design.md` §3。
 公开面 `ReadScene.renderInlineImages(for:html:)` 与 `MailboxViewModel.inlineImageHTML` 为 additive public，
 已**人工确认 pass（选项 A，2026-11-20）**，记录见
 `doc/history/decisions/2026-11-20-inline-image-render-public-surface.md`；D1–D8 仍为默认确认（未经人工），
