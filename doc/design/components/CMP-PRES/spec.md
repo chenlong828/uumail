@@ -475,7 +475,7 @@ component: CMP-PRES
 
 ## 设计增量：附件下载失败文案（REQ-0026 / SCN-0020，2026-11-20，P2 公开面已人工确认 A）
 
-- 来源：`REQ-0026`（`feature`，`accepted`）/ 新场景 `SCN-0020`（`mail/read/attachment-access`，`designed`）。完整论证与验证计划见 `task-spaces/20261120-160446/design2.md`（第 2 轮，按评审 B1–B4 修订）；公开面确认见 `doc/history/decisions/2026-11-20-attachment-error-surface.md`。
+- 来源：`REQ-0026`（`feature`，`accepted`）/ 新场景 `SCN-0020`（`mail/read/attachment-access`，`designed`）。完整论证与验证计划见 `task-spaces/20261120-160446/design3.md`（第 3 轮，按评审 `review2` B1–B3 修订；第 2 轮见 `design2.md`）；公开面确认见 `doc/history/decisions/2026-11-20-attachment-error-surface.md`。
 - 现状归因：`download(_:)` 用 `try? await read.downloadAttachment(...)` 吞错、只返回 `URL?`；视图只能判断 nil，下载失败对用户静默。
 - 新增状态（**additive public，只读**；人工确认 A）：
   - `public internal(set) var attachmentErrorText: String?`：最近一次附件下载失败的中文文案；`public` 只读，`internal` setter 供同 target 的 `MailboxViewModel+Attachments.swift` 写入。与 `body`/`inlineImageHTML` 一样是「公开读、模块内写」。
@@ -486,8 +486,9 @@ component: CMP-PRES
     - 成功（缓存命中或下载完成）→ 清空 `attachmentErrorText`，返回 URL；
     - 失败 → 把 `MailError`（非 `MailError` 归一为 `.storage(reason: String(describing:))`）经 `ErrorText.text(for:)` 写入，返回 nil；不吞错静默、不打开。
   - 清空点：`selectedListKey.didSet`（现有每邮件状态重置点，与 `allowsRemoteContent`/`markReadErrorText` 同处）与 `clearSelection()`；同一 listKey 的 reload 不清空。成功下载也清空；下一次失败覆盖。
-  - **迟到结果 guard（B3）**：`selectedListKey.didSet` 在选择真正变化时递增 internal `selectionGeneration: UInt64`；`download` 开始时捕获 `generation` 与发起 key，`await` 回来后仅当二者仍匹配才写 `attachmentErrorText`/清空/返回 URL；不匹配则返回 nil 且不写、不清、不打开。A→B→A 也按代际丢弃旧结果（同 key reload 不递增，不误丢）。
-  - 下载仍只经 `read.downloadAttachment`；PRES 不 import AppKit/WebKit、不读写文件、不碰缓存目录。
+  - **迟到结果 guard（B3）**：`selectedListKey.didSet` 在选择真正变化时递增 internal `selectionGeneration: UInt64`；`download` 开始时捕获 `generation` 与发起 key，`await` 回来后仅当二者仍匹配才写 `attachmentErrorText`/清空/返回 URL；不匹配则返回 nil 且不写、不清、不打开。A→B→A 也按代际丢弃旧结果（同 key reload 不递增，不误丢）。**APP 不读该成员**：APP 的打开/另存为动作代际在 `uumail` 内自建（`AttachmentActionModel`，见 `CMP-APP`），不新增/不改本 public 面。
+  - **取消（B3）**：`download` 在入口与 `await` 回来后检查 `Task.isCancelled`；调用方任务已取消 → 返回 nil，**不写、不清** `attachmentErrorText`；同时 `catch is CancellationError` 返回 nil（防御）。`ReadScene.classify` 目前会把 `CancellationError` 归一为 `.storage`，本批不改 `Scenes`；用户取消路径由调用方取消覆盖（唯一取消来源是 APP 的另存为任务）。
+  - 下载仍只经 `read.downloadAttachment`；PRES 不 import AppKit/WebKit、不读写文件、不碰缓存目录；**N3 缺文件重下不在 PRES**（由 APP 在 origin 仍当前时重下一次）。
 - 尺寸：`MailboxViewModel.swift` 当前 385 行，新增 `attachmentErrorText`、`selectionGeneration` 与 1 处递增/清空 ≈ 390；`download` 移到 **`Sources/Presentation/MailboxViewModel+Attachments.swift`**（新，≤80 行），主文件仍 ≤400。不新增 target/依赖；`Package.swift`、`MailDomain`/`Scenes` 契约不动。
 - 测试（L1，`PresentationTests/MailboxViewModelAttachmentTests`）：
   - 已缓存 → 0 网关、返回 URL、文案 nil；
@@ -498,6 +499,7 @@ component: CMP-PRES
   - **迟到失败**：A 下载在飞 → 切 B → A 失败，`attachmentErrorText` 不写、B 的文案不被覆盖（`T-SCN-0020-01f`）；
   - **迟到成功**：A 下载在飞 → 切 B（B 有错误文案）→ A 成功，B 的文案不被清空、A 不被打开（`T-SCN-0020-01f/09`）；
   - **A→B→A**：代际变化，旧 A 结果仍丢弃；当前选中的 A 新请求正常写；
+  - **下载阶段调用方取消（B3）**：`Task` 取消后 `download` 返回 nil、`attachmentErrorText` 不写/不清；未取消的当前选中失败仍正常写（`T-SCN-0020-01g`）；
   - 并发两次 `download` → 共享一次下载（既有 `FlightBoard`），返回同一 URL。
-- 定级与确认：**P2**（跨 `Presentation`/`uumail`；一个 additive public 只读成员 + APP 层内部文件）。`attachmentErrorText` 已**人工确认 A（2026-11-20）**：批准只读属性，`download` 签名不变；`selectionGeneration` 为 internal、不新增 public；D1–D15 仍为默认确认（未经人工）。回退：删除属性/代际与 `download` 内写入/清空，APP 层改回通用失败文案；无数据/契约迁移。
-- 实现进度：未实现（设计落卡 2026-11-20；第 2 轮按评审 B3 增加迟到 guard 与 L1 用例）。
+- 定级与确认：**P2**（跨 `Presentation`/`uumail`；一个 additive public 只读成员 + APP 层内部文件）。`attachmentErrorText` 已**人工确认 A（2026-11-20）**：批准只读属性，`download` 签名不变；`selectionGeneration` 为 internal、不新增 public；D1–D18 仍为默认确认（未经人工，D16–D18 见 `design3.md` §8）。回退：删除属性/代际与 `download` 内写入/清空，APP 层改回通用失败文案；无数据/契约迁移。
+- 实现进度：未实现（设计落卡 2026-11-20；第 2 轮按评审 B3 增加迟到 guard 与 L1 用例；**第 3 轮按 `review2` B3 增加取消分支与 `01g`，APP 不引用 `selectionGeneration`**）。

@@ -63,7 +63,17 @@ updated: 2026-11-20
     `SCN-0005` 的下载原语/缓存与 25MB/续传/名称回退欠账不变。这是对已 `accepted` 本卡与既有 `verified`
     卡边界引用的文档一致性修复，不缩减/新增已验证断言。**默认确认（未经人工）**，依据本卡 D2/A7 已
     `accepted` + 方案评审 B1；回退：若发起人认为旧点击口径必须保留，重开本卡 D2/A7，不在设计层保留两套口径。
-  - 设计依据：`task-spaces/20261120-160446/design2.md`（第 2 轮）；方向性探针 `evidence/attachment-interaction-probe/`。
+  - **第 3 轮裁定（2026-11-20，设计节点，按评审 `review2` B1–B3）**：
+    - **B1**：APP 的打开/另存为动作代际由 APP 内部 `AttachmentActionModel.epoch` 承担（`selectedListKey`
+      真正变化时递增，覆盖 A→B→A）；APP **不读** `Presentation` internal `selectionGeneration`，
+      不新增 public 面；`download` 签名与 G1 公开面不变。
+    - **B1-b**：源在面板/复制期间被 prune 时**不再自动重下**，`saveErrorText` = 「附件缓存已失效，
+      请重试另存为」，再次另存为即重新下载；避免跨代际按当前选中重下与保存重试错误混入下载文案。
+    - **B3**：取消入口收窄到面板/复制阶段（下载阶段不显示「取消」）；下载阶段任务被取消（窗口关闭/
+      上层取消）→ 不弹面板、不复制、不写错误；已在飞的共享下载不中止（`FlightBoard` 不随调用方取消）。
+    - 以上均为失败路径/实现契约收窄，不改本卡 A1–A8 的用户可见结果与约束；标**默认确认（未经人工）**，
+      依据 `review2` B1–B3 + `FlightBoard` 现状；回退见 `task-spaces/20261120-160446/design3.md` §10。
+  - 设计依据：`task-spaces/20261120-160446/design3.md`（第 3 轮；第 2 轮见 `design2.md`）；方向性探针 `evidence/attachment-interaction-probe/`、`evidence/attachment-save-probe/`。
 - **状态**：`accepted`（2026-11-20 需求分析落卡；设计/实现/验证/收尾按 `af-flow-rule` 推进；本节点不改任何状态位）。
 - **文档同步**：`doc/README.md` 的 REQ 计数与导航由收尾同步；`roadmap.md` 由设计/拆分落表；本节点不改。
-- **验收归属**：`SCN-0020` 3 正 1 反（`T-SCN-0020-01..04`）通过 + `T-SCN-0020-05..09`（A1/A8 回归、生产接线、异步复制、迟到结果）通过 + `SCN-0019` 回归 + 上述约束逐条无违反。`SCN-0005` 保持 `designed`，本卡不替其补欠账。
+- **验收归属**：`SCN-0020` 3 正 1 反（`T-SCN-0020-01..04`）通过 + `T-SCN-0020-05..10`（A1/A8 回归、生产接线、异步复制、迟到结果、APP 动作代际/取消）通过 + `SCN-0019` 回归 + 上述约束逐条无违反。`SCN-0005` 保持 `designed`，本卡不替其补欠账。
