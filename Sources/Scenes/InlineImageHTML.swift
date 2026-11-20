@@ -11,26 +11,25 @@ enum InlineImageHTML {
     private static let imageExtensions: Set<String> = [
         "png", "jpg", "jpeg", "gif", "webp", "bmp", "tif", "tiff", "heic",
     ]
-    /// Independent `src` attribute with a single-, double- or unquoted value. Requiring
-    /// whitespace before the name excludes `data-src`/`xsrc` and body text; `srcset` cannot
-    /// match because the `=` must follow `src` directly.
-    private static let sourcePattern = try? NSRegularExpression(
-        pattern: "(?i)(?<=\\s)src\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s\"'=<>`]+))"
+    /// `<img>` start tag, quote-aware through the closing `>`; attributes of any other tag or
+    /// text outside a tag are never candidates.
+    private static let imgTagPattern = try? NSRegularExpression(
+        pattern: "(?i)<img(?=[\\s/>])(?:\"[^\"]*\"|'[^']*'|[^'\">])*>"
     )
-
+    /// Independent `src` attribute with a single-, double- or unquoted value. Quoted values
+    /// are masked before matching, so ` src=` inside another attribute value is not an
+    /// attribute; the lookahead keeps a self-closing `/` out of an unquoted value.
+    private static let sourcePattern = try? NSRegularExpression(
+        pattern: "(?i)(?<![\\w:-])src\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s\"'=<>`]+?))(?=\\s|/?>)"
+    )
     /// Original spellings of the distinct `cid:` values in document order.
     static func sources(inHTML html: String) -> [String] {
-        guard let pattern = sourcePattern else { return [] }
-        let ns = html as NSString
         var seen = Set<String>()
-        var out: [String] = []
-        for match in pattern.matches(in: html, range: NSRange(location: 0, length: ns.length)) {
-            guard let range = valueRange(match, in: ns) else { continue }
-            let value = ns.substring(with: range).trimmingCharacters(in: .whitespacesAndNewlines)
-            guard value.lowercased().hasPrefix("cid:"), seen.insert(value).inserted else { continue }
-            out.append(value)
+        return sourceRanges(inHTML: html).compactMap { source in
+            let value = source.value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard value.lowercased().hasPrefix("cid:"), seen.insert(value).inserted else { return nil }
+            return value
         }
-        return out
     }
     /// `cid:` prefix, brackets, percent escapes and case removed. The bracket pass runs
     /// again after decoding so `cid:%3Clogo%3E` normalizes like `cid:<logo>`.
@@ -62,24 +61,42 @@ enum InlineImageHTML {
         guard let mime = imageMIME(for: data) else { return nil }
         return "data:\(mime);base64,\(data.base64EncodedString())"
     }
-
     /// Replaces only the value ranges whose exact spelling is in `replacements`; absent keys
     /// and every other byte of the document stay untouched.
     static func replacingSources(inHTML html: String, with replacements: [String: String]) -> String {
-        guard !replacements.isEmpty, let pattern = sourcePattern else { return html }
-        let ns = html as NSString
-        var edits: [(NSRange, String)] = []
-        for match in pattern.matches(in: html, range: NSRange(location: 0, length: ns.length)) {
-            guard let range = valueRange(match, in: ns),
-                  let replacement = replacements[ns.substring(with: range)] else { continue }
-            edits.append((range, replacement))
+        guard !replacements.isEmpty else { return html }
+        let edits = sourceRanges(inHTML: html).compactMap { source -> (NSRange, String)? in
+            guard let replacement = replacements[source.value.trimmingCharacters(in: .whitespacesAndNewlines)]
+            else { return nil }
+            return (source.range, replacement)
         }
         guard !edits.isEmpty else { return html }
         let result = NSMutableString(string: html)
         for (range, replacement) in edits.reversed() { result.replaceCharacters(in: range, with: replacement) }
         return result as String
     }
-
+    /// Value ranges of `src` attributes on `<img>` tags, in document order.
+    private static func sourceRanges(inHTML html: String) -> [(range: NSRange, value: String)] {
+        guard let tags = imgTagPattern, let pattern = sourcePattern else { return [] }
+        let ns = html as NSString
+        var out: [(range: NSRange, value: String)] = []
+        for tag in tags.matches(in: html, range: NSRange(location: 0, length: ns.length)) {
+            var units = Array(ns.substring(with: tag.range).utf16)
+            var quote: UInt16 = 0
+            for index in units.indices.dropFirst().dropLast() {
+                if quote == 0, units[index] == 34 || units[index] == 39 { quote = units[index] }
+                else if quote != 0, units[index] == quote { quote = 0 }
+                else if quote != 0 { units[index] = 32 }
+            }
+            let masked = String(utf16CodeUnits: units, count: units.count)
+            for match in pattern.matches(in: masked, range: NSRange(location: 0, length: units.count)) {
+                guard let local = valueRange(match, in: masked as NSString) else { continue }
+                let range = NSRange(location: tag.range.location + local.location, length: local.length)
+                out.append((range, ns.substring(with: range)))
+            }
+        }
+        return out
+    }
     private static func valueRange(_ match: NSTextCheckingResult, in ns: NSString) -> NSRange? {
         for group in 1...3 where match.range(at: group).location != NSNotFound {
             return match.range(at: group)

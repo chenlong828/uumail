@@ -27,6 +27,70 @@ struct InlineImageHTMLTests {
         ])
     }
 
+    @Test("body text, other attribute values and non-img tags are never sources")
+    func sourcesIgnoreTextAttributesAndOtherTags() {
+        let html = """
+        <p>hello src="cid:text@test" world</p>
+        <p title=" src='cid:title@test'">title</p>
+        <img alt=" src='cid:alt@test'">
+        <video src="cid:video@test"></video>
+        <image src="cid:svg@test"></image>
+        <IMG SRC="CID:PHOTO@TEST">
+        <img alt="a > b" src="cid:logo@test">
+        """
+
+        #expect(InlineImageHTML.sources(inHTML: html) == ["CID:PHOTO@TEST", "cid:logo@test"])
+    }
+
+    @Test("rewriting leaves body text, other attributes and non-img tags untouched")
+    func replacingIgnoresTextAttributesAndOtherTags() {
+        let html = """
+        <p>hello src="cid:logo@test" world</p>
+        <p title=" src='cid:logo@test'">title</p>
+        <img alt=" src='cid:logo@test'">
+        <video src="cid:logo@test"></video>
+        <image src="cid:logo@test"></image>
+        <img alt="a > b" src="cid:logo@test" alt2="logo">
+        """
+        let replaced = InlineImageHTML.replacingSources(
+            inHTML: html,
+            with: ["cid:logo@test": "data:image/png;base64,AAA"]
+        )
+
+        #expect(replaced == """
+        <p>hello src="cid:logo@test" world</p>
+        <p title=" src='cid:logo@test'">title</p>
+        <img alt=" src='cid:logo@test'">
+        <video src="cid:logo@test"></video>
+        <image src="cid:logo@test"></image>
+        <img alt="a > b" src="data:image/png;base64,AAA" alt2="logo">
+        """)
+    }
+
+    @Test("an unquoted self-closing src keeps its slash outside the replaced value")
+    func selfClosingUnquotedSourceKeepsSlash() {
+        let html = "<img src=cid:logo@test/>"
+
+        #expect(InlineImageHTML.sources(inHTML: html) == ["cid:logo@test"])
+        #expect(
+            InlineImageHTML.replacingSources(
+                inHTML: html, with: ["cid:logo@test": "data:image/png;base64,AAA"]
+            ) == "<img src=data:image/png;base64,AAA/>"
+        )
+    }
+
+    @Test("quoted src padding is trimmed for the key while the value is replaced")
+    func quotedSourcePaddingUsesTrimmedKey() {
+        let html = "<img src=\" cid:logo@test \">"
+
+        #expect(InlineImageHTML.sources(inHTML: html) == ["cid:logo@test"])
+        #expect(
+            InlineImageHTML.replacingSources(
+                inHTML: html, with: ["cid:logo@test": "data:image/png;base64,AAA"]
+            ) == "<img src=\"data:image/png;base64,AAA\">"
+        )
+    }
+
     @Test("normalization strips the prefix and brackets, decodes and lowercases")
     func normalizationHandlesCasePercentAndBrackets() {
         #expect(InlineImageHTML.normalizedCID("  CID:<Logo@Test>  ") == "logo@test")
