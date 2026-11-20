@@ -55,6 +55,32 @@ actor RecordingWriteGateway: MailWriteGateway {
     }
 }
 
+/// Lets a test hold one attachment fetch open, then release it after cancelling.
+actor AttachmentGate {
+    private var isOpen = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private(set) var waitCount = 0
+
+    func wait() async {
+        waitCount += 1
+        if isOpen { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func open() {
+        isOpen = true
+        for waiter in waiters { waiter.resume() }
+        waiters.removeAll()
+    }
+
+    func waitUntilWaiting() async {
+        for _ in 0..<10_000 {
+            if waitCount > 0 { return }
+            await Task.yield()
+        }
+    }
+}
+
 /// Configurable gateway fake shared by the scene tests.
 actor FakeGateway: MailGateway {
     enum Call: Equatable {
@@ -77,7 +103,10 @@ actor FakeGateway: MailGateway {
     private var provisionError: MailError?
     private let folderError: MailError?
     private let attachmentData: Data?
+    private let attachmentPayloads: [String: Data]
+    private let attachmentFailures: [String: MailError]
     private let attachmentError: MailError?
+    private let attachmentGate: AttachmentGate?
     private let provisionDelay: Duration?
 
     init(
@@ -89,7 +118,10 @@ actor FakeGateway: MailGateway {
         provisionError: MailError? = nil,
         folderError: MailError? = nil,
         attachmentData: Data? = nil,
+        attachmentPayloads: [String: Data] = [:],
+        attachmentFailures: [String: MailError] = [:],
         attachmentError: MailError? = nil,
+        attachmentGate: AttachmentGate? = nil,
         provisionDelay: Duration? = nil
     ) {
         self.foldersListing = folders
@@ -100,7 +132,10 @@ actor FakeGateway: MailGateway {
         self.provisionError = provisionError
         self.folderError = folderError
         self.attachmentData = attachmentData
+        self.attachmentPayloads = attachmentPayloads
+        self.attachmentFailures = attachmentFailures
         self.attachmentError = attachmentError
+        self.attachmentGate = attachmentGate
         self.provisionDelay = provisionDelay
     }
 
@@ -144,8 +179,10 @@ actor FakeGateway: MailGateway {
 
     func fetchAttachment(fileReference: String) async throws -> Data {
         calls.append(.attachment(fileReference: fileReference))
+        if let attachmentGate { await attachmentGate.wait() }
+        if let failure = attachmentFailures[fileReference] { throw failure }
         if let attachmentError { throw attachmentError }
-        return attachmentData ?? Data()
+        return attachmentPayloads[fileReference] ?? attachmentData ?? Data()
     }
 
     func send(mime: Data, clientID: String) async throws {
@@ -277,13 +314,19 @@ final class FakeAttachmentFiles: AttachmentFiles, @unchecked Sendable {
     func store(_ data: Data, for reference: AttachmentRef) throws -> URL {
         storeCalls += 1
         if let storeError { throw storeError }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent("\(reference.fileReference)-\(reference.displayName)")
+        try data.write(to: url, options: .atomic)
         cache[reference.fileReference] = url
         return url
     }
 
     func preload(_ url: URL, for reference: AttachmentRef) {
         cache[reference.fileReference] = url
+    }
+
+    func preload(_ data: Data, for reference: AttachmentRef) throws {
+        cache[reference.fileReference] = try store(data, for: reference)
     }
 }
 
