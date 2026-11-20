@@ -157,14 +157,24 @@ final class PresentationFakeNotifier: Notifier, @unchecked Sendable {
 
 final class PresentationFakeAttachmentFiles: AttachmentFiles, @unchecked Sendable {
     nonisolated(unsafe) private(set) var cache: [String: URL] = [:]
+    nonisolated(unsafe) private(set) var storeCalls = 0
+    nonisolated(unsafe) var storeError: Error?
+
+    /// Each fake owns a private directory so parallel tests never see another test's file.
+    private let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("uumail-presentation-tests-\(UUID().uuidString)", isDirectory: true)
+
+    deinit {
+        try? FileManager.default.removeItem(at: directory)
+    }
 
     func cachedURL(for reference: AttachmentRef) -> URL? {
         cache[reference.fileReference]
     }
 
     func store(_ data: Data, for reference: AttachmentRef) throws -> URL {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("uumail-presentation-tests")
+        storeCalls += 1
+        if let storeError { throw storeError }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory
             .appendingPathComponent("\(reference.fileReference)-\(reference.displayName)")
@@ -245,6 +255,7 @@ struct MailboxFixture {
     let gateway: PresentationFakeGateway
     let notifier: PresentationFakeNotifier
     let clock: PresentationFixedClock
+    let files: PresentationFakeAttachmentFiles
     let viewModel: MailboxViewModel
     let composeScene: ComposeScene
 }
@@ -257,6 +268,7 @@ func makeMailboxFixture(
     notifier: PresentationFakeNotifier = PresentationFakeNotifier(),
     clock: PresentationFixedClock = PresentationFixedClock(),
     write: any MailWriteGateway = UnsupportedWriteGateway(),
+    files: PresentationFakeAttachmentFiles = PresentationFakeAttachmentFiles(),
     dwellSleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
 ) throws -> MailboxFixture {
     let store = try MailStore.inMemory()
@@ -285,7 +297,7 @@ func makeMailboxFixture(
         store: store,
         account: account,
         gateway: gateway,
-        files: PresentationFakeAttachmentFiles(),
+        files: files,
         writeEngine: engine
     )
     let composeScene = ComposeScene(store: store, outbox: outbox)
@@ -302,6 +314,7 @@ func makeMailboxFixture(
         gateway: gateway,
         notifier: notifier,
         clock: clock,
+        files: files,
         viewModel: viewModel,
         composeScene: composeScene
     )

@@ -19,15 +19,26 @@ public final class MailboxViewModel {
     public internal(set) var attachments: [Attachment] = []
     public private(set) var sync = SyncPresentation()
     public internal(set) var selection = Selection()
+    /// Chinese, user-visible text for the last failed attachment download. Always derived
+    /// from a normalized `MailError` (`ErrorText`), never a raw store error. The setter is
+    /// internal so `MailboxViewModel+Attachments.swift` can write it; the public surface is
+    /// read-only (REQ-0026 / SCN-0020, G1 confirmed A).
+    public internal(set) var attachmentErrorText: String?
+    /// Monotonic selection epoch. Incremented only when `selectedListKey` really changes;
+    /// `download` captures it to drop late results. Internal: the app target does not read it
+    /// (its `AttachmentActionModel` owns a separate epoch).
+    @ObservationIgnored private(set) var selectionGeneration: UInt64 = 0
     /// Composite identity for the selected row. Search results span folders, where the
     /// server id alone is not unique (R23); the list and selection use this key.
     public internal(set) var selectedListKey: String? {
         didSet {
-            // A selection change is the single reset point for both per-message states.
+            // A selection change is the single reset point for all per-message states.
             // Same-key reloads (sync, body refresh) must not reset them.
             guard oldValue != selectedListKey else { return }
             allowsRemoteContent = false
             markReadErrorText = nil
+            attachmentErrorText = nil
+            selectionGeneration &+= 1
         }
     }
 
@@ -300,14 +311,6 @@ public final class MailboxViewModel {
             sync.phase = .failed(ErrorText.text(for: error))
         }
         refreshDwell()
-    }
-
-    // MARK: - Attachments
-
-    /// Downloads (or reuses) one attachment and returns the file to open.
-    public func download(_ attachment: Attachment) async -> URL? {
-        guard let ref = selectedRef else { return nil }
-        return try? await read.downloadAttachment(attachment, in: ref)
     }
 
     // MARK: - Dwell
