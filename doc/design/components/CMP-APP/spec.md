@@ -2,7 +2,7 @@
 layer: design
 module: app
 status: active
-updated: 2026-11-19
+updated: 2026-11-20
 component: CMP-APP
 ---
 
@@ -14,19 +14,19 @@ component: CMP-APP
 - 单元：组件
 - 层 / 类型：L3；UI 外壳
 - 业务价值：让用户能看见并操作邮箱；没有它，同步能力只存在于命令行。
-- 负责 X：窗口与导航、窗口主工具栏（`MailboxToolbar`）、文件夹选择、邮件列表渲染、正文 WebView、撰写/配置表单、空态与失败态展示；T-1114-10 设计新增列表焦点 Delete/Backspace、前台状态转发（实测后改用 `NSApplication` 通知）、状态栏删除错误（2026-11-14 已实现，T-1114-18）；2026-11-18 设计新增撰写页收件人/抄送字段控件与候选浮层（`RecipientTextField`/`RecipientSuggestionList`/`RecipientForm.swift` 的 `ComposeRecipientForm`）。
+- 负责 X：窗口与导航、窗口主工具栏（`MailboxToolbar`）、文件夹选择、邮件列表渲染、正文 WebView、附件条取用交互（单击选中/双击/右键/另存为，2026-11-20 设计新增）、撰写/配置表单、空态与失败态展示；T-1114-10 设计新增列表焦点 Delete/Backspace、前台状态转发（实测后改用 `NSApplication` 通知）、状态栏删除错误（2026-11-14 已实现，T-1114-18）；2026-11-18 设计新增撰写页收件人/抄送字段控件与候选浮层（`RecipientTextField`/`RecipientSuggestionList`/`RecipientForm.swift` 的 `ComposeRecipientForm`）。
 - 不负责 Y：业务编排、状态机、格式化规则、服务装配、网络与持久化。
 - 内部逻辑：
   - `UumailApp` 构造 `AppComposition`，按 `route` 显示 `MailboxView` 或 `AccountSetupView`；生命周期交给组合根。
   - 每个视图只接收一个视图模型（`@Bindable`），动作一律 `viewModel.xxx()`；响应式刷新只看 VM 状态。
-  - 正文渲染：`MessageWebView`（WKWebView、禁 JS、CSP 阻止远程资源）；附件条点击调 VM。
+  - 正文渲染：`MessageWebView`（WKWebView、禁 JS、CSP 阻止远程资源）；附件条由 `AttachmentStripView` 呈现，取用动作经 `MailboxView` 调 VM/保存流（2026-11-20 设计）。
 - 拥有的数据：无；账号凭据归 `CredentialStore`，邮件数据归 `MailStore`。
 - 变化轴：窗口形态（单窗口 → 多窗口/菜单栏）、列表与阅读布局、字号档位（2026-11-17 新增五档 UI 偏好）。
 - 公开契约：无对外契约；只依赖 `Presentation`（`UumailApp` 另依赖 `Composition`）。
-- 入口：`Sources/uumail/UumailApp.swift#UumailApp`、`MailboxView.swift#MailboxView`、`MailboxToolbar.swift#MailboxToolbar`（2026-11-16 设计新增）、`MessageBodyView.swift#MessageBodyView`、`ComposeView.swift#ComposeView`、`RecipientForm.swift#ComposeRecipientForm`（2026-11-18 设计新增，internal；方案设计复核从 `ComposeView.swift` 拆出，供 L2 探针单独编译）、`RecipientTextField.swift#RecipientTextField`/`#RecipientSuggestionList`（2026-11-18 设计新增，internal）、`AccountSetupView.swift#AccountSetupView`、`FontSizeStyle.swift#EnvironmentValues.fontSizePreference`/`#View.scaledFont(_:)`/`#View.scaledInheritedFont(_:)`/`#FontSizePreference.font(for:)`、`FontSizeCommands.swift#FontSizeCommands`、`EmptyState.swift#EmptyState`（2026-11-17 设计新增，internal；第 2 轮修正入口符号）
+- 入口：`Sources/uumail/UumailApp.swift#UumailApp`、`MailboxView.swift#MailboxView`、`AttachmentStripView.swift#AttachmentStripView`（2026-11-20 设计新增，internal；双击/右键/选中/键盘/错误 banner）、`AttachmentExport.swift#SystemSavePanel`/`#AttachmentFileCopy`/`#AttachmentSaveFlow`/`#AttachmentActionGate`（2026-11-20 设计新增，internal）、`MailboxToolbar.swift#MailboxToolbar`（2026-11-16 设计新增）、`MessageBodyView.swift#MessageBodyView`、`ComposeView.swift#ComposeView`、`RecipientForm.swift#ComposeRecipientForm`（2026-11-18 设计新增，internal；方案设计复核从 `ComposeView.swift` 拆出，供 L2 探针单独编译）、`RecipientTextField.swift#RecipientTextField`/`#RecipientSuggestionList`（2026-11-18 设计新增，internal）、`AccountSetupView.swift#AccountSetupView`、`FontSizeStyle.swift#EnvironmentValues.fontSizePreference`/`#View.scaledFont(_:)`/`#View.scaledInheritedFont(_:)`/`#FontSizePreference.font(for:)`、`FontSizeCommands.swift#FontSizeCommands`、`EmptyState.swift#EmptyState`（2026-11-17 设计新增，internal；第 2 轮修正入口符号）
 - 依赖：`Presentation`、`Composition`（仅 `UumailApp.swift`）、SwiftUI/AppKit/WebKit。扇出 2。
 - 冷热：热（读本地库）；收件人候选只读 VM 内存状态，不触网、不查库。
-- 尺寸预算：单文件 ≤300 行；当前 `uumail` 共约 **1770 行**（2026-11-18 收件人联想落地后；`MessageBodyView` 256、`MailboxView` 218、其余见文末增量）。2026-11-20 内联图片设计预计 `MessageBodyView` +3（引用渲染串）、`MailboxView` +1（透传）→ 单文件仍 ≤300，不新增 target/依赖。
+- 尺寸预算：单文件 ≤300 行；当前 `uumail` 共约 **1770 行**（2026-11-18 收件人联想落地后；2026-11-20 附件取用设计预计 +约 300–360 行 → 约 2070–2130 行；`MessageBodyView` 256、`MailboxView` 218、其余见文末增量）。2026-11-20 内联图片设计预计 `MessageBodyView` +3（引用渲染串）、`MailboxView` +1（透传）→ 单文件仍 ≤300，不新增 target/依赖。
 - 单独运行：`./Scripts/make-app.sh && open dist/uumail.app`（release 构建，产物不入库）；`swift run` 为无 bundle `Info.plist` 的可执行，**没有 ATS 域策略**，明文 http 图片本来即可加载（REQ-0024 L2 实测，见文末 2026-11-19 增量）
 - 删除测试：删掉则只能命令行看信，对终端用户等于没有产品。
 
@@ -282,3 +282,36 @@ component: CMP-APP
 - 测试：L2 探针编译生产 `MessageBodyView`/`MessageBodyStyle` + 生产改写函数，断言 `img.naturalWidth>0`、快照像素、0 请求；视图层不做 L1 单测。
 - 定级/确认：**P2**（跨 `Presentation`→视图接线，无 public 契约/schema/依赖变更）。D3/D8 为默认确认（未经人工），见 `task-spaces/20261120-111818/design2.md` §8；所消费的 `MailboxViewModel.inlineImageHTML` 公开面已**人工确认 pass（A，2026-11-20）**，记录见 `doc/history/decisions/2026-11-20-inline-image-render-public-surface.md`。
 - 实现进度（2026-11-20，`T-1120-04`）：`MessageBodyView` 新增 internal `inlineImageHTML` 入参，`.loaded` 的 `natural`/`capped` 两处改用 `inlineImageHTML ?? html`；`MailboxView` 透传 `viewModel.inlineImageHTML`；`MessageWebView`/`MessageBodyStyle`/CSP 两档/`baseURL`/`lastRender` 零改动。L2 证据 `task-spaces/20261120-111818/evidence/inline-image-view/`（负控制 raw `naturalWidth=0`；生产改写串 `naturalWidth=32`、`magenta_px=4096`、`requests_delta=0`；纯文字基线 images=0）PASS；全量 343 例绿、架构 4 门 PASS。
+
+## 设计增量：附件取用交互——双击打开、右键另存为（REQ-0026 / SCN-0020，2026-11-20，P2 已人工确认）
+
+- 来源：`REQ-0026`（`feature`，`accepted`）/ 新场景 `SCN-0020`（`mail/read/attachment-access`，`designed`）。完整论证、方案族、失败路径、验证计划与设计期探针见 `task-spaces/20261120-160446/design.md` 与 `evidence/attachment-interaction-probe/`。
+- 现状归因：附件条是 `MessageBodyView` 内联的 SwiftUI `Button`，单击即 `onOpenAttachment` → VM 下载 → `NSWorkspace.open`；无双击、无右键菜单、无另存为、无失败提示。`scenario-drafts.md` 与需求卡已把交互缺口与既有下载原语分开。
+- 修改：
+  - **新增** `Sources/uumail/AttachmentStripView.swift#AttachmentStripView`（internal，≤300 行）：只做附件条呈现与交互。
+    - 附件元数据渲染保持 `Label(displayName, systemImage: "paperclip")` + `.buttonStyle(.bordered)` + `.controlSize(.small)` + `scaledInheritedFont`；默认布局与字号档位不变。
+    - `Button` 单击动作只写 `selectedAttachmentID`（可见描边 overlay，不改变尺寸）；双击用 `.simultaneousGesture(TapGesture(count: 2).onEnded { Task { await onOpen(attachment) } })`；`.focusable()` + `.focused($focusedID, equals: id)` + `.onKeyPress(.return)` 打开；Space 仍走 Button 选中。
+    - `.contextMenu` 两项：「打开」→ `onOpen`；「另存为…」→ `onSave`。不加「在 Finder 中显示」、不加分享/服务扩展。
+    - AX：`accessibilityLabel(displayName)`、`accessibilityHint("双击打开；右键可另存为")`、`accessibilityAction(named: "打开")`、`accessibilityAction(named: "另存为…")`。
+    - 错误 banner：`errorText != nil` 时在附件条下方一行（警告图标 + 文案，橙色，`.caption`）；无错误时零布局变化；不进状态栏/同步状态。
+    - 附件列表变化（切换邮件）时清空选中/焦点。
+  - `Sources/uumail/MessageBodyView.swift#attachmentStrip` 删除内联实现，改调 `AttachmentStripView(attachments:errorText:onOpen:onSave:)`；新增 `attachmentErrorText: String?`、`onSaveAttachment` 两个入参。`natural`/`capped` 两处分支都走同一附件条；正文 WebView/CSP/字号/白底/截断 banner 零改动。`MessageBodyView` 当前 259 行，预计 ≤270。
+  - `Sources/uumail/MailboxView.swift`：新增 `@State` 的 `AttachmentActionGate`（open/save 两个）、`saveErrorText`；`openAttachment` = gate → `viewModel.download` → `NSWorkspace.shared.open`；`saveAttachment` = gate → `viewModel.download` → `AttachmentSaveFlow`（`SystemSavePanel` + `AttachmentFileCopy`）→ 成功/取消/失败文案。打开/另存为开始时清 `saveErrorText`；切换邮件/附件变化时也清。当前 219 行，预计 ≤260。
+  - **新增** `Sources/uumail/AttachmentExport.swift`（internal，≤300 行）：
+    - `SavePanelPresenting`（`destination(for:) -> URL?`，nil=取消）与 `SystemSavePanel`（`NSSavePanel`，`runModal()`；`canCreateDirectories = true`）。
+    - `AttachmentFileCopy.copy(from:to:)`：源==目标 no-op；否则在目标目录建临时文件、复制、原子替换目标；失败清理临时文件并抛 `MailError.storage(reason:)`。
+    - `AttachmentSaveFlow.run(source:displayName:reResolve:)`：面板取消 → nil；复制成功 → nil；复制失败且源已不存在 → `reResolve` 重下一次再复制一次；仍失败返回 `ErrorText.text(for:)` 文案（APP 不另加前缀，避免与「本地存储失败」重复）。
+    - `AttachmentActionGate.begin/end`：按 `Attachment.id`（= `fileReference`）去重，保证并发双击只打开一次、并发另存为只弹一个面板。
+  - 不改 `Sources/Composition/*`、`Sources/Scenes/*`、`Sources/MailDomain/*`、`Sources/MailStore/*`、`Package.swift`、`Resources/Info.plist`；不新增 target/第三方依赖；不 import `Composition`。
+- 不变量：
+  - 视图不下载、不读写缓存/文件、不判 `MailError`；只调 VM/闭包并显示传入文案。
+  - 单击不触发下载/打开；双击/Return 只触发一次打开；右键菜单不改变正文/缓存。
+  - 打开走系统默认程序；另存为保留缓存；取消不改缓存/选择；失败不打开缺失文件。
+  - 缓存目录/文件名/2 GB 最旧优先/单飞/先落盘后标记全部沿用 `SCN-0005`，本增量不改。
+- 尺寸/预算：`AttachmentStripView.swift` 新增约 120–150 行、`AttachmentExport.swift` 新增约 120–160 行；`MessageBodyView` ≤300、`MailboxView` ≤300；`uumail` 总量约 +300–360 行；单文件均 ≤300。
+- 验证：
+  - L1：`PresentationTests/MailboxViewModelAttachmentTests`（下载成功/失败/文案/清空）；`ScenesTests/ReadSceneTests`（缓存外部删除、并发单飞）；`FileAttachmentFilesTests` 既有 3 例回归。
+  - L2：直接编译生产 `AttachmentStripView.swift` + `AttachmentExport.swift` + 所需 `Presentation` 对象；断言单击/双击/Return、`NSView.menu(for:)` 菜单项与 `performActionForItem`、`AttachmentSaveFlow` 取消/成功/失败/源缺失重试、`AttachmentFileCopy` 字节/覆盖/临时文件、gate 去重。证据入 `task-spaces/<run>/evidence/attachment-access-verify/`。
+  - 不上 L3/L4；真实右键/Control-单击、真实 `NSSavePanel`、VoiceOver、选中态/banner 像素为发布前手工冒烟残余。
+- 定级与确认：**P2**（跨 `CMP-APP`/`CMP-PRES`；无 schema/`MailDomain`/`AttachmentFiles`/`Scenes`/`Composition`/target/依赖变更）。唯一新增公开面 `MailboxViewModel.attachmentErrorText` 已**人工确认 A（2026-11-20）**，记录 `doc/history/decisions/2026-11-20-attachment-error-surface.md`；D1–D11 为**默认确认（未经人工）**，见 `task-spaces/20261120-160446/design.md` §8。回退：删除 `AttachmentStripView`/`AttachmentExport` 与两处接线，恢复 `MessageBodyView` 内联 Button 与单击打开；无数据/契约迁移。
+- 实现进度：未实现（设计落卡 2026-11-20）。task-split 按本增量拆任务；实现 commit 只含 `Sources/uumail/*`、`Sources/Presentation/*` 与 L1/L2 证据所需改动，不翻场景状态。

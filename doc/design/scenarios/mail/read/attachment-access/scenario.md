@@ -1,0 +1,124 @@
+---
+layer: design
+module: mail
+status: designed
+updated: 2026-11-20
+flow: mail/read
+scenario: SCN-0020
+---
+
+# SCN-0020 附件取用交互（双击打开、右键另存为）
+
+**结果**：用户在阅读页看到附件条；**单击只选中**，**双击**（或聚焦后按 Return）在缓存未命中时自动
+下载、命中时直接复用缓存，并用系统默认程序打开一次；**右键/Control-单击**出现系统菜单，至少含
+「打开」「另存为…」；「打开」与双击等效，「另存为…」把副本写到用户选择的位置并保留缓存文件；
+下载/另存为失败给出用户可见、可重试的提示，且不打开不存在的文件。缓存仍按 2 GB、修改时间最旧优先
+清理，只删缓存文件，不删邮件/正文/附件元数据；内联图片自动下载/显示不受影响（`SCN-0019` 只回归）。
+
+## 入口
+
+- `CMP-APP#AttachmentStripView`（新，internal；单击选中、双击/Return、`.contextMenu`、选中态、AX 动作、
+  错误 banner）与 `CMP-APP#MessageBodyView` 的附件条接线。
+- `CMP-APP#MailboxView.openAttachment/saveAttachment`、`CMP-APP#AttachmentExport`
+  （`SavePanelPresenting`/`SystemSavePanel`/`AttachmentFileCopy`/`AttachmentSaveFlow`/`AttachmentActionGate`）。
+- `CMP-PRES#MailboxViewModel.download`、`#attachmentErrorText`（只读；2026-11-20 P2 additive 公开面
+  已人工确认 A，记录 `history/decisions/2026-11-20-attachment-error-surface.md`）。
+- `CMP-SCN-READ#downloadAttachment`（不改；缓存命中/单飞/fetch/store/mark）。
+- `CMP-DOMAIN#AttachmentFiles`（生产 `FileAttachmentFiles`）与 `CMP-STORE#markAttachmentCached`（不改）。
+
+## 运行序
+
+流程 `F-READ-09`：
+
+1. 阅读页按附件元数据（名称、大小、`fileReference`）渲染附件条；无选中邮件时不渲染。
+2. 单击附件：只选中（可见描边），**0 网关、0 打开**；Space 同样只选中。
+3. 双击附件（或聚焦后 Return）：
+   1. `ReadScene.downloadAttachment` 先查 `AttachmentFiles.cachedURL`；命中直接返回缓存 URL；
+   2. 未命中 → 按 `fileReference` 单飞 → `MailGateway.fetchAttachment` 一次 → `AttachmentFiles.store`
+      原子写（内含 2 GB 最旧优先 prune）→ `MailStore.markAttachmentCached` → 返回 URL；
+   3. 下载完成后再 `NSWorkspace.shared.open(url)` 一次；失败不打开。
+4. 右键/Control-单击 → 系统菜单「打开」「另存为…」：
+   - 「打开」= 第 3 步；
+   - 「另存为…」→ 先按第 3 步取得缓存 URL（不打开）→ `NSSavePanel` 选目标 → 复制到目标
+     （临时文件 + 原子替换）→ 缓存文件保留；取消不改状态、不报错。
+5. 失败路径：
+   - 下载失败/离线/限流 → 不打开；`attachmentErrorText` 显示 `ErrorText` 文案；再次双击/Return 即重试；
+   - 另存为失败（目标不可写/磁盘满/复制失败）→ 不丢失缓存；`saveErrorText` 显示 `ErrorText` 文案（如「本地存储失败：…」）；
+   - 缓存文件被外部删除或 `cache_path` 悬空 → `cachedURL` 未命中 → 重新下载，不打开缺失文件；
+   - 面板打开期间源缓存被另一次 `store` 的 prune 删除 → 重下并重试复制一次；仍失败则文案；
+   - 目标与源相同 → no-op，不破坏缓存；目标已存在且面板确认覆盖 → 原子替换为目标字节。
+6. 并发：同一附件的重复双击/打开/另存为共享一次下载（`FlightBoard` 单飞）；`AttachmentActionGate`
+   保证只打开一次、只弹一个保存面板；不产生重复文件/重复弹窗。
+7. 内联图片（`SCN-0019`）、正文/CSP/远程开关/字号/白底不进入本流程，零改动。
+
+## 失败路径
+
+- **下载失败**：`download` 返回 nil，写 `attachmentErrorText`；不调用 opener；重试入口 = 再次双击/
+  Return/右键「打开」；不做自动无限重试。
+- **另存为失败**：`AttachmentFileCopy` 抛 `MailError.storage`；临时文件清理；缓存保留；
+  `saveErrorText` 可见；重试入口 = 再次右键「另存为…」。
+- **取消**：面板返回 nil；不复制、不报错、不改缓存/选择。
+- **源缺失**：复制前/复制中源不存在 → 调用 `reResolve` 重下载一次；仍失败 → 文案；不打开缺失文件。
+- **并发双击**：gate 第二次直接返回；下载共享；只打开一次。
+- **单击/Space**：0 网关、0 打开；只改选中态。
+- **缓存清理**：prune 只删缓存目录文件；邮件/正文/附件元数据不被清理；被删附件再打开可重下。
+- **无选中邮件**：附件条不渲染；`download` 返回 nil，不写错误文案。
+
+## 不可变引用
+
+- **`SCN-0005` 的下载原语**：缓存目录/确定性文件名 `<sha256前16>-<safe name>`、原子写、2 GB 总上限、
+  修改时间最旧优先、每次 `store` 后 prune、同一 `fileReference` 单飞、先落盘再 `markAttachmentCached`；
+  `cachedURL` 只判存在、不 touch mtime。
+- **`SCN-0005` 的既有欠账**：25MB 上限、断点续传、`AttachmentName` 回退**不在本场景验收内**，仍归
+  `SCN-0005`，不假装实现、不删其测试/状态。
+- **`SCN-0019`**：内联图片自动下载/显示、只取正文实际引用、20MB guard、失败跳过；本场景只回归，
+  不重开、不改断言。
+- **`SCN-0013`/`SCN-0018`**：远程开关、CSP 两档、ATS 载体；本场景不改正文渲染/网络门控。
+- **`SCN-0004`**：正文阅读/补拉/脚本不执行；本场景不改正文。
+- **`SCN-0015`/`SCN-0010`**：字号档位/白底；附件条在档位下仍可操作、不溢出。
+- **数据/契约**：`attachments` schema、`MailDomain.Attachment`/`AttachmentRef`/`AttachmentFiles`、
+  `MailGateway`、EAS 命令形状均不改；本场景不新增 schema/列/缓存策略。
+- **真实数据脱敏**：真实邮件/附件只做发布前冒烟；自动化用假附件名/假字节，不写真实主题/发件人/
+  地址/账号/路径。
+
+## 测试
+
+| ID | 类型 | 层级 | 方案 |
+|---|---|---|---|
+| `T-SCN-0020-01` | 正 | L1（VM/场景）+ L2（附件条双击） | 假附件 A、缓存为空：双击一次 → `fetchAttachment` 1 次、`store`/`markAttachmentCached` 1 次、打开器收到 URL 1 次；再双击 → 0 网关、打开器 1 次；并发双击 → 1 次下载、1 次打开；gate 第二次返回 false。 |
+| `T-SCN-0020-02` | 正 | L2（菜单/保存流/复制） | 已缓存附件 B：`view.menu(for:)` 项恰为「打开」「另存为…」；`performActionForItem(0)` → 0 网关、打开器 1 次（fake opener）；`(1)` + fake panel 选目标 → 目标字节 = 缓存字节、缓存仍在；面板取消 → 0 复制、0 报错；复制失败 → 文案、缓存仍在。 |
+| `T-SCN-0020-03` | 正 | L1（缓存/场景）+ L2（打开旧附件） | 缓存近 2 GB，写入新附件 C 触发 prune：按修改时间最旧优先删文件；C 可按命中取用；被清理的旧附件 D 再打开 → 按未命中重下 1 次；邮件/正文/附件元数据仍在；无重复副本/半文件；缓存文件被外部删除 → 重下、不打开缺失文件。 |
+| `T-SCN-0020-04` | 反 | L1（失败/单飞/单击分支）+ L2（附件条） | ① 网关失败/离线 → 不打开、`attachmentErrorText` 非空、可重试；② 另存为目标不可写 → 文案、缓存不丢；③ 缓存外部删除后双击 → 重下；④ 单击/Space → 0 网关、0 打开；⑤ 下载中重复双击 → 共享 1 次下载、只打开 1 次、无重复弹窗；⑥ 面板期间源被 prune → 重下并重试 1 次。 |
+
+**证据层级与限制**：
+
+- L1：`PresentationTests`（`MailboxViewModelAttachmentTests`）、`ScenesTests`（`ReadSceneTests` 缓存/单飞/
+  外部删除）、`CompositionTests` 无新增；不触网。
+- L2：直接编译生产 `AttachmentStripView.swift`、`AttachmentExport.swift` 与所需 `Presentation` 对象，
+  用 fake panel/copy/opener 断言；源码/命令/原始输出入 `task-spaces/<run>/evidence/attachment-access-verify/`。
+- **不上 L3/L4**；真实右键/Control-单击菜单弹出、真实 `NSSavePanel`、VoiceOver 自定义动作、选中态/
+  banner 像素为发布前手工冒烟残余，不写成自动化通过。
+- `SCN-0019` 的 A5 真样本冒烟仍为发布前/人工项；不在本场景执行。
+
+## 状态
+
+`designed`（2026-11-20 设计落卡；未实现、未验证）。实现完成后由收尾在评审 pass 时统一翻 `verified`；
+本节点不翻状态位。
+
+- 实现：待 task-split 拆任务；不改 `Sources/`（本节点）。
+- 未实现项：本场景 01–04 全部待实现；`SCN-0005` 的 25MB/续传/名称回退仍为其欠账，不在本场景。
+- 设计依据：`task-spaces/20261120-160446/design.md` §4/§6；公开面确认
+  `history/decisions/2026-11-20-attachment-error-surface.md`。
+
+## 与相邻场景的边界
+
+- **与 `SCN-0005`**：`SCN-0005` 拥有下载原语（缓存/单飞/2 GB/mark）与其 25MB/续传/名称回退欠账；
+  本场景拥有用户取用交互（单击/双击/右键/另存为/失败可见）与打开/保存的用户可观察结果。本场景
+  把 `SCN-0005` 的缓存/单飞/prune 作为不可变引用，不新增缓存策略断言；不删/不改 `SCN-0005` 的欠账、
+  测试与状态。
+- **与 `SCN-0019`**：内联图片自动下载/显示归 `SCN-0019`（`verified`）；本场景只回归，不重开、不改
+  其「附件条点击/缓存归 `SCN-0005`」的边界。
+- **与 `SCN-0013`/`SCN-0018`**：远程开关/CSP/ATS 归它们；本场景只要求打开附件不改变正文渲染/网络门控。
+- **与 `SCN-0004`**：正文基本渲染/补拉/脚本不执行归它；本场景不改正文。
+- **与 `SCN-0015`/`SCN-0010`**：字号/白底归它们；本场景只要求附件条在各档位下仍可操作、不溢出。
+- **与 `REQ-0026`**：验收 = 本场景 01–04 + `SCN-0019` 回归；`REQ-0005`/`SCN-0005` 状态不变。

@@ -2,7 +2,7 @@
 layer: design
 module: presentation
 status: active
-updated: 2026-11-18
+updated: 2026-11-20
 component: CMP-PRES
 ---
 
@@ -23,7 +23,7 @@ component: CMP-PRES
   - `ComposeViewModel.send` 调 `ComposeScene.send`，成功即 `status = .queued` 并触发组合根的投递信号；失败保留编辑文本。
 - 拥有的数据：视图状态（选择、搜索词、加载态、编辑器文本、当前邮件远程放行、置读错误提示），不持久化；另持有**两个本地 UI 偏好镜像**——**主题偏好**（`UserDefaults["appearance.theme"]`，`ThemePreferenceStore`）与**字号偏好**（`UserDefaults["appearance.fontSize"]`，`FontSizePreferenceStore`，2026-11-17 设计新增；两个 key 独立、互不读写；不是业务数据，真源仍是 App 的 `@State`，见文末增量）。
 - 变化轴：窗口形态与交互；主题外观（2026-11-16 新增一档三态主题）；**字号档位**（2026-11-17 新增五档 100/120/145/175/225%，界面与阅读正文共用同一档位）。
-- 公开契约：`CMP-PRES#MailboxViewModel`（T-1114-10 设计新增 `#visibleMessages`、`#deleteErrorText`、`#setApplicationActive`、`#deleteSelected`（2026-11-14 已实现）；2026-11-16 新增 `#headerPresentation`；2026-11-16 设计新增 `#allowsRemoteContent`、`#canAllowRemoteContent`、`#setAllowsRemoteContent(_:)`、`#canMarkSelectedRead`、`#markSelectedRead()`、`#markReadErrorText`（P2 待确认，见文末增量））、`#ComposeViewModel`（2026-11-18 设计新增 `#RecipientField`、`#recipientSuggestions`、`#highlightedSuggestion`、`#recipientFocusChanged(in:)`、`#recipientFocusLost()`、`#recipientTextChanged(in:caretAtEnd:)`、`#recipientCaretChanged(atEnd:)`、`#moveRecipientHighlight(by:)`、`#selectRecipientSuggestion(at:)`、`#selectHighlightedRecipientSuggestion()`、`#dismissRecipientSuggestions()`）、`#AccountSetupViewModel`、`#ErrorText`、`#DisplayFormat`、`#ThemePreference`、`#ThemePreferenceStore`（2026-11-16 新增 public，P2 已确认并实现）、`#FontSizePreference`、`#FontSizePreferenceStore`（2026-11-17 设计新增 public，P2 默认确认未经人工）、`#MessageHeaderPresentation`（2026-11-16 新增 public，P2 已确认，实现见文末增量）；`MailboxDwell`/`MailboxDeletion` 仍是模块内文件。
+- 公开契约：`CMP-PRES#MailboxViewModel`（T-1114-10 设计新增 `#visibleMessages`、`#deleteErrorText`、`#setApplicationActive`、`#deleteSelected`（2026-11-14 已实现）；2026-11-16 新增 `#headerPresentation`；2026-11-16 设计新增 `#allowsRemoteContent`、`#canAllowRemoteContent`、`#setAllowsRemoteContent(_:)`、`#canMarkSelectedRead`、`#markSelectedRead()`、`#markReadErrorText`（P2 待确认，见文末增量）、`#attachmentErrorText`（2026-11-20 新增，只读；P2 人工确认 A，见文末增量））、`#ComposeViewModel`（2026-11-18 设计新增 `#RecipientField`、`#recipientSuggestions`、`#highlightedSuggestion`、`#recipientFocusChanged(in:)`、`#recipientFocusLost()`、`#recipientTextChanged(in:caretAtEnd:)`、`#recipientCaretChanged(atEnd:)`、`#moveRecipientHighlight(by:)`、`#selectRecipientSuggestion(at:)`、`#selectHighlightedRecipientSuggestion()`、`#dismissRecipientSuggestions()`）、`#AccountSetupViewModel`、`#ErrorText`、`#DisplayFormat`、`#ThemePreference`、`#ThemePreferenceStore`（2026-11-16 新增 public，P2 已确认并实现）、`#FontSizePreference`、`#FontSizePreferenceStore`（2026-11-17 设计新增 public，P2 默认确认未经人工）、`#MessageHeaderPresentation`（2026-11-16 新增 public，P2 已确认，实现见文末增量）；`MailboxDwell`/`MailboxDeletion` 仍是模块内文件。
 - 入口：`Sources/Presentation/MailboxViewModel.swift#MailboxViewModel`、`ComposeViewModel.swift#ComposeViewModel`（2026-11-18 新增收件人联想成员）、`AccountSetupViewModel.swift#AccountSetupViewModel`、`ErrorText.swift#ErrorText`、`PresentationTypes.swift#BodyPresentation`、`ThemePreference.swift#ThemePreference/#ThemePreferenceStore`、`FontSizePreference.swift#FontSizePreference/#FontSizePreferenceStore`（2026-11-17 设计新增）、`MessageHeaderPresentation.swift#MessageHeaderPresentation`（2026-11-16 新增）
 - 依赖：`Scenes`、`MailDomain`、`Observation`、`Foundation`（`UserDefaults`；不算新组件依赖）。扇出 1。
 - 冷热：热（主线程）；主题与字号偏好的读/写都是低频冷路径（启动一次 + 选择一次），不与 VM 热路径共享状态；收件人候选是撰写页主线程内存过滤，不查库、不触网。
@@ -44,6 +44,8 @@ component: CMP-PRES
       public private(set) var attachments: [Attachment]
       /// 2026-11-20 新增：当前正文的渲染投影（`cid:` 已替换为 `data:`）；不持久化，回复引用仍用 `body`。
       public private(set) var inlineImageHTML: String?
+      /// 2026-11-20 新增（REQ-0026/SCN-0020）：最近一次附件下载失败的中文文案；公开只读、模块内写。
+      public internal(set) var attachmentErrorText: String?
       public private(set) var sync: SyncPresentation
       public private(set) var selection: Selection
       // T-1114-10 设计新增（已实现）：
@@ -470,3 +472,28 @@ component: CMP-PRES
 - 测试：`PresentationTests/MailboxViewModelInlineImageTests` 覆盖「图片到达后 `inlineImageHTML` 含 data URL 而 `body`/`quotableHTML` 不含」「切换/清空丢弃迟到结果」「空/失败结果保持 raw HTML」「远程开关不影响内联 data URL」。
 - 定级/确认：**P2**（视图模型公开面 additive、跨组件接线；无 schema/`MailDomain` 契约/依赖/热路径失败语义变更）。`inlineImageHTML` 公开面已**人工确认 pass（A，2026-11-20）**，记录见 `doc/history/decisions/2026-11-20-inline-image-render-public-surface.md`；D3–D6 仍为默认确认（未经人工），见 `task-spaces/20261120-111818/design2.md` §8。
 - 实现进度（2026-11-20，`T-1120-03`）：`MailboxViewModel.inlineImageHTML` 以 `public internal(set)` 实现（公开面只读；`+Body.swift` 跨文件生命周期需要 internal setter，`inlineImageTask` 为 internal 且 `@ObservationIgnored`，不进 public 契约）；`openSelected`/`.cached`/`.loaded` 启动图片任务，`clearBody`/切换取消并清空，迟到结果经 `selectedRef`+`openedBody`+源 HTML 三重 stale guard 丢弃；`body`/`quotableHTML` 保持 raw。新增 `Tests/PresentationTests/MailboxViewModelInlineImageTests.swift`（4 例）；`PresentationTests` 117 例绿、架构 4 门 PASS。
+
+## 设计增量：附件下载失败文案（REQ-0026 / SCN-0020，2026-11-20，P2 公开面已人工确认 A）
+
+- 来源：`REQ-0026`（`feature`，`accepted`）/ 新场景 `SCN-0020`（`mail/read/attachment-access`，`designed`）。完整论证与验证计划见 `task-spaces/20261120-160446/design.md`；公开面确认见 `doc/history/decisions/2026-11-20-attachment-error-surface.md`。
+- 现状归因：`download(_:)` 用 `try? await read.downloadAttachment(...)` 吞错、只返回 `URL?`；视图只能判断 nil，下载失败对用户静默。
+- 新增状态（**additive public，只读**；人工确认 A）：
+  - `public internal(set) var attachmentErrorText: String?`：最近一次附件下载失败的中文文案；`public` 只读，`internal` setter 供同 target 的 `MailboxViewModel+Attachments.swift` 写入。与 `body`/`inlineImageHTML` 一样是「公开读、模块内写」。
+  - 不新增 `retry`/`report`/`exporter` 方法；另存为失败由 APP 层 `saveErrorText` 承载，不混入本属性。
+- 行为：
+  - `download(_:)` **签名不变**（`public func download(_ attachment: Attachment) async -> URL?`）：
+    - 无选中邮件（`selectedRef == nil`）→ 返回 nil，不写文案；
+    - 成功（缓存命中或下载完成）→ 清空 `attachmentErrorText`，返回 URL；
+    - 失败 → 把 `MailError`（非 `MailError` 归一为 `.storage(reason: String(describing:))`）经 `ErrorText.text(for:)` 写入，返回 nil；不吞错静默、不打开。
+  - 清空点：`selectedListKey.didSet`（现有每邮件状态重置点，与 `allowsRemoteContent`/`markReadErrorText` 同处）与 `clearSelection()`；同一 listKey 的 reload 不清空。成功下载也清空；下一次失败覆盖。
+  - 下载仍只经 `read.downloadAttachment`；PRES 不 import AppKit/WebKit、不读写文件、不碰缓存目录。
+- 尺寸：`MailboxViewModel.swift` 当前 385 行，新增 1 个存储属性 + 1 处清空 ≈ 388；`download` 移到 **`Sources/Presentation/MailboxViewModel+Attachments.swift`**（新，≤60 行），主文件仍 ≤400。不新增 target/依赖；`Package.swift`、`MailDomain`/`Scenes` 契约不动。
+- 测试（L1，`PresentationTests/MailboxViewModelAttachmentTests`）：
+  - 已缓存 → 0 网关、返回 URL、文案 nil；
+  - 未缓存 → 1 次 `fetchAttachment`、`markAttachmentCached` 1 次、返回 URL；
+  - `offline` → 返回 nil、文案 = `ErrorText.text(for: .offline)`；
+  - 非 `MailError` 存储错误 → 返回 nil、文案为 `storage` 中文（不崩溃）；
+  - 失败后成功/切换邮件 → 文案清空；同 key reload 不清；
+  - 并发两次 `download` → 共享一次下载（既有 `FlightBoard`），返回同一 URL。
+- 定级与确认：**P2**（跨 `Presentation`/`uumail`；一个 additive public 只读成员 + APP 层内部文件）。`attachmentErrorText` 已**人工确认 A（2026-11-20）**：批准只读属性，`download` 签名不变；D1–D11 仍为默认确认（未经人工）。回退：删除属性与 `download` 内写入/清空，APP 层改回通用失败文案；无数据/契约迁移。
+- 实现进度：未实现（设计落卡 2026-11-20）。
