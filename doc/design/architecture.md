@@ -28,7 +28,7 @@ macOS 原生邮件客户端，只支持 EAS（Exchange ActiveSync），以「一
 | 账号接入 | `AccountSetupScene` | 用户填表点连接 | 账号 `ready` + 文件夹树 + 凭据入 Keychain | 顺序固定（probe→provision→文件夹→建号→快照→ready→凭据）；失败不留半成品 | accounts、folders、sync_state、Keychain | 分类错误，停在配置页 | 首次/换机 | 冷 | 已实现；真机全链未跑 |
 | 文件夹与收件箱同步 | `SyncScene` | 启动、每 5 分钟、手动刷新 | 本地出现新文件夹与新邮件 | 单飞；批次与 key 同事务；失败保旧数据 | folders、messages、sync_state | 状态栏错误，后台退避 | 每 5 分钟 | 冷 | 已实现 |
 | 浏览与阅读 | `ReadScene` | 选文件夹、选邮件 | 列表与正文 | 读路径不触网；缓存优先；缺正文先占位后补拉 | messages、message_bodies | 占位 + 重试入口 | 高频 | 热 | 已实现；P95 未复测 |
-| 内联图片（`cid:`） | `ReadScene.renderInlineImages` + `MailboxViewModel.inlineImageHTML`（2026-11-20 设计） | 选中邮件、正文 `.loaded` | 正文内联图片显示 | 只取当前正文实际引用的内联附件；`displayName`/local part 唯一匹配；失败跳过、正文可读；不依赖远程开关；改写在渲染投影、不改 CSP/schema | attachments（只读）、附件文件缓存 | 跳过该图，正文照常；不重试循环 | 高 | 热（显示）+ 冷（缓存未命中补拉） | 设计完成（`SCN-0019` `designed`，待实现） |
+| 内联图片（`cid:`） | `ReadScene.renderInlineImages` + `MailboxViewModel.inlineImageHTML`（2026-11-20 设计） | 选中邮件、正文 `.loaded` | 正文内联图片显示 | 只取当前正文实际引用的内联附件；`displayName`/local part 唯一匹配；失败跳过、正文可读；不依赖远程开关；改写在渲染投影、不改 CSP/schema | attachments（只读）、附件文件缓存 | 跳过该图，正文照常；不重试循环 | 高 | 热（显示）+ 冷（缓存未命中补拉） | 设计完成（`SCN-0019` `designed`；公开面已人工确认 2026-11-20，待实现） |
 | 列表停留自动已读 | `ReadScene` + `MailboxDwell` + `MailboxViewModel.performMarkRead` | 选中未读、前台连续 3 秒 | 本地已读、蓝点消失、后台回写 | 本地先行；写回与同步共享 key 串行；失败不回滚、不提示；计时器只计时 | messages、sync_state | 静默保留本地已读 | 中 | 热（本地）+ 冷（回写） | 已实现（T-1114-11…18，2026-11-14）；2026-11-16 由 10 秒改为 3 秒，待重验 |
 | 手动标记已读 | `ReadScene` + `MailboxViewModel` + `MailboxToolbar` | 主工具栏「标记为已读」 | 本地立即已读、蓝点消失、后台回写一次 | 仅当前选中未读；本地先行；仅 0→1 回写；已读/无选中禁用；回写失败静默；本地失败非 `MailError` 归一后显示中文 | messages、sync_state | 本地失败保持未读 + 提示；回写失败静默 | 中 | 热（本地）+ 冷（回写） | 已实现（2026-11-16，T-1116-12/13；P2 已确认，待三卡重验） |
 | 远程图片放行 | `MailboxViewModel` + `MailboxToolbar` | 主工具栏「加载远程图片」 | 当前正文以放行档 CSP 重渲染；放行后远程图片实际请求并渲染（交付载体带 WebView 内容 ATS 例外） | 默认关；仅当前邮件；切邮件重置；不写偏好；禁 JS/白底/其它 CSP 档不变 | 无（会话内视图状态） | 无正文/未加载/失败不可用；图片失败不弹错 | 低 | 热 | 已实现并验证（2026-11-16，T-1116-12/13；2026-11-19 交付载体 ATS 例外 T-1119-04/05，`SCN-0018` `verified`/`REQ-0024` `delivered`；A5 发布前人工冒烟待办） |
@@ -316,7 +316,7 @@ public actor Outbox {
 | 同步刷新 | 冷 | 1（gateway） | 保留旧数据；auth/device/policy 暂停自动刷新 | 单账号 actor | `SyncSceneTests` 单飞/通知/暂停 |
 | 投递 | 冷 | 1（gateway） | 可重试退避；永久失败保留内容 | 独立 actor + 泵，不共享同步队列 | `OutboxTests` 租约/退避/幂等；`OutboxPumpTests` |
 | 附件下载 | 冷 | 1（gateway） | 抛 `MailError`，可重试 | 同一附件单飞；缓存 2 GB | `ReadSceneTests`、`FileAttachmentFilesTests` |
-| 内联图片负载（正文 `cid:`） | 冷 | 1（gateway，仅缓存未命中） | 单张失败/坏数据/超限 → 跳过该图，正文照常；不重试循环；取消即停 | 同一附件单飞 + `AttachmentFiles` 2 GB；只取当前正文引用；不预取 | 设计证据：`ReadSceneInlineImageTests` + `InlineImageProbe`（REQ-0025/`SCN-0019`，待实现） |
+| 内联图片负载（正文 `cid:`） | 冷 | 1（gateway，仅缓存未命中） | 单张失败/坏数据/超限 → 跳过该图，正文照常；不重试循环；附件之间检查取消，已开始的单飞下载可能完成、结果丢弃 | 同一附件单飞 + `AttachmentFiles` 2 GB；只取当前正文引用；不预取 | 设计证据：`ReadSceneInlineImageTests` + `InlineImageProbe`（REQ-0025/`SCN-0019`，待实现） |
 | FTS 索引 | 冷 | 0 | 重建可重入 | 随事务增量 | `MailStoreTests` 搜索用例 |
 
 **观测**：`last_sync_at`、`sync_key_age`、`outbox_pending`、`outbox_failed`、`sync_duration`、`batch_size`、`throttle_count`。当前 UI 只展示 `lastSyncedAt` 与失败文案；outbox 计数尚未进 UI（见 §10 残留）。
@@ -486,8 +486,8 @@ D10 的决策记录：`history/decisions/2026-11-13-fetched-body-contract.md`。
 8. **失败件保留上限（24h / 100 条，T11）无清理实现**：outbox 行会保留到成功、取消或手动重试。
 9. **`backup/pre-autosquash` 分支保留**，不删。
 10. **收件人联想为会话内投影**（REQ-0022/SCN-0017，2026-11-18 设计）：不持久、不改 schema；每文件夹最多 500 封、总计最多 5,000 封，超出部分的旧邮件联系人、已清理邮件或未同步文件夹中的联系人不出现，当前已接受；若产品要求持久联系人，另立 v11 `contacts` 需求并先解决 `MailStore` 1008/1000 的预算问题（R45）。
-11. **内联图片不持久化 `ContentId`**（REQ-0025/SCN-0019，2026-11-20 设计）：本轮按 `cid:` 的 local part / `displayName` 唯一匹配；不透明 `ContentId`（不含文件名）的邮件图片仍不显示。触发后续时需 schema v11 + `Attachment.contentID` + `EASClient` 解析 + `MailStore` 预算/拆分（P1），见 `task-spaces/20261120-111818/design.md` §6 R1。
-12. **`Scenes` 组件超过 800 行历史预算**（2026-11-20 实测 1006；本设计 +约 170）：属既有超出，本设计登记不静默调预算；后续把 `HTMLText`/`InlineImageHTML` 类纯工具拆到独立组件时一并处理（另立任务）。
+11. **内联图片不持久化 `ContentId`**（REQ-0025/SCN-0019，2026-11-20 设计）：本轮按 `cid:` 的 local part / `displayName` 唯一匹配；不透明 `ContentId`（不含文件名）的邮件图片仍不显示。触发后续时需 schema v11 + `Attachment.contentID` + `EASClient` 解析 + `MailStore` 预算/拆分（P1），见 `task-spaces/20261120-111818/design2.md` §6 R1。
+12. **`Scenes` 组件超过 800 行历史预算**（2026-11-20 实测 1006；本设计 +约 170）：属既有超出，本设计登记不静默调预算；task-split 须写上限（本批新增 ≤170 行）与拆分触发（再改 `Scenes` 使其 >1200 行，或出现第二个 HTML 纯工具时，另立 P1 任务拆 `HTMLText`/`InlineImageHTML` 到纯工具组件）。
 
 ### 10.3 定级与冻结
 
@@ -498,6 +498,6 @@ D10 的决策记录：`history/decisions/2026-11-13-fetched-body-contract.md`。
 - **2026-11-14 待确认 P1（T-1114-10，第 2 轮）**：新增 `MailWriteGateway`、`SyncStore` 三个写方法、`SyncEngine` 写方法 + FIFO 门 + **非可选** `writeGateway`、`ReadScene` **非可选**写引擎、`GatewayEndpoints`（`write` 非可选）；场景扇出预算 1–2→1–3（仅 `ReadScene`，替代方案为窄 `SyncWriting` 端口）；T-1114-15/16 各含 `CMP-ROOT` 仅装配例外。不新增 schema。
 - **2026-11-14 P1 frozen 记录**：`doc/history/decisions/2026-11-14-mail-write-path.md` 已归档（确认来源与范围见该记录）；实现 T-1114-11…18/21 的契约与装配按记录落地。
 - **2026-11-18 P1 默认确认（未经人工）**：`REQ-0022`/`SCN-0017` 新增 `MailDomain` public 值类型（`ContactAddress`/`ContactEnvelope`/`ContactDirectory`/`RecipientText`，平台级扇入）、`ComposeScene.recipientDirectory(account:)` 与 `ComposeViewModel` 收件人候选 public 面，并新增 `uumail` internal 控件/候选层。记录见 `doc/history/decisions/2026-11-18-recipient-autocomplete.md`；A1–A6 细化的默认确认见 `doc/history/decisions/2026-11-18-recipient-autocomplete-design-addendum.md`；不新增 schema/target/依赖，不改 `MailStore` 与发送链路。评审可独立否决。
-- **2026-11-20 P2 默认确认（未经人工）**：`REQ-0025`/`SCN-0019` 在 `Scenes` 新增 internal `InlineImageHTML`（`cid:` 提取/规范化/唯一匹配/字节嗅探/仅 `src` 值改写）与 `ReadScene.renderInlineImages(for:html:)`，在 `Presentation` 新增 `MailboxViewModel.inlineImageHTML` 与可取消图片任务，并在 `MessageBodyView` 透传渲染串；不改 schema/`MailDomain`/`Attachment`/`MailGateway`/CSP/`baseURL`/远程开关；不新增 target/依赖。记录见 `doc/history/decisions/2026-11-20-inline-image-render.md`；评审可独立否决。
+- **2026-11-20 P2 公开面人工确认（A）**：`REQ-0025`/`SCN-0019` 的 `ReadScene.renderInlineImages(for:html:)` 与 `MailboxViewModel.inlineImageHTML` 两个 additive public 面经 `mcp__agentflow__confirm` 人工确认 pass（选项 A：保留 Scenes 规则 + PRES 投影分工，最小改动），记录见 `doc/history/decisions/2026-11-20-inline-image-render-public-surface.md`；D1–D8（匹配 C2/载体 V1/取负载时机/附件条/失败口径/资源 guard/不改 schema·CSP·`baseURL`·`MailDomain` 公开契约）仍为**默认确认（未经人工）**，见 `task-spaces/20261120-111818/design2.md` §8；评审可独立否决。同批新增 internal `InlineImageHTML` 与可取消图片任务、`MessageBodyView` 透传；不改 schema/`MailDomain`/`Attachment`/`MailGateway`/CSP/`baseURL`/远程开关；不新增 target/依赖。
 - **2026-11-14 R16 真机与写响应修订**：写命令被接受并返回新 key；写响应携带整页 delta + `Collection/MoreAvailable`，改为与 key 同事务提交（不再拒绝）；not-found 为成功 no-op；删除进入「已删除邮件」。前台信号实测后由 `scenePhase` 改为 `NSApplication` 通知。
 - 后续契约变更走新决策记录（`history/decisions/`），并同步改对应组件规格与 pinning test。

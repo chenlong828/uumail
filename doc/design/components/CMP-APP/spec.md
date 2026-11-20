@@ -280,4 +280,4 @@ component: CMP-APP
 - 视觉：`lastRender` 由 `"\(allowRemoteContent)|\(html)"` 自然包含渲染串；图片任务到达时重载一次；不逐图增量重载。
 - 尺寸：`MessageBodyView` 256 → 约 259；`MailboxView` 218 → 约 219；均 ≤300。
 - 测试：L2 探针编译生产 `MessageBodyView`/`MessageBodyStyle` + 生产改写函数，断言 `img.naturalWidth>0`、快照像素、0 请求；视图层不做 L1 单测。
-- 定级/确认：**P2**（跨 `Presentation`→视图接线，无 public 契约/schema/依赖变更）。默认确认（未经人工）见 `design.md` §8 D3/D8。
+- 定级/确认：**P2**（跨 `Presentation`→视图接线，无 public 契约/schema/依赖变更）。D3/D8 为默认确认（未经人工），见 `task-spaces/20261120-111818/design2.md` §8；所消费的 `MailboxViewModel.inlineImageHTML` 公开面已**人工确认 pass（A，2026-11-20）**，记录见 `doc/history/decisions/2026-11-20-inline-image-render-public-surface.md`。

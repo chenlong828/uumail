@@ -167,4 +167,4 @@ component: CMP-SCN-READ
   - 不改 `downloadAttachment` 的签名/语义；不 import `EASClient`/`EASAdapter`/`Presentation`/WebKit；`MailGateway`/`MailStore`/`MailDomain` 契约不变。
 - 尺寸：`InlineImageHTML.swift` 约 120 行、`ReadScene+InlineImages.swift` 约 50 行（均 <300）；`Scenes` 由 1006 → 约 1176（既有 800 行预算已超，登记为既有欠账）。
 - 测试：`ScenesTests/InlineImageHTMLTests`（提取/规范化/唯一匹配含去扩展名/歧义/嗅探/只改 `src` 值）与 `ScenesTests/ReadSceneInlineImageTests`（只取被引用附件、同附件多次引用只取一次、缓存命中 0 次 gateway、单张失败跳过、超限跳过、取消提前返回）；fake gateway/files 记录调用集。
-- 定级/确认：**P2**（场景公开面 additive + internal 纯函数；无 schema/`MailDomain` 契约/依赖/热路径依赖变更）。默认确认（未经人工）见 `design.md` §8 D2/D4/D7/D9。
+- 定级/确认：**P2**（场景公开面 additive + internal 纯函数；无 schema/`MailDomain` 契约/依赖/热路径依赖变更）。`renderInlineImages(for:html:)` 公开面已**人工确认 pass（A，2026-11-20）**，记录见 `doc/history/decisions/2026-11-20-inline-image-render-public-surface.md`；D2/D4/D7 仍为默认确认（未经人工），见 `task-spaces/20261120-111818/design2.md` §8。

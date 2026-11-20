@@ -468,4 +468,4 @@ component: CMP-PRES
   - 不 import `MailStore`/`EASClient`/WebKit；图片只经 `ReadScene` 取；不在 PRES 解析 HTML/读文件。
 - 尺寸：`MailboxViewModel` 381 → 约 389；`MailboxViewModel+Body` 109 → 约 139；不新增文件；单文件 ≤400。
 - 测试：`PresentationTests/MailboxViewModelInlineImageTests` 覆盖「图片到达后 `inlineImageHTML` 含 data URL 而 `body`/`quotableHTML` 不含」「切换/清空丢弃迟到结果」「空/失败结果保持 raw HTML」「远程开关不影响内联 data URL」。
-- 定级/确认：**P2**（视图模型公开面 additive、跨组件接线；无 schema/`MailDomain` 契约/依赖/热路径失败语义变更）。默认确认（未经人工）见 `design.md` §8 D3–D6/D9。
+- 定级/确认：**P2**（视图模型公开面 additive、跨组件接线；无 schema/`MailDomain` 契约/依赖/热路径失败语义变更）。`inlineImageHTML` 公开面已**人工确认 pass（A，2026-11-20）**，记录见 `doc/history/decisions/2026-11-20-inline-image-render-public-surface.md`；D3–D6 仍为默认确认（未经人工），见 `task-spaces/20261120-111818/design2.md` §8。
