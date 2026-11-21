@@ -57,6 +57,56 @@ struct ConfigurationSourceTests {
         #expect(login.saved == configuration)
     }
 
+    @Test("a complete ~/.uumail.env wins over the login store and never asks it for credentials")
+    func dotEnvWinsOverKeychain() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("uumail-config-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent(".uumail.env")
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let configuration = makeAssemblyConfiguration()
+        try DotEnvCredentialStore(url: url).save(configuration)
+        let login = RecordingCredentialStore(saved: ServerConfiguration(
+            host: "keychain.corp.test", account: "keychain", password: "x",
+            domain: "", deviceID: "K", displayName: "keychain"
+        ))
+
+        let chosen = ConfigurationSource.serverConfiguration(
+            environment: ["UUMAIL_DOTENV_PATH": url.path],
+            credentials: login
+        )
+
+        #expect(chosen == configuration)
+        #expect(login.loadCalls == 0, "the Keychain must not be touched when the file is complete")
+    }
+
+    @Test("an incomplete ~/.uumail.env falls back to the login store")
+    func incompleteDotEnvFallsBack() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("uumail-config-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent(".uumail.env")
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data("EAS_HOST=mail.corp.test\n".utf8).write(to: url)
+        let expected = makeAssemblyConfiguration()
+        let login = RecordingCredentialStore(saved: expected)
+
+        let chosen = ConfigurationSource.serverConfiguration(
+            environment: ["UUMAIL_DOTENV_PATH": url.path],
+            credentials: login
+        )
+
+        #expect(chosen == expected)
+        #expect(login.loadCalls == 1)
+    }
+
+    @Test("UUMAIL_DOTENV_PATH points the store at the requested file")
+    func dotEnvPathIsConfigurable() {
+        let store = ConfigurationSource.dotEnvStore(environment: ["UUMAIL_DOTENV_PATH": "/tmp/custom.env"])
+        #expect(store.url.path == "/tmp/custom.env")
+        #expect(ConfigurationSource.dotEnvStore(environment: [:]).url.lastPathComponent == ".uumail.env")
+    }
+
     #if DEBUG
     @Test("the DEBUG environment credentials are kept in-process, not written to the login store")
     func debugSetupCredentialsStayInProcess() throws {

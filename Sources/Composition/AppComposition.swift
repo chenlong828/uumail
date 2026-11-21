@@ -22,8 +22,11 @@ public final class AppComposition {
     public private(set) var mailbox: MailboxViewModel?
     public let accountSetup: AccountSetupViewModel
 
+    /// Whether a saved account exists; the developer-export command is only meaningful then.
+    public var hasConfiguration: Bool { configuration != nil }
+
     private let store: MailStore
-    private let configuration: ServerConfiguration?
+    let configuration: ServerConfiguration?
     private let gatewayFactory: GatewayFactory
     private let notifier: any Notifier
     @ObservationIgnored private var pump: OutboxPump?
@@ -179,4 +182,3 @@ public final class AppComposition {
         )
     }
 }
-

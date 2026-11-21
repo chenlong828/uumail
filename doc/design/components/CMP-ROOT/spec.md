@@ -14,13 +14,16 @@ component: CMP-ROOT
 - 单元：模块（组合根 + 平台适配器，不含业务规则）
 - 层 / 类型：根；装配、注入、路由与生命周期（D9）
 - 业务价值：把「谁依赖谁、谁先启动」集中到一处，让业务判断留在场景；没有它，各入口各自装配，DEBUG 分支与轮询散落。
-- 负责 X：读配置（Keychain / DEBUG 环境 / CLI 环境）、构造依赖、注入端口、按入口状态路由（配置页/邮箱/CLI 命令）、持有并启停长生命周期任务（自动刷新、`OutboxPump`、bootstrap）；平台适配器实现（Keychain、通知、附件文件、时钟、路径）。
+- 负责 X：读配置（Keychain / `~/.uumail.env` / DEBUG 环境 / CLI 环境）、构造依赖、注入端口、按入口状态路由（配置页/邮箱/CLI 命令）、持有并启停长生命周期任务（自动刷新、`OutboxPump`、bootstrap）；平台适配器实现（Keychain、通知、附件文件、时钟、路径）。
 - 不负责 Y：任何业务判断与流程编排——不判账号状态、不判 outbox/同步结果、不映射业务错误、不重试、不格式化、不读写业务数据。
 - 内部逻辑：
   - `AppComposition`：有账号行 → 直接装配邮箱；无账号行但有配置 → `start()` 触发一次 `AccountSetupScene.connect` 引导，成功进邮箱、失败停在配置页显示场景错误文案；`connect()` 是配置页入口动作。
   - `OutboxPump`：启动补投 + 30s 周期 + 入队信号；只调 `Outbox.flushAll`，不检查投递结果（重试/退避在 `Outbox`）。
   - `CommandLineComposition`：环境配置 + `--db`；空库经 setup 场景引导（内存凭据，不写登录 Keychain）；诊断命令另建 `EASClient`（D8 例外）。
   - `GatewayFactory` / `PlatformGateway`：唯一 EAS 构造点；测试可注入 fake gateway。
+  - `DotEnvCredentialStore`（2026-11-21）：开发者凭据文件 `~/.uumail.env` 的读写；启动时优先于此文件，
+    读不到才回落 Keychain；只有「开发 → 保存凭据到 ~/.uumail.env」菜单动作会写（`0600`，明文），
+    决策见 `history/decisions/2026-11-21-dev-dotenv-credentials.md`。
 - 拥有的数据：无持久数据；只持有进程级任务句柄与已构造对象。
 - 变化轴：部署形态（App/CLI）、平台实现替换。
 - 公开契约：

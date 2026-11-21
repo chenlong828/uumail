@@ -9,14 +9,28 @@ import Scenes
 enum ConfigurationSource {
     static func serverConfiguration(
         environment: [String: String],
-        credentials: any CredentialStore
+        credentials: any CredentialStore,
+        dotEnv: DotEnvCredentialStore? = nil
     ) -> ServerConfiguration? {
         #if DEBUG
         if environment["UUMAIL_DEBUG_ENV"] == "1", let debug = debugConfiguration(environment) {
             return debug
         }
         #endif
+        // The developer file wins over the Keychain: reading it never triggers the login
+        // Keychain prompt. A missing or incomplete file falls through to the Keychain.
+        if let fromFile = (dotEnv ?? dotEnvStore(environment: environment)).load() {
+            return fromFile
+        }
         return try? credentials.load()
+    }
+
+    /// `~/.uumail.env`, or the path in `UUMAIL_DOTENV_PATH` (tests and development shells).
+    static func dotEnvStore(environment: [String: String]) -> DotEnvCredentialStore {
+        if let path = environment["UUMAIL_DOTENV_PATH"], !path.isEmpty {
+            return DotEnvCredentialStore(url: URL(fileURLWithPath: (path as NSString).expandingTildeInPath))
+        }
+        return DotEnvCredentialStore()
     }
 
     static func databasePath(environment: [String: String]) -> String {

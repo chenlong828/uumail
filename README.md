@@ -55,6 +55,11 @@ set -a; . ./.env; set +a          # EAS_HOST / EAS_USER / EAS_PASS / EAS_DOMAIN 
 UUMAIL_DEBUG_ENV=1 UUMAIL_DB_PATH="$PWD/.build/app.sqlite" .build/debug/uumail
 ```
 
+开发机免弹窗：应用里点一次菜单「开发 → 保存凭据到 ~/.uumail.env」，当前账号会写进 `~/.uumail.env`
+（`0600`，**明文**；字段 `EAS_HOST/EAS_USER/EAS_PASS/EAS_DOMAIN/EAS_DEVICE_ID/EAS_DISPLAY_NAME`）。
+之后每次启动优先读它，不再询问登录钥匙串；删掉该文件即回到 Keychain 流程。`UUMAIL_DOTENV_PATH` 可改路径。
+决策与安全边界见 `doc/history/decisions/2026-11-21-dev-dotenv-credentials.md`。
+
 首次配置写进 Keychain 后，`dist/uumail.app` 启动即自动同步：
 
 ```bash

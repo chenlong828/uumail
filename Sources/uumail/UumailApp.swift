@@ -64,6 +64,14 @@ struct UumailApp: App {
         .commands {
             ThemeCommands(theme: $theme, store: store)
             FontSizeCommands(fontSize: $fontSize, store: fontStore)
+            DeveloperCommands(canExport: composition?.hasConfiguration == true) {
+                guard let composition else { return }
+                do {
+                    DeveloperCredentialAlert.saved(try composition.saveDevelopmentCredentials())
+                } catch {
+                    DeveloperCredentialAlert.failed(error)
+                }
+            }
         }
     }
 }

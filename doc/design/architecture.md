@@ -348,8 +348,8 @@ public actor Outbox {
 ### 6.1 对象图
 
 ```
-AppComposition（180 行）
-├─ ConfigurationSource：Keychain / DEBUG 环境（DB 路径由它解析，CLI 的 --db 在命令层覆盖）
+AppComposition（184 行）
+├─ ConfigurationSource：DEBUG 环境 / ~/.uumail.env / Keychain（DB 路径由它解析，CLI 的 --db 在命令层覆盖）
 ├─ MailStore(path:)
 ├─ GatewayFactory → PlatformGateway.make(ServerConfiguration) → GatewayEndpoints{read: EASAdapter(EASClient), write: 同一 adapter（非可选）}
 ├─ 一个 SyncEngine（writeGateway 非可选；同时注入 SyncScene 与 ReadScene；写命令与 syncOnce 共用同一 FIFO 门与集合 key）
