@@ -5,8 +5,15 @@ extension AppComposition {
     /// skip the login Keychain prompt. Only the explicit menu action calls this.
     @discardableResult
     public func saveDevelopmentCredentials() throws -> URL {
+        try saveDevelopmentCredentials(
+            to: ConfigurationSource.dotEnvStore(environment: ProcessInfo.processInfo.environment)
+        )
+    }
+
+    /// Test seam for the same export with an explicit file.
+    @discardableResult
+    public func saveDevelopmentCredentials(to store: DotEnvCredentialStore) throws -> URL {
         guard let configuration else { throw DevelopmentCredentialsError.noConfiguration }
-        let store = ConfigurationSource.dotEnvStore(environment: ProcessInfo.processInfo.environment)
         try store.save(configuration)
         return store.url
     }

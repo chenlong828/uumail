@@ -22,7 +22,8 @@ component: CMP-ROOT
   - `CommandLineComposition`：环境配置 + `--db`；空库经 setup 场景引导（内存凭据，不写登录 Keychain）；诊断命令另建 `EASClient`（D8 例外）。
   - `GatewayFactory` / `PlatformGateway`：唯一 EAS 构造点；测试可注入 fake gateway。
   - `DotEnvCredentialStore`（2026-11-21）：开发者凭据文件 `~/.uumail.env` 的读写；启动时优先于此文件，
-    读不到才回落 Keychain；只有「开发 → 保存凭据到 ~/.uumail.env」菜单动作会写（`0600`，明文），
+    读不到才回落 Keychain；`connect()` 成功后把新配置留在内存，菜单在首次配置后即可导出；只有
+    「开发 → 保存凭据到 ~/.uumail.env」菜单动作会写（`0600`，明文），
     决策见 `history/decisions/2026-11-21-dev-dotenv-credentials.md`。
 - 拥有的数据：无持久数据；只持有进程级任务句柄与已构造对象。
 - 变化轴：部署形态（App/CLI）、平台实现替换。

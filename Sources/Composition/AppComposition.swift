@@ -26,7 +26,7 @@ public final class AppComposition {
     public var hasConfiguration: Bool { configuration != nil }
 
     private let store: MailStore
-    let configuration: ServerConfiguration?
+    private(set) var configuration: ServerConfiguration?
     private let gatewayFactory: GatewayFactory
     private let notifier: any Notifier
     @ObservationIgnored private var pump: OutboxPump?
@@ -136,10 +136,11 @@ public final class AppComposition {
         guard await accountSetup.connect(), let connected = accountSetup.connected else {
             return false
         }
-        attachMailbox(
-            configuration: ConfigurationSource.serverConfiguration(from: accountSetup.input),
-            account: connected.accountID
-        )
+        // A fresh install starts without a configuration; remember the one the form just
+        // connected with so the developer export can run before the next restart.
+        let configuration = ConfigurationSource.serverConfiguration(from: accountSetup.input)
+        self.configuration = configuration
+        attachMailbox(configuration: configuration, account: connected.accountID)
         route = .mailbox
         start()
         return true

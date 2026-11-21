@@ -32,6 +32,39 @@ struct AppCompositionTests {
         composition.stop()
     }
 
+    @Test("a completed setup keeps the configuration so the developer export works before a restart")
+    func setupEnablesDeveloperExport() async throws {
+        let store = try makeAssemblyStore()
+        let gateway = AssemblyGateway(folders: makeFolderListing(), deltas: makeSyncDeltas())
+        let composition = AppComposition(
+            store: store,
+            credentials: RecordingCredentialStore(),
+            configuration: nil,
+            gatewayFactory: makeGatewayFactory(gateway),
+            notifier: RecordingNotifier()
+        )
+        composition.accountSetup.host = "mail.corp.test"
+        composition.accountSetup.account = "jdoe"
+        composition.accountSetup.password = "secret"
+        composition.accountSetup.deviceID = "DEVICEID0000000000000000000001"
+        #expect(composition.hasConfiguration == false)
+
+        #expect(await composition.connect())
+
+        #expect(composition.hasConfiguration == true)
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("uumail-export-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent(".uumail.env")
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let written = try composition.saveDevelopmentCredentials(to: DotEnvCredentialStore(url: url))
+
+        #expect(written == url)
+        #expect(DotEnvCredentialStore(url: url).load()?.account == "jdoe")
+        #expect(DotEnvCredentialStore(url: url).load()?.deviceID == "DEVICEID0000000000000000000001")
+        composition.stop()
+    }
+
     @Test("a database without an account row starts on the setup page")
     func noAccountRowRoutesToSetup() async throws {
         let store = try makeAssemblyStore()
