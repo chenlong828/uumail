@@ -1,0 +1,7 @@
+PASS wideTableAtDefaultSize {"documentWidth":978,"clientWidth":978,"tableWidth":816,"tableScrollWidth":814,"tableClientWidth":814,"imageWidth":0,"imageCellWidth":0,"headers":["序号","产品线","总文档","价值生产资产","配套过程资产","变更总数","产品类","开发类","测试类"]}
+PASS wideTableAtLargeSizes/145 {"documentWidth":810,"clientWidth":810,"tableWidth":778,"tableScrollWidth":776,"tableClientWidth":776,"imageWidth":0,"imageCellWidth":0,"headers":["序号","产品线","总文档","价值生产资产","配套过程资产","变更总数","产品类","开发类","测试类"]}
+PASS wideTableAtLargeSizes/175 {"documentWidth":671,"clientWidth":671,"tableWidth":639,"tableScrollWidth":637,"tableClientWidth":637,"imageWidth":0,"imageCellWidth":0,"headers":["序号","产品线","总文档","价值生产资产","配套过程资产","变更总数","产品类","开发类","测试类"]}
+PASS wideTableAtLargeSizes/225 {"documentWidth":522,"clientWidth":522,"tableWidth":490,"tableScrollWidth":488,"tableClientWidth":488,"imageWidth":0,"imageCellWidth":0,"headers":["序号","产品线","总文档","价值生产资产","配套过程资产","变更总数","产品类","开发类","测试类"]}
+PASS narrowTableKeepsWidth {"documentWidth":978,"clientWidth":978,"tableWidth":300,"tableScrollWidth":298,"tableClientWidth":298,"imageWidth":0,"imageCellWidth":0,"headers":[]}
+PASS imageTableFitsViewport {"documentWidth":668,"clientWidth":668,"tableWidth":636,"tableScrollWidth":634,"tableClientWidth":634,"imageWidth":415,"imageCellWidth":418,"headers":[]}
+RESULT 6/6 passed

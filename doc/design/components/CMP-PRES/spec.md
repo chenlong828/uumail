@@ -516,4 +516,4 @@ component: CMP-PRES
 - 时序/并发：过滤在 main actor 同步执行，正文 349KB/55 cid 为毫秒级；重复调用幂等。不改 `download`/`openSelected` 签名，不改 `inlineImageHTML` 的迟到 guard。
 - 验证：`PresentationTests/MailboxViewModelInlineImageTests` 新增「隐藏命中项、保留真实附件」「按 `contentID` 命中」「无 `cid:` 保留全部」「歧义保留」；`SCN-0019` 既有 4 例回归。
 - 残余：内联图渲染失败时该附件已不在附件条，用户无保存入口；属用户 2026-11-23 确认的代价。
-- 实现进度（2026-11-23，`T-1123-03`）：已实现；`PresentationTests` 用例见 `result.md`。
+- 实现进度（2026-11-23，`T-1123-03`）：`MailboxViewModel+Body.startInlineImageRender` 先算 `InlineImageReferences` 再 `removeAll` 命中项（`+Body.swift` 150 行）；`MailboxViewModelInlineImageTests` 新增 4 例（`hidesReferencedInlineAttachment`、`hidesInlineAttachmentByContentID`、`keepsAttachmentsWithoutCID`、`ambiguousInlineReferenceKeepsAttachments`），该 suite 8 例绿；全量 384 tests/59 suites、架构 4/4。

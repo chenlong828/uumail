@@ -501,7 +501,7 @@ P1 确认记录已归档为 `uumail/doc/history/decisions/2026-11-14-mail-write-
 ## W-M3-15 任务表（正文宽表适配与附件条内联图过滤，2026-11-23）
 
 来源：`REQ-0027`/`REQ-0028`（`accepted`）、`SCN-0021`（`mail/read/html-table-layout`）/`SCN-0022`（`mail/read/attachment-strip-inline-filter`，均 `designed`）、
-设计 `task-spaces/20261123-table-adapt/design.md`、决策 `history/decisions/2026-11-23-table-adapt-inline-attachment-filter.md`
+设计 `doc/history/works/2026-11-23-table-adapt/design.md`、决策 `history/decisions/2026-11-23-table-adapt-inline-attachment-filter.md`
 （人工确认 2026-11-23：表格压缩适配 + 附件条隐藏内联图；取代 `REQ-0025` 2026-11-21 澄清③）。
 
 **设计边界（不改）**：表格只改 `MessageBodyStyle.baseCSS`（`table[width], table[style*="width" i] { display:block; max-width:100%; overflow-x:auto }`），
@@ -515,11 +515,11 @@ P1 确认记录已归档为 `uumail/doc/history/decisions/2026-11-14-mail-write-
 | `T-1123-02` | `change` | `CMP-SCN-READ` | `CMP-SCN-READ/spec.md` §设计增量：附件条内联图过滤；`SCN-0022` 运行序 2/入口 | `T-1123-01` | 已完成（2026-11-23） | `InlineImageReferences.attachmentIDs` additive public；`InlineImageHTMLTests` 新增 4 例；`swiftw test --filter ScenesTests` 绿；不新增依赖/target |
 | `T-1123-03` | `change` | `CMP-PRES` | `CMP-PRES/spec.md` §设计增量：附件条内联图投影；`SCN-0022` 运行序 2–4 | `T-1123-02` | 已完成（2026-11-23） | `startInlineImageRender` 过滤 `attachments`；`MailboxViewModelInlineImageTests` 新增 4 例；`swiftw test --filter PresentationTests` 绿；不改 `download`/`openSelected` 签名 |
 | `T-1123-04` | `change` | `CMP-APP` | `CMP-APP/spec.md` §设计增量：正文宽表格适配；`SCN-0021` 运行序 2–5 | `T-1123-01` | 已完成（2026-11-23） | `baseCSS` 宽表规则；`TableLayoutProbe` L2 四例 PASS；`swiftw build` + 架构 4 门；不改 CSP/JS/`baseURL` |
-| `T-1123-05` | `verify` | `SCN-0021`/`SCN-0022` | 两张场景 §测试/§状态；`REQ-0027`/`REQ-0028` 验收归属 | `T-1123-02`…`T-1123-04` | 待开始 | `T-SCN-0021-01..04` L2 + `T-SCN-0022-01..04` L1 逐例 PASS；全量 `swiftw test`/架构 4 门；`make-app.sh` 成功；翻转两场景 `verified`、两需求 `delivered` |
+| `T-1123-05` | `verify` | `SCN-0021`/`SCN-0022` | 两张场景 §测试/§状态；`REQ-0027`/`REQ-0028` 验收归属 | `T-1123-02`…`T-1123-04` | 已完成（2026-11-23） | `T-SCN-0021-01..04` L2 + `T-SCN-0022-01..04` L1 逐例 PASS；全量 `swiftw test`/架构 4 门；`make-app.sh` 成功；翻转两场景 `verified`、两需求 `delivered` |
 
 **验证命令**：`./Scripts/swiftw test --filter ScenesTests`、`./Scripts/swiftw test --filter PresentationTests`、`./Scripts/swiftw test`、
 `bash Scripts/check-architecture.sh`、`./Scripts/make-app.sh`；L2 `TableLayoutProbe` 编译生产 `MessageBodyStyle.swift`，原始输出入
-`task-spaces/20261123-table-adapt/evidence/`。
+`doc/history/works/2026-11-23-table-adapt/evidence/`。
 
 **装载清单**：`MessageBodyStyle.swift`、`InlineImageHTML.swift`、`MailboxViewModel+Body.swift`、`MailboxViewModel.swift`、`AttachmentStripView.swift`、
 `MessageBodyView.swift`、`Tests/ScenesTests/InlineImageHTMLTests.swift`、`Tests/PresentationTests/MailboxViewModelInlineImageTests.swift`、

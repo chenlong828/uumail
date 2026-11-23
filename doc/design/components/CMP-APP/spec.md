@@ -343,7 +343,7 @@ component: CMP-APP
 
 ## 设计增量：正文宽表格适配（REQ-0027 / SCN-0021，2026-11-23，P3）
 
-- 来源：`REQ-0027`（`accepted`）/ `SCN-0021`（`mail/read/html-table-layout`）；证据与方案见 `task-spaces/20261123-table-adapt/`。
+- 来源：`REQ-0027`（`accepted`）/ `SCN-0021`（`mail/read/html-table-layout`）；证据与方案见 `doc/history/works/2026-11-23-table-adapt/`。
 - 现状：`MessageBodyStyle.baseCSS` 只有 `table { max-width: 100% }`；816px / 8 列固定宽度的表压不下去，145/175/225% 字号下文档 `scrollWidth` 832px，右侧列被阅读区裁掉。
 - 变更：`baseCSS` 增加
 
@@ -357,6 +357,6 @@ component: CMP-APP
 
   只命中带显式宽度的表；无宽度表保持 `display:table`。块宽被 `max-width` 压到阅读区，列宽由 WebKit 重排；内容仍压不下去时表格内部横向滚动。`MessageWebView`、CSP 两档、`baseURL`、禁 JS、白底、字号 `pageZoom`、`lastRender` guard 全部零改动。
 - 不做：HTML 扫描/包裹、JS、`!important`、撰写页 `ComposeDocument`（另立）；允许显式宽度 ≤ 视口的表保持原宽。
-- 验证：L2 `TableLayoutProbe`（编译生产 `MessageBodyStyle.swift`）逐例断言 120% 下 816px 表保持 816、`scrollWidth == 978`；145/175/225% 下 `scrollWidth == 810/671/522`；无宽度 300px 表不被拉伸；900px 表 + 600px 图在 668px 下 `scrollWidth == 668`。证据 `task-spaces/20261123-table-adapt/evidence/`。
+- 验证：L2 `TableLayoutProbe`（编译生产 `MessageBodyStyle.swift`）逐例断言 120% 下 816px 表保持 816、`scrollWidth == 978`；145/175/225% 下 `scrollWidth == 810/671/522`；无宽度 300px 表不被拉伸；900px 表 + 600px 图在 668px 下 `scrollWidth == 668`。证据 `doc/history/works/2026-11-23-table-adapt/evidence/`。
 - 残余：带 `align`/浮动的显式宽度表可能改变环绕版式；无显式宽度且内容超宽的畸形表仍可能溢出。发布前真实样本冒烟。
-- 实现进度（2026-11-23，`T-1123-04`）：规则已加入 `MessageBodyStyle.baseCSS`；`MessageBodyStyle.swift` 行数见实现提交；L2 探针逐例 PASS（见 `result.md`）。
+- 实现进度（2026-11-23，`T-1123-04`）：规则已加入 `MessageBodyStyle.baseCSS`（50 行）；L2 `TableLayoutProbe` 6/6 PASS（120/145/175/225、窄表、图片表），真实样本 120% 979/978、145/175/225% 810/671/522、`overflowCount=0`；全量 384 tests/59 suites、架构 4/4、`make-app.sh` 通过。证据 `doc/history/works/2026-11-23-table-adapt/evidence/`。

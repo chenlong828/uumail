@@ -22,8 +22,8 @@ component: CMP-SCN-READ
   - `downloadAttachment`：先查缓存；未命中按 `fileReference` 单飞下载 → `AttachmentFiles.store` → `markAttachmentCached` → 返回 URL；文件先落盘再标记。
 - 拥有的数据：无持久数据；在飞请求表（`FlightBoard`）。
 - 变化轴：读取策略（远端兜底搜索、附件预览）。
-- 公开契约：`CMP-SCN-READ#folders`、`#messages`、`#search`、`#attachments`、`#bodyIfCached`、`#open`、`#downloadAttachment`；T-1114-10 设计新增 `#markReadLocally`、`#writeBackMarkRead`、`#deleteMessage`（2026-11-14 已实现）；2026-11-20 设计新增 `#renderInlineImages(for:html:)`（`#InlineImageHTML` 为 internal，不进入 public 契约）
-- 入口：`Sources/Scenes/ReadScene.swift#ReadScene`、`#MessageRef`、`#BodyEvent`
+- 公开契约：`CMP-SCN-READ#folders`、`#messages`、`#search`、`#attachments`、`#bodyIfCached`、`#open`、`#downloadAttachment`；T-1114-10 设计新增 `#markReadLocally`、`#writeBackMarkRead`、`#deleteMessage`（2026-11-14 已实现）；2026-11-20 设计新增 `#renderInlineImages(for:html:)`（`#InlineImageHTML` 为 internal，不进入 public 契约）；2026-11-23 新增 `#InlineImageReferences.attachmentIDs(inHTML:attachments:)`（additive public 纯函数，供附件条投影使用，见文末增量）
+- 入口：`Sources/Scenes/ReadScene.swift#ReadScene`、`#MessageRef`、`#BodyEvent`；`Sources/Scenes/InlineImageHTML.swift#InlineImageReferences`（2026-11-23 新增）
 - 依赖：`MailStore`、`MailDomain`（`MailGateway`、`AttachmentFiles`）、`SyncEngine`（写路径；T-1114-10 设计，2026-11-14 已实现）。扇出 3 + 端口；T-1114-10 把场景扇出预算由 1–2 上调至 1–3，仅因 `ReadScene` 新增 `SyncEngine` 直接依赖，P1 已确认（2026-11-14 决策记录；替代方案窄 `SyncWriting` 端口保持扇出 2 仍为被否决项）。
 - 冷热：读热、补拉/附件冷。
 - 尺寸预算：≤800 行；当前随 `Scenes` 共 1006 行（2026-11-20 `wc -l`，**既有超限**，见 `design/architecture.md` §10 与 `task-spaces/20261120-111818/design.md` §6 R4）；2026-11-20 设计新增 `InlineImageHTML.swift` 约 120 行 + `ReadScene+InlineImages.swift` 约 50 行 → 约 1176 行；本增量不新增 target/依赖，超限登记为既有欠账（`design.md` §6 R4）。
@@ -196,4 +196,4 @@ component: CMP-SCN-READ
   实现直接复用 internal `InlineImageHTML.matches`（先 `contentID`，再 `displayName`/去扩展名回退），不复制匹配规则、不触网、不改 `attachments(for:)` 与 `renderInlineImages`。
 - 不变量：`attachments(for:)` 仍返回全量；`renderInlineImages` 仍用全量附件；`downloadAttachment`/缓存/单飞不变；`InlineImageHTML` 仍 internal。
 - 验证：`ScenesTests/InlineImageHTMLTests` 新增 `attachmentIDs...` 用例（contentID/名字回退/未命中/歧义/真实文件）；`ScenesTests` 全量回归。
-- 实现进度（2026-11-23，`T-1123-02`）：已实现；`Scenes` 行数与用例见 `result.md`。
+- 实现进度（2026-11-23，`T-1123-02`）：已实现（`InlineImageHTML.swift` 165 行，新增 `InlineImageReferences` 约 15 行）；`InlineImageHTMLTests` 新增 4 例（`attachmentIDsReturnsReferencedAttachments`、`attachmentIDsUseContentID`、`attachmentIDsSkipAmbiguousAndUnreferenced`、`attachmentIDsEmptyWithoutSources`），该 suite 18 例绿；全量 384 tests/59 suites、架构 4/4。

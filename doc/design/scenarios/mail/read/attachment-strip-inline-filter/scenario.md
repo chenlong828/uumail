@@ -1,7 +1,7 @@
 ---
 layer: design
 module: mail
-status: designed
+status: verified
 updated: 2026-11-23
 flow: mail/read
 scenario: SCN-0022
@@ -51,13 +51,16 @@ scenario: SCN-0022
 | `T-SCN-0022-01` | 正 | L1 | 正文 `<img src="cid:logo@test">` + 附件 `logo.png`（按名字回退命中）+ 真实 `报表.pdf`：打开后 `viewModel.attachments == [报表.pdf]`。 | `MailboxViewModelInlineImageTests.hidesReferencedInlineAttachment` |
 | `T-SCN-0022-02` | 正 | L1 | 不透明 `contentID` 命中（`_Foxmail.1@...`）+ 一个真实附件：隐藏命中项，真实附件保留；同时断言 `inlineImageHTML` 仍生成 `data:`。 | `MailboxViewModelInlineImageTests.hidesInlineAttachmentByContentID` |
 | `T-SCN-0022-03` | 正 | L1 | 正文无 `cid:` / 只有纯文本预览：全部附件保留（2 个都在），不误过滤。 | `MailboxViewModelInlineImageTests.keepsAttachmentsWithoutCID` |
-| `T-SCN-0022-04` | 反 | L1 | 两个附件同名（歧义）或 `cid:` 无对应附件：不隐藏、不误删；`attachments` 保持原样，正文仍显示。 | `InlineImageHTMLTests.attachmentIDsSkipsAmbiguous`、`MailboxViewModelInlineImageTests.ambiguousInlineReferenceKeepsAttachments` |
+| `T-SCN-0022-04` | 反 | L1 | 两个附件同名（歧义）或 `cid:` 无对应附件：不隐藏、不误删；`attachments` 保持原样，正文仍显示。 | `InlineImageHTMLTests.attachmentIDsSkipAmbiguousAndUnreferenced`、`MailboxViewModelInlineImageTests.ambiguousInlineReferenceKeepsAttachments` |
 
 证据层级：最低 **L1**（纯函数 + 视图模型状态）。不上 L2/L3/L4；真实样本只做发布前/人工冒烟。
 
 ## 状态
 
-`designed`（2026-11-23 设计；`T-1123-02`/`T-1123-03` 实现、`T-1123-05` 验证后转 `verified`）。定级 **P2**（跨组件 + additive public 纯函数）；人工确认 2026-11-23：隐藏正文内联图（用户方案选择）。
+`verified`（2026-11-23，`T-1123-05`）：`InlineImageReferences` 4 例 + `MailboxViewModelInlineImageTests` 4 例全部 PASS
+（隐藏命中项保留真实附件、`ContentID` 命中、无 `cid:` 保留全部、歧义不误删）；`SCN-0019` 既有 4 例回归通过；
+全量 `384 tests / 59 suites`、架构 4/4。证据 `doc/history/works/2026-11-23-table-adapt/result.md`。定级 **P2**
+（跨组件 + additive public 纯函数）；人工确认 2026-11-23：隐藏正文内联图（用户方案选择）。
 
 ## 与相邻场景的边界
 

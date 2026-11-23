@@ -1,7 +1,7 @@
 ---
 layer: design
 module: mail
-status: designed
+status: verified
 updated: 2026-11-23
 flow: mail/read
 scenario: SCN-0021
@@ -50,11 +50,16 @@ scenario: SCN-0021
 | `T-SCN-0021-03` | 正 | L2 | 无宽度 300px 两列表：断言宽度保持 300（不被拉伸到视口），`scrollWidth == 视口`。 | `TableLayoutProbe.narrowTableKeepsWidth` |
 | `T-SCN-0021-04` | 反 | L2 | 900px 表 + 600px 图片 + 文字列，视口 668px：断言不崩、`scrollWidth == 668`、图片宽度 ≤ 单元格宽度；同时记录「无显式宽度且 nowrap 超宽」的残余（不判 fail）。 | `TableLayoutProbe.imageTableFitsViewport` |
 
-证据层级：最低 **L2**（WKWebView 实际布局）；不上 L3/L4。L2 探针编译生产 `MessageBodyStyle.swift`，夹具为合成 HTML（不含真实邮件字段），源码与原始输出入 `task-spaces/20261123-table-adapt/evidence/`。
+证据层级：最低 **L2**（WKWebView 实际布局）；不上 L3/L4。L2 探针编译生产 `MessageBodyStyle.swift`，夹具为合成 HTML（不含真实邮件字段），源码与原始输出入 `doc/history/works/2026-11-23-table-adapt/evidence/`。
 
 ## 状态
 
-`designed`（2026-11-23 设计；`T-1123-04` 实现、`T-1123-05` 验证后转 `verified`）。定级 **P3**；`REQ-0027` 方案已人工确认（压缩适配，2026-11-23）。
+`verified`（2026-11-23，`T-1123-05`）：`TableLayoutProbe` 6/6 PASS——120% 下 816px 表保持 816、文档 978；
+145/175/225% 下 816px 表压到 778/639/490，文档 810/671/522；无宽度 300px 表保持 300；900px 表 + 600px 图在
+668px 下文档 668、图 415 ≤ 格 418。真实样本（本机缓存正文 + 55 张内联图）同规则复测：120% 979/978（1px 舍入），
+145/175/225% 810/671/522，`overflowCount=0`。全量 `384 tests / 59 suites`、架构 4/4、`make-app.sh` 通过。
+证据 `doc/history/works/2026-11-23-table-adapt/evidence/table-layout.txt`、`real-sample-table.txt`。定级 **P3**；
+`REQ-0027` 方案已人工确认（压缩适配，2026-11-23）。
 
 ## 与相邻场景的边界
 

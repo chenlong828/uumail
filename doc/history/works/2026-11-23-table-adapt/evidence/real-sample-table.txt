@@ -1,0 +1,8 @@
+== real sample, zoom 1.2
+viewport 978 docScrollWidth 979 overflow 0 tables [(816, 816), (946, 947)]
+== real sample, zoom 1.45
+viewport 810 docScrollWidth 810 overflow 0 tables [(778, 778), (778, 778)]
+== real sample, zoom 1.75
+viewport 671 docScrollWidth 671 overflow 0 tables [(639, 639), (639, 639)]
+== real sample, zoom 2.25
+viewport 522 docScrollWidth 522 overflow 0 tables [(490, 490), (490, 490)]
