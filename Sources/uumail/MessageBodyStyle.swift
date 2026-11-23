@@ -19,6 +19,15 @@ enum MessageBodyStyle {
         }
         img { max-width: 100%; height: auto; }
         table { max-width: 100%; }
+        /* Outlook/Word tables carry explicit pixel/pt widths plus per-column widths. A
+           table's used width never drops below its min-content width, so `max-width` alone
+           cannot shrink them; making the table a block lets it fit the reading pane and
+           keeps any remainder inside the table instead of widening the document. */
+        table[width], table[style*="width" i] {
+            display: block;
+            max-width: 100%;
+            overflow-x: auto;
+        }
         pre { white-space: pre-wrap; }
         """
 
