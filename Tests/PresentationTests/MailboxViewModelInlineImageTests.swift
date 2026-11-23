@@ -137,4 +137,74 @@ struct MailboxViewModelInlineImageTests {
         #expect(fixture.viewModel.allowsRemoteContent == false)
         #expect(fixture.viewModel.inlineImageHTML == rendered)
     }
+
+    @Test("the attachment strip hides a cid-referenced inline image and keeps a real file")
+    func hidesReferencedInlineAttachment() async throws {
+        let gateway = PresentationFakeGateway(
+            folders: FolderListing(folders: [presentationInbox], syncKey: "7")
+        )
+        gateway.attachmentPayloads = ["ref-logo": png]
+        let logo = MailDomain.Attachment(displayName: "logo.png", fileReference: "ref-logo")
+        let report = MailDomain.Attachment(displayName: "报表.pdf", fileReference: "ref-report")
+        let fixture = try makeFixture(messages: [message("1", attachments: [logo, report])], gateway: gateway)
+        try seed(rawA, for: "1", in: fixture)
+
+        fixture.viewModel.loadCached()
+        await fixture.viewModel.openSelected()
+        await fixture.viewModel.inlineImageTask?.value
+
+        #expect(fixture.viewModel.attachments.map(\.fileReference) == ["ref-report"])
+        #expect(try #require(fixture.viewModel.inlineImageHTML).contains("data:image/png;base64,"))
+    }
+
+    @Test("an opaque cid hides the attachment matched by ContentId")
+    func hidesInlineAttachmentByContentID() async throws {
+        let gateway = PresentationFakeGateway(
+            folders: FolderListing(folders: [presentationInbox], syncKey: "7")
+        )
+        gateway.attachmentPayloads = ["ref-gif": png]
+        let gif = MailDomain.Attachment(
+            displayName: "36979_logo.gif",
+            fileReference: "ref-gif",
+            contentID: "opaque@test"
+        )
+        let fixture = try makeFixture(messages: [message("1", attachments: [gif])], gateway: gateway)
+        try seed("<p>正文</p><img src=\"cid:opaque@test\">", for: "1", in: fixture)
+
+        fixture.viewModel.loadCached()
+        await fixture.viewModel.openSelected()
+        await fixture.viewModel.inlineImageTask?.value
+
+        #expect(fixture.viewModel.attachments.isEmpty)
+        #expect(fixture.viewModel.inlineImageHTML != nil)
+    }
+
+    @Test("a body without cid sources keeps every attachment")
+    func keepsAttachmentsWithoutCID() async throws {
+        let logo = MailDomain.Attachment(displayName: "logo.png", fileReference: "ref-logo")
+        let report = MailDomain.Attachment(displayName: "报表.pdf", fileReference: "ref-report")
+        let fixture = try makeFixture(messages: [message("1", attachments: [logo, report])])
+        try seed(rawB, for: "1", in: fixture)
+
+        fixture.viewModel.loadCached()
+        await fixture.viewModel.openSelected()
+        await fixture.viewModel.inlineImageTask?.value
+
+        #expect(fixture.viewModel.attachments.map(\.fileReference) == ["ref-logo", "ref-report"])
+    }
+
+    @Test("an ambiguous cid reference never hides an attachment")
+    func ambiguousInlineReferenceKeepsAttachments() async throws {
+        let first = MailDomain.Attachment(displayName: "logo.png", fileReference: "ref-a")
+        let second = MailDomain.Attachment(displayName: "logo.png", fileReference: "ref-b")
+        let fixture = try makeFixture(messages: [message("1", attachments: [first, second])])
+        try seed(rawA, for: "1", in: fixture)
+
+        fixture.viewModel.loadCached()
+        await fixture.viewModel.openSelected()
+        await fixture.viewModel.inlineImageTask?.value
+
+        #expect(fixture.viewModel.attachments.map(\.fileReference) == ["ref-a", "ref-b"])
+        #expect(fixture.viewModel.inlineImageHTML == nil)
+    }
 }

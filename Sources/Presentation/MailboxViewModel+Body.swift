@@ -108,6 +108,7 @@ extension MailboxViewModel {
     /// Starts the cold image render for the body now on screen. The result is applied only
     /// when the selection and the loaded HTML are still the ones this task started from.
     func startInlineImageRender(_ ref: MessageRef, html: String) {
+        hideInlineAttachments(inHTML: html)
         inlineImageTask?.cancel()
         inlineImageHTML = nil
         inlineImageTask = Task { [weak self] in
@@ -116,6 +117,15 @@ extension MailboxViewModel {
             guard !Task.isCancelled else { return }
             self.applyInlineImageRender(rendered, ref: ref, sourceHTML: html)
         }
+    }
+
+    /// The attachment strip lists only files the body does not already render inline.
+    /// Inline rendering keeps reading the full attachment list from the scene, so this is a
+    /// display projection only; ambiguous or unreferenced sources leave the attachment visible.
+    private func hideInlineAttachments(inHTML html: String) {
+        let inline = InlineImageReferences.attachmentIDs(inHTML: html, attachments: attachments)
+        guard !inline.isEmpty else { return }
+        attachments.removeAll { inline.contains($0.fileReference) }
     }
 
     func cancelInlineImageRender() {
