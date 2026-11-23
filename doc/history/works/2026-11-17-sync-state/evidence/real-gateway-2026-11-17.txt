@@ -1,0 +1,24 @@
+# 真机证据（2026-11-17，同一实测网关、同一 DeviceId 与 PolicyKey 会话）
+
+## 1. 修复前：启动链路 replay（应用数据库副本，key=1005874003）
+Provision   200 / 264B
+Provision   200 /  65B
+FolderSync  200 / 699B
+Sync        200 /   0B   -> deviceNotRegistered
+phase = failed("设备未登记：请在网关登记并激活该设备 ID 后重试")  messages=200
+=> 与截图逐字一致；设备其实是登记的（FolderSync/ItemOperations 均正常）。
+
+## 2. 同一 key 的旁证
+- 同一 key 数分钟后再发：200 / 35B，`Sync/Collection/Status=3` -> syncKeyInvalid（不是设备问题）。
+- 同一 key 两条并发 Sync：一条 200 / 64995B（正常 25 封），另一条 200 / 12B（无 Collection/Status）。
+- key=0 引导 + 连续三次 key 推进：全部 200 且正常返回条目（网关健康）。
+
+## 3. 修复后：副本库写回旧 key（key=1005874003），跑同一条启动链路
+[0s] phase=idle messages=200
+[1s] phase=idle messages=125   <- resetCollection + key 0 重建（5 轮 × 25）
+...（直到 11s 均 idle）
+=> 不再出现「设备未登记」，坏 key 自己重建，无需手工改库。
+
+## 4. 单测红/绿
+- 修复前（只回滚源码）：3 条新 EAS 用例 + 1 条 SyncScene 用例 + 2 条 Presentation 用例红。
+- 修复后：EASClientTests 35、SyncSceneTests 5、PresentationTests 90 全绿；全量 281 tests / 50 suites；架构 4 门 PASS。

@@ -1,0 +1,101 @@
+import AppKit
+import Testing
+import WebKit
+
+@testable import Presentation
+
+/// Exercises the real editor document in a WKWebView: contenteditable, an editing
+/// command, and the capture/cleanup round trip. This is the only automated proof that
+/// the CSP keeps sender scripts out while app-issued commands still run.
+@Suite("WebKit editor smoke", .serialized)
+@MainActor
+struct WebKitEditorSmokeTests {
+    @Test("the editor document is editable, commandable and captured without chrome")
+    func editorRoundTrip() async throws {
+        _ = NSApplication.shared
+        let email = """
+        <!DOCTYPE html><html><head><meta charset="utf-8"></head>
+        <body><div id="uumail-reply-start"><br></div><div>hello</div></body></html>
+        """
+        let document = ComposeDocument.editorDocument(emailHTML: email, allowRemoteContent: false)
+        let web = WKWebView(frame: NSRect(x: 0, y: 0, width: 500, height: 300))
+        let window = NSWindow(
+            contentRect: NSRect(x: 100, y: 100, width: 500, height: 300),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = web
+        window.orderFrontRegardless()
+
+        try await load(document, in: web)
+
+        let editable = try await evaluate("document.body.contentEditable", in: web)
+        #expect(editable?.lowercased() == "true")
+
+        let command = """
+        (function () {
+            var selection = window.getSelection();
+            var range = document.createRange();
+            range.selectNodeContents(document.querySelector('div:last-child'));
+            selection.removeAllRanges();
+            selection.addRange(range);
+            return document.execCommand('bold') ? 'yes' : 'no';
+        })()
+        """
+        let executed = try await evaluate(command, in: web)
+        #expect(executed == "yes")
+
+        let outer = try #require(try await evaluate("document.documentElement.outerHTML", in: web))
+        let stored = ComposeDocument.emailHTML(fromEditorDocument: outer)
+        #expect(stored.contains("<b>hello</b>"))
+        #expect(!stored.contains("uumail-editor-csp"))
+        #expect(!stored.contains("uumail-editor-style"))
+        #expect(!stored.contains("contenteditable"))
+        window.close()
+    }
+
+    private func load(_ html: String, in web: WKWebView) async throws {
+        let delegate = Navigator()
+        web.navigationDelegate = delegate
+        web.loadHTMLString(html, baseURL: nil)
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            delegate.finish = { result in
+                continuation.resume(with: result)
+            }
+        }
+    }
+
+    private func evaluate(_ javaScript: String, in web: WKWebView) async throws -> String? {
+        try await withCheckedThrowingContinuation { continuation in
+            web.evaluateJavaScript(javaScript) { result, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: result.map { String(describing: $0) })
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private final class Navigator: NSObject, WKNavigationDelegate {
+        var finish: ((Result<Void, Error>) -> Void)?
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            finish?(.success(()))
+        }
+
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            finish?(.failure(error))
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            didFailProvisionalNavigation navigation: WKNavigation!,
+            withError error: Error
+        ) {
+            finish?(.failure(error))
+        }
+    }
+}

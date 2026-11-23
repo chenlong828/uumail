@@ -35,4 +35,4 @@ updated: 2026-11-17
 - `Draft`/`OutboxItem` 增加可选字段，`ComposeScene` 的 `replySeed`/`replyAllSeed`/`forwardSeed` 增加可选 `quotedHeader` 参数，`ComposeViewModel` 增加 `bodyHTML`/`editorDidLoad`/`setEditorHTML`/`hasEdits`；均为兼容扩展。
 - 新增 `Presentation.ComposeDocument` 与 `uumail` 的 `ComposeEditor`/`ComposeFormatBar`（`CMP-APP` 内部文件，不新增组件/target/依赖）。
 - MIME 新增 `multipart/alternative` 分支；无 HTML 时行为与旧版逐字节一致（既有 MIME 测试不回归）。
-- 验证：`SCN-0016` 的 3 正 1 反（L1）+ 真实 App UI 冒烟（L2，宽度/可见入口）+ WebKit 探针（contenteditable/execCommand/CSP）；全量 292 tests / 51 suites、架构 4 门。WebKit 冒烟测试因退出时偶发 SIGSEGV 未留在 CI 套件，证据在 `task-spaces/20261117-1140-html-reply/evidence/`。
+- 验证：`SCN-0016` 的 3 正 1 反（L1）+ 真实 App UI 冒烟（L2，宽度/可见入口）+ WebKit 探针（contenteditable/execCommand/CSP）；全量 292 tests / 51 suites、架构 4 门。WebKit 冒烟测试因退出时偶发 SIGSEGV 未留在 CI 套件，证据在 `history/works/2026-11-17-html-reply/evidence/`。

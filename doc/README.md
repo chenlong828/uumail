@@ -24,7 +24,7 @@ macOS 原生邮件客户端，只走 Exchange ActiveSync（以「一台已登记
 4. [design/scenarios/](design/scenarios/) — 业务功能树 `mail/{access,receive,read,send}/<场景>` 与 `settings/appearance/<场景>`，运行序、入口与测试证据。
 5. [roadmap.md](plan/roadmap.md)、[risks.md](plan/risks.md)、[open-questions.md](plan/open-questions.md) — 里程碑、风险、待拍板项。
 6. [requirements/](requirements/) — 每个用户可感知动作一张卡（REQ-0001…0026）。
-7. [history/](history/) — 已归档的[范围与关键决策](history/decisions/2026-11-09-scope-baseline.md)、[附件缓存上限](history/decisions/2026-11-09-attachment-cache-cap.md)、[正文契约 D10](history/decisions/2026-11-13-fetched-body-contract.md)、[EAS 探针](history/works/2026-11-09-eas-probe/result.md)、[M1 账号接入](history/works/2026-11-09-m1-account-access/result.md)、[M4 加固](history/works/2026-11-09-m4-hardening/result.md)、[场景重构收口](history/works/2026-11-10-scene-refactor/result.md)。只作记忆，不作设计依据。
+7. [history/](history/) — 已归档的[范围与关键决策](history/decisions/2026-11-09-scope-baseline.md)、[附件缓存上限](history/decisions/2026-11-09-attachment-cache-cap.md)、[正文契约 D10](history/decisions/2026-11-13-fetched-body-contract.md)、[EAS 探针](history/works/2026-11-09-eas-probe/result.md)、[M1 账号接入](history/works/2026-11-09-m1-account-access/result.md)、[M4 加固](history/works/2026-11-09-m4-hardening/result.md)、[场景重构收口](history/works/2026-11-10-scene-refactor/result.md)、[HTML 回复](history/works/2026-11-17-html-reply/result.md)、[同步状态误判](history/works/2026-11-17-sync-state/result.md)、[附件下载修复](history/works/2026-11-21-attachment-fetch/result.md)、[内联图 ContentId](history/works/2026-11-21-inline-image-content-id/result.md)、[开发凭据文件](history/works/2026-11-21-dev-dotenv/result.md)。只作记忆，不作设计依据。
 
 ## 入口
 

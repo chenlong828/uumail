@@ -67,7 +67,7 @@ scenario: SCN-0005
 
 | 测试项 | 现状 |
 |---|---|
-| `T-SCN-0005-01` | 部分（组件级 + EAS 层真机）：`ScenesTests`「downloadAttachment fetches, stores and records the cache path」、`FileAttachmentFilesTests`「a stored file is discoverable and keeps its bytes」；2026-11-21 用生产 `EASClient.fetchAttachment` 从真机取回 52,189 B xlsx（zip 成员全通过），证据 `task-spaces/20261121-0639-attachment-fetch/evidence/`；应用内「打开」仍未做 |
+| `T-SCN-0005-01` | 部分（组件级 + EAS 层真机）：`ScenesTests`「downloadAttachment fetches, stores and records the cache path」、`FileAttachmentFilesTests`「a stored file is discoverable and keeps its bytes」；2026-11-21 用生产 `EASClient.fetchAttachment` 从真机取回 52,189 B xlsx（zip 成员全通过），证据 `history/works/2026-11-21-attachment-fetch/evidence/`；应用内「打开」仍未做 |
 | `T-SCN-0005-02` | 未实现：下载前没有 25MB 判断 |
 | `T-SCN-0005-03` | 未实现：无断点续传，整包下载后原子写 |
 | `T-SCN-0005-04` | 未实现：只按 `FileReference` 取，无 `AttachmentName` 回退 |

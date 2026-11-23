@@ -94,7 +94,7 @@ L1+L2 全 PASS，第 5 轮实现鉴定 **pass**，见 `task-spaces/20261120-1118
 见 `task-spaces/20261120-111818/design2.md` §8。失败口径按「有文字时正文文字必显示、可滚动；纯图片邮件外部失败
 仍空白是已接受降级」统一（B2，2026-11-20）。样本事实与 L2 方向证据见
 `task-spaces/20261120-111818/evidence/inline-image-current-state-design.md`；2026-11-21 的样本证据见
-`task-spaces/20261121-0705-inline-images/evidence/`。
+`history/works/2026-11-21-inline-image-content-id/evidence/`。
 
 ## 与相邻场景的边界
 

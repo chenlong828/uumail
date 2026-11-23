@@ -215,7 +215,7 @@ component: CMP-APP
 - `ComposeFormatBar`（75 行）：加粗/斜体/下划线/删除线、字号（13/16/20/24pt）、左/中/右对齐、项目符号/编号、清除格式；按钮 `.focusable(false)` 保留 WebView 选区；横向 ScrollView 适配窄 sheet。
 - `MailboxView`：`@State readingPaneSize`；detail 列 `GeometryReader` 的 `onAppear`/`onChange` 更新；`ComposeView(preferredWidth:preferredHeight:)` 宽 = `max(detailWidth, 480)`、高 = `460…820`，sheet 居中。阅读区/窗口最小尺寸不变。
 - 安全/不变：编辑器 CSP 无 `script-src`，发件人脚本不执行；格式命令由 app 注入；发送内容不含编辑器 CSP/样式/contenteditable；远程图片沿用阅读区开关。
-- 测试：`PresentationTests/ComposeDocumentTests` + `ComposeViewModelTests`（L1）；L2 真实 App 冒烟：sheet `1441×820`、detail `1440×987`（等宽）、「取消」/格式栏/抬头/全宽正文可见（`task-spaces/20261117-1140-html-reply/evidence/ui-smoke.md`）；WebKit 探针：contenteditable/`execCommand`/outerHTML/CSP（`evidence/webkit-smoke.txt`）。
+- 测试：`PresentationTests/ComposeDocumentTests` + `ComposeViewModelTests`（L1）；L2 真实 App 冒烟：sheet `1441×820`、detail `1440×987`（等宽）、「取消」/格式栏/抬头/全宽正文可见（`history/works/2026-11-17-html-reply/evidence/ui-smoke.md`）；WebKit 探针：contenteditable/`execCommand`/outerHTML/CSP（`evidence/webkit-smoke.txt`）。
 - 尺寸：`Sources/uumail` 新增两个文件 248 行，`ComposeView` 172、`ComposeEditor` 173、`ComposeFormatBar` 75，单文件均 ≤300；无新增 target/依赖。
 
 ## 设计增量：收件人输入联想控件与候选浮层（REQ-0022 / SCN-0017，2026-11-18，P1 默认确认、未实现）

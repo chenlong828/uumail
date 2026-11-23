@@ -1,0 +1,26 @@
+# WebKit 编辑器探针（2026-11-17）
+
+## A. 独立 App 包探针（test.uumail.probe）
+
+用 `.app` 包 + `open` 启动，加载与生产同一形状的文档（CSP default-src 'none'、无 script-src；contenteditable body；内联 <script>）：
+
+```
+didStart
+didCommit
+didFinish
+senderScript: Optional(0) err=nil        # 内联脚本未执行
+editable: Optional(true) err=nil         # contenteditable 生效
+exec: Optional({"ok":true, ...})         # execCommand('bold') 成功，<b> 包裹
+outer: Optional("<html>...")            # outerHTML 可回读
+done
+```
+
+## B. 生产代码 SPM 冒烟（PresentationTests/WebKitEditorSmokeTests）
+
+临时测试，直接用生产 `ComposeDocument.editorDocument` 加载文档：
+- `document.body.contentEditable == "true"`
+- `document.execCommand('bold') == true`，回读 HTML 含 `<b>hello</b>`
+- `ComposeDocument.emailHTML(fromEditorDocument:)` 去掉 CSP/编辑器样式/contenteditable，保留正文
+- 结果：PASS（0.71s）
+
+该测试单跑通过，但全量套件在测试进程退出时 WebKit 清理偶发 SIGSEGV（runner exit 11），因此从 CI 套件移除，源文件保留在本目录 `WebKitEditorSmokeTests.swift.txt`；生产代码未改。

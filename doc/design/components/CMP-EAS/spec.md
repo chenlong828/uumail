@@ -114,7 +114,7 @@ component: CMP-EAS
   按预算缓存会话，其它命令仍是 120 秒。依据：网关约 6 s/MB、整包 base64，28.7MB 在旧 120s 预算下会被切断。
 - 25MB 上限（`T-SCN-0005-02`）本批**不实现**，维持既有欠账；`AttachmentName` 回退与断点续传同样未动（网关不支持 `Range`）。
 
-证据：`task-spaces/20261121-0639-attachment-fetch/evidence/`（原始 WBXML、解码后的 xlsx、耗时与失效引用响应）。
+证据：`history/works/2026-11-21-attachment-fetch/evidence/`（原始 WBXML、解码后的 xlsx、耗时与失效引用响应）。
 
 ## 设计增量（2026-11-21，附件 ContentId）
 
