@@ -2,7 +2,7 @@
 layer: design
 module: presentation
 status: active
-updated: 2026-11-20
+updated: 2026-11-23
 component: CMP-PRES
 ---
 
@@ -504,3 +504,16 @@ component: CMP-PRES
 - 定级与确认：**P2**（跨 `Presentation`/`uumail`；一个 additive public 只读成员 + APP 层内部文件）。`attachmentErrorText` 已**人工确认 A（2026-11-20）**：批准只读属性，`download` 签名不变；`selectionGeneration` 为 internal、不新增 public；D1–D18 仍为默认确认（未经人工，D16–D18 见 `design3.md` §8）。回退：删除属性/代际与 `download` 内写入/清空，APP 层改回通用失败文案；无数据/契约迁移。
 - 实现进度：未实现（设计落卡 2026-11-20；第 2 轮按评审 B3 增加迟到 guard 与 L1 用例；**第 3 轮按 `review2` B3 增加取消分支与 `01g`，APP 不引用 `selectionGeneration`**）。
 - 实现进度（2026-11-20，`T-1120-06`）：`attachmentErrorText` 以 `public internal(set)` 落地；`selectionGeneration` 为 internal `@ObservationIgnored`，只在 `selectedListKey` 真正变化时递增并清空文案；`download` 签名不变，迁入新 `MailboxViewModel+Attachments.swift`（36 行），入口/`await` 后 `Task.isCancelled`、`catch is CancellationError`、`generation+key` guard 全部实现。新增 `Tests/PresentationTests/MailboxViewModelAttachmentTests.swift` 10 例覆盖 `T-SCN-0020-01a–01g`（迟到失败/成功、A→B→A、取消、当前选中失败正常写）；`PresentationTests` 127 例绿、架构 4 门 PASS；`MailboxViewModel.swift` 388 行、`+Attachments.swift` 36 行。
+
+## 设计增量：附件条内联图投影（REQ-0028 / SCN-0022，2026-11-23，P2）
+
+- 来源：`REQ-0028` / `SCN-0022`；决策 `doc/history/decisions/2026-11-23-table-adapt-inline-attachment-filter.md`。
+- 变更：`MailboxViewModel.attachments` 的语义从「全量附件」收窄为「附件条展示集」（签名不变，仍 `public internal(set)`）。`MailboxViewModel+Body.startInlineImageRender(_:html:)` 在启动渲染前：
+  1. `InlineImageReferences.attachmentIDs(inHTML: html, attachments: attachments)`；
+  2. `attachments.removeAll { ids.contains($0.fileReference) }`；
+  3. 再启动既有内联渲染任务。
+- 全部附件仍由 `ReadScene` 自己取；内联渲染/下载不受投影影响。缓存正文与补拉成功共用 `startInlineImageRender`，因此两条路径都会过滤；纯文本预览没有 `cid:`，不过滤；切换邮件从 store 重新取全量再过滤。
+- 时序/并发：过滤在 main actor 同步执行，正文 349KB/55 cid 为毫秒级；重复调用幂等。不改 `download`/`openSelected` 签名，不改 `inlineImageHTML` 的迟到 guard。
+- 验证：`PresentationTests/MailboxViewModelInlineImageTests` 新增「隐藏命中项、保留真实附件」「按 `contentID` 命中」「无 `cid:` 保留全部」「歧义保留」；`SCN-0019` 既有 4 例回归。
+- 残余：内联图渲染失败时该附件已不在附件条，用户无保存入口；属用户 2026-11-23 确认的代价。
+- 实现进度（2026-11-23，`T-1123-03`）：已实现；`PresentationTests` 用例见 `result.md`。

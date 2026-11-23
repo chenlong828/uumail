@@ -2,7 +2,7 @@
 layer: design
 module: scenes
 status: active
-updated: 2026-11-14
+updated: 2026-11-23
 component: CMP-SCN-READ
 ---
 
@@ -180,3 +180,20 @@ component: CMP-SCN-READ
 - 实现进度（2026-11-20，`T-1120-01`）：已新增 `Sources/Scenes/InlineImageHTML.swift`（120 行，internal 纯函数）与 `Tests/ScenesTests/InlineImageHTMLTests.swift`（7 例：`sourcesFindCIDSourcesOnly`、`normalizationHandlesCasePercentAndBrackets`、`matchesDisplayNameAndLocalPart`、`matchesStemWhenCIDOmitsExtension`、`ambiguousReferenceIsIgnored`、`replacingOnlyTouchesSourceValues`、`dataURLSniffsCommonImageFormats`）；`ScenesTests` 绿、架构 4 门 PASS；N6 像素 guard 按 D1 未实现。
 - 实现进度（2026-11-20，`T-1120-02`）：已新增 `Sources/Scenes/ReadScene+InlineImages.swift`（32 行，public `renderInlineImages(for:html:)`）与 `Tests/ScenesTests/ReadSceneInlineImageTests.swift`（5 例）；复用 `downloadAttachment`/`AttachmentFiles`/`FlightBoard`；20MB 字节 guard 保留，单张失败/坏字节/取消跳过；`Scenes` 合计 1158 行（本批新增 152，≤170）；`ScenesTests` 51 例绿、架构 4 门 PASS。
 - 实现进度（2026-11-20，`T-1120-01` B2 修复）：`InlineImageHTML` 的 `sources`/`replacingSources` 改为先定位 `<img>` 标签、再在其内匹配独立 `src` 属性；标签内其它属性值先掩码，正文文本/其它标签/属性值内的 ` src=` 不再被收集或改写；无引号自闭合 `/>` 的 `/` 保留在替换值之外；`src=" cid:x "` 的 key 统一 trim。`InlineImageHTMLTests` 增至 11 例（新增正文空白、其它属性值、`<video>`/`<image>`、无引号自闭合、引号内空白 4 例）；`Scenes` 合计 1175 行，`InlineImageHTML.swift` 137 行；`ScenesTests` 绿、全量 347 tests / 57 suites、架构 4 门 PASS。
+
+## 设计增量：附件条内联图过滤（REQ-0028 / SCN-0022，2026-11-23，P2）
+
+- 来源：`REQ-0028`（`accepted`）/ `SCN-0022`（`mail/read/attachment-strip-inline-filter`）；决策 `doc/history/decisions/2026-11-23-table-adapt-inline-attachment-filter.md`。
+- 新增 additive public 纯函数（与 `InlineImageHTML` 同文件，不新增 target/依赖）：
+
+  ```swift
+  public enum InlineImageReferences {
+      /// 正文 `cid:` 源唯一匹配到的附件 `fileReference` 集合；歧义/未命中不返回。
+      public static func attachmentIDs(inHTML html: String, attachments: [Attachment]) -> Set<String>
+  }
+  ```
+
+  实现直接复用 internal `InlineImageHTML.matches`（先 `contentID`，再 `displayName`/去扩展名回退），不复制匹配规则、不触网、不改 `attachments(for:)` 与 `renderInlineImages`。
+- 不变量：`attachments(for:)` 仍返回全量；`renderInlineImages` 仍用全量附件；`downloadAttachment`/缓存/单飞不变；`InlineImageHTML` 仍 internal。
+- 验证：`ScenesTests/InlineImageHTMLTests` 新增 `attachmentIDs...` 用例（contentID/名字回退/未命中/歧义/真实文件）；`ScenesTests` 全量回归。
+- 实现进度（2026-11-23，`T-1123-02`）：已实现；`Scenes` 行数与用例见 `result.md`。

@@ -498,6 +498,36 @@ P1 确认记录已归档为 `uumail/doc/history/decisions/2026-11-14-mail-write-
 
 装载纪律：本批四张 change 互相依赖（编译面），按顺序一次交付一个组件测试；不改协议命令、不新增 target/依赖。
 
+## W-M3-15 任务表（正文宽表适配与附件条内联图过滤，2026-11-23）
+
+来源：`REQ-0027`/`REQ-0028`（`accepted`）、`SCN-0021`（`mail/read/html-table-layout`）/`SCN-0022`（`mail/read/attachment-strip-inline-filter`，均 `designed`）、
+设计 `task-spaces/20261123-table-adapt/design.md`、决策 `history/decisions/2026-11-23-table-adapt-inline-attachment-filter.md`
+（人工确认 2026-11-23：表格压缩适配 + 附件条隐藏内联图；取代 `REQ-0025` 2026-11-21 澄清③）。
+
+**设计边界（不改）**：表格只改 `MessageBodyStyle.baseCSS`（`table[width], table[style*="width" i] { display:block; max-width:100%; overflow-x:auto }`），
+不启用 JS、不改 CSP/`baseURL`/禁 JS/白底/`pageZoom`/`lastRender`/撰写页；附件条只在 PRES 做展示投影，`ReadScene.attachments(for:)` 与
+`renderInlineImages` 仍用全量，不改 schema/`MailDomain`/`MailStore`/EAS/`Composition`/`Package.swift`。定级：REQ-0027 **P3**、REQ-0028 **P2**
+（additive public `InlineImageReferences.attachmentIDs`，人工确认见决策记录）。
+
+| 任务 | 类型 | 组件 | 规格锚点 | 依赖 | 状态 | 出口 |
+|---|---|---|---|---|---|---|
+| `T-1123-01` | `design` | —（0 组件） | `REQ-0027`/`REQ-0028`、`SCN-0021`/`SCN-0022`、`CMP-{APP,PRES,SCN-READ}` 设计增量、决策记录 | — | 已完成（2026-11-23） | 两卡两场景落盘、设计简报与决策记录落盘、本任务表落盘 |
+| `T-1123-02` | `change` | `CMP-SCN-READ` | `CMP-SCN-READ/spec.md` §设计增量：附件条内联图过滤；`SCN-0022` 运行序 2/入口 | `T-1123-01` | 待开始 | `InlineImageReferences.attachmentIDs` additive public；`InlineImageHTMLTests` 新增 4 例；`swiftw test --filter ScenesTests` 绿；不新增依赖/target |
+| `T-1123-03` | `change` | `CMP-PRES` | `CMP-PRES/spec.md` §设计增量：附件条内联图投影；`SCN-0022` 运行序 2–4 | `T-1123-02` | 待开始 | `startInlineImageRender` 过滤 `attachments`；`MailboxViewModelInlineImageTests` 新增 4 例；`swiftw test --filter PresentationTests` 绿；不改 `download`/`openSelected` 签名 |
+| `T-1123-04` | `change` | `CMP-APP` | `CMP-APP/spec.md` §设计增量：正文宽表格适配；`SCN-0021` 运行序 2–5 | `T-1123-01` | 待开始 | `baseCSS` 宽表规则；`TableLayoutProbe` L2 四例 PASS；`swiftw build` + 架构 4 门；不改 CSP/JS/`baseURL` |
+| `T-1123-05` | `verify` | `SCN-0021`/`SCN-0022` | 两张场景 §测试/§状态；`REQ-0027`/`REQ-0028` 验收归属 | `T-1123-02`…`T-1123-04` | 待开始 | `T-SCN-0021-01..04` L2 + `T-SCN-0022-01..04` L1 逐例 PASS；全量 `swiftw test`/架构 4 门；`make-app.sh` 成功；翻转两场景 `verified`、两需求 `delivered` |
+
+**验证命令**：`./Scripts/swiftw test --filter ScenesTests`、`./Scripts/swiftw test --filter PresentationTests`、`./Scripts/swiftw test`、
+`bash Scripts/check-architecture.sh`、`./Scripts/make-app.sh`；L2 `TableLayoutProbe` 编译生产 `MessageBodyStyle.swift`，原始输出入
+`task-spaces/20261123-table-adapt/evidence/`。
+
+**装载清单**：`MessageBodyStyle.swift`、`InlineImageHTML.swift`、`MailboxViewModel+Body.swift`、`MailboxViewModel.swift`、`AttachmentStripView.swift`、
+`MessageBodyView.swift`、`Tests/ScenesTests/InlineImageHTMLTests.swift`、`Tests/PresentationTests/MailboxViewModelInlineImageTests.swift`、
+`Tests/PresentationTests/Support.swift`、`doc/design/components/CMP-{APP,PRES,SCN-READ}/spec.md`、两张场景卡；单任务 ≤120k、不开新组件。
+
+**并行/WIP**：`T-1123-02`（`CMP-SCN-READ`）→ `T-1123-03`（`CMP-PRES`）串行；`T-1123-04`（`CMP-APP`）可与二者并行（不同组件、无共享文件）；`T-1123-05` 在全部之后，验证不复用实现输出。
+**条件与回退**：表格规则若需改 CSP/JS 或 HTML 包裹 → 停下回设计（用户已选压缩）；过滤若需改 `MailDomain`/schema/`ReadScene.attachments` 语义 → 停下回设计/确认；回退 = 反向回退实现 commit，无数据迁移。
+
 ## 批次纪律
 
 - 每个工序一次立一个 `works/` 目录；2026-11-14 起过程记录放工作区 `task-spaces/<run>/`，**任务表写在本文件对应工序节**，brief 只保留当次分析/范围，不维护第二份现行任务表；一个任务一个对话。

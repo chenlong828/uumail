@@ -2,7 +2,7 @@
 layer: design
 module: app
 status: active
-updated: 2026-11-20
+updated: 2026-11-23
 component: CMP-APP
 ---
 
@@ -340,3 +340,23 @@ component: CMP-APP
 - 实现进度（2026-11-20，`T-1120-07`）：`AttachmentExport.swift`（279 行）落地 `SavePanelPresenting`/`SystemSavePanel`、`AttachmentFileCopy`（`nonisolated async` + `Task.detached` 1 MiB 分块 + 取消传播 + 临时文件原子移动/替换）、`AttachmentSaveFlow`（去 `reResolve`；`missingSourceText`；`shouldContinue`）、`AttachmentActionGate`、`AttachmentActionModel`（`Origin(key,epoch)`/`syncSelection` 唯一递增/N1 首次下载前 guard/N3 重下 guard/`visibleSavingID`）；L2 生产源探针 `attachment-export-probe` 21 项全 PASS（`02e/02f/08a/08b/10a–10e` + 源缺失不重下），证据 `task-spaces/20261120-160446/evidence/attachment-access-verify/l2-export.txt`；`swiftw build` 与架构 4 门 PASS。
 - 实现进度（2026-11-20，`T-1120-08`）：新增 `AttachmentStripView.swift`（114 行）：`Label`+`bordered`/`small`/`scaledInheritedFont` 原样式保留；单击只写 `selectedAttachmentID`（overlay 描边，不改尺寸），双击 `simultaneousGesture(TapGesture(count:2))`、`.focusable`+`.focused`+`.onKeyPress(.return)`，`.contextMenu` 恰两项「打开」「另存为…」；AX label/hint/两个自定义动作；`savingID` 匹配时「正在另存为…」+「取消」，否则 `errorText` 橙色 banner，二者都无时零布局变化；附件列表变化清本地选中/焦点。L2 生产源宿主探针 `attachment-strip-probe` 6 项全 PASS（`02a/02b/02c/02d/04b`），证据 `task-spaces/20261120-160446/evidence/attachment-access-verify/l2-strip.txt`；`swiftw build` 与架构 4 门 PASS。
 - 实现进度（2026-11-20，`T-1120-09`）：`MessageBodyView` 删除内联附件条，`natural`/`capped` 两处改调 `AttachmentStripView`，新增 `attachmentErrorText`/`savingAttachmentID`/`onSaveAttachment`/`onCancelSave` 四个参数（254 行）；`MailboxView` 标 `@MainActor`、`@State AttachmentActionModel`、`init` 注入 `currentKey`/`download`、列表绑定 setter + `.onChange(of: selectedListKey)` 两处 `syncSelection()`、传 `saveErrorText ?? attachmentErrorText` 与 `visibleSavingID`、删除内联 `NSWorkspace.open`（236 行）。L2 宿主探针 `attachment-wiring-probe` 15 项全 PASS（`06a` 100/120/145% 单击 0/双击 1/菜单两项/高度与旧内联条一致、banner 条件渲染；`06b` 175/225% 附件条可点、WebView 339pt ≥200）；`T-05` 回归探针编译含 `AttachmentStripView.swift`、17 用例全 PASS（`l2-inline-image-build.txt`/`l2-inline-image-regression.txt`）；全量 360 例/58 suites 绿、架构 4 门 PASS。
+
+## 设计增量：正文宽表格适配（REQ-0027 / SCN-0021，2026-11-23，P3）
+
+- 来源：`REQ-0027`（`accepted`）/ `SCN-0021`（`mail/read/html-table-layout`）；证据与方案见 `task-spaces/20261123-table-adapt/`。
+- 现状：`MessageBodyStyle.baseCSS` 只有 `table { max-width: 100% }`；816px / 8 列固定宽度的表压不下去，145/175/225% 字号下文档 `scrollWidth` 832px，右侧列被阅读区裁掉。
+- 变更：`baseCSS` 增加
+
+  ```css
+  table[width], table[style*="width" i] {
+      display: block;
+      max-width: 100%;
+      overflow-x: auto;
+  }
+  ```
+
+  只命中带显式宽度的表；无宽度表保持 `display:table`。块宽被 `max-width` 压到阅读区，列宽由 WebKit 重排；内容仍压不下去时表格内部横向滚动。`MessageWebView`、CSP 两档、`baseURL`、禁 JS、白底、字号 `pageZoom`、`lastRender` guard 全部零改动。
+- 不做：HTML 扫描/包裹、JS、`!important`、撰写页 `ComposeDocument`（另立）；允许显式宽度 ≤ 视口的表保持原宽。
+- 验证：L2 `TableLayoutProbe`（编译生产 `MessageBodyStyle.swift`）逐例断言 120% 下 816px 表保持 816、`scrollWidth == 978`；145/175/225% 下 `scrollWidth == 810/671/522`；无宽度 300px 表不被拉伸；900px 表 + 600px 图在 668px 下 `scrollWidth == 668`。证据 `task-spaces/20261123-table-adapt/evidence/`。
+- 残余：带 `align`/浮动的显式宽度表可能改变环绕版式；无显式宽度且内容超宽的畸形表仍可能溢出。发布前真实样本冒烟。
+- 实现进度（2026-11-23，`T-1123-04`）：规则已加入 `MessageBodyStyle.baseCSS`；`MessageBodyStyle.swift` 行数见实现提交；L2 探针逐例 PASS（见 `result.md`）。
