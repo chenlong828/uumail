@@ -148,3 +148,18 @@ enum InlineImageHTML {
         return nil
     }
 }
+
+/// File references of attachments that a body already references through `cid:`.
+///
+/// This is the same uniqueness rule the inline renderer uses (`InlineImageHTML.matches`):
+/// a source with no candidate or several candidates is not reported, so callers that hide
+/// referenced attachments never hide an ambiguous one. Pure; no I/O, no network.
+public enum InlineImageReferences {
+    /// The `fileReference` values of the attachments the inline renderer would replace.
+    public static func attachmentIDs(
+        inHTML html: String,
+        attachments: [Attachment]
+    ) -> Set<String> {
+        Set(InlineImageHTML.matches(inHTML: html, attachments: attachments).map(\.attachment.fileReference))
+    }
+}

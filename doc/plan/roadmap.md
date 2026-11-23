@@ -512,7 +512,7 @@ P1 确认记录已归档为 `uumail/doc/history/decisions/2026-11-14-mail-write-
 | 任务 | 类型 | 组件 | 规格锚点 | 依赖 | 状态 | 出口 |
 |---|---|---|---|---|---|---|
 | `T-1123-01` | `design` | —（0 组件） | `REQ-0027`/`REQ-0028`、`SCN-0021`/`SCN-0022`、`CMP-{APP,PRES,SCN-READ}` 设计增量、决策记录 | — | 已完成（2026-11-23） | 两卡两场景落盘、设计简报与决策记录落盘、本任务表落盘 |
-| `T-1123-02` | `change` | `CMP-SCN-READ` | `CMP-SCN-READ/spec.md` §设计增量：附件条内联图过滤；`SCN-0022` 运行序 2/入口 | `T-1123-01` | 待开始 | `InlineImageReferences.attachmentIDs` additive public；`InlineImageHTMLTests` 新增 4 例；`swiftw test --filter ScenesTests` 绿；不新增依赖/target |
+| `T-1123-02` | `change` | `CMP-SCN-READ` | `CMP-SCN-READ/spec.md` §设计增量：附件条内联图过滤；`SCN-0022` 运行序 2/入口 | `T-1123-01` | 已完成（2026-11-23） | `InlineImageReferences.attachmentIDs` additive public；`InlineImageHTMLTests` 新增 4 例；`swiftw test --filter ScenesTests` 绿；不新增依赖/target |
 | `T-1123-03` | `change` | `CMP-PRES` | `CMP-PRES/spec.md` §设计增量：附件条内联图投影；`SCN-0022` 运行序 2–4 | `T-1123-02` | 待开始 | `startInlineImageRender` 过滤 `attachments`；`MailboxViewModelInlineImageTests` 新增 4 例；`swiftw test --filter PresentationTests` 绿；不改 `download`/`openSelected` 签名 |
 | `T-1123-04` | `change` | `CMP-APP` | `CMP-APP/spec.md` §设计增量：正文宽表格适配；`SCN-0021` 运行序 2–5 | `T-1123-01` | 待开始 | `baseCSS` 宽表规则；`TableLayoutProbe` L2 四例 PASS；`swiftw build` + 架构 4 门；不改 CSP/JS/`baseURL` |
 | `T-1123-05` | `verify` | `SCN-0021`/`SCN-0022` | 两张场景 §测试/§状态；`REQ-0027`/`REQ-0028` 验收归属 | `T-1123-02`…`T-1123-04` | 待开始 | `T-SCN-0021-01..04` L2 + `T-SCN-0022-01..04` L1 逐例 PASS；全量 `swiftw test`/架构 4 门；`make-app.sh` 成功；翻转两场景 `verified`、两需求 `delivered` |

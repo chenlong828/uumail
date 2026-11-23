@@ -229,4 +229,50 @@ struct InlineImageHTMLTests {
                 == "data:image/png;base64,\(png.base64EncodedString())"
         )
     }
+
+    @Test("attachmentIDs returns only the attachments the body actually references")
+    func attachmentIDsReturnsReferencedAttachments() {
+        let html = """
+        <img src="cid:logo@test"><img src="cid:photo.jpg@test">
+        <p>hello</p>
+        """
+        let report = Attachment(displayName: "报表.pdf", fileReference: "ref-report")
+
+        #expect(
+            InlineImageReferences.attachmentIDs(inHTML: html, attachments: [logo, photo, report])
+                == ["ref-logo", "ref-photo"]
+        )
+    }
+
+    @Test("attachmentIDs resolves an opaque cid through the server-reported ContentId")
+    func attachmentIDsUseContentID() {
+        let gif = Attachment(
+            displayName: "36979_logo.gif",
+            fileReference: "ref-gif",
+            contentID: "opaque@test"
+        )
+        let html = "<img src=\"cid:opaque@test\">"
+
+        #expect(
+            InlineImageReferences.attachmentIDs(inHTML: html, attachments: [gif, photo])
+                == ["ref-gif"]
+        )
+    }
+
+    @Test("attachmentIDs keeps ambiguous or unreferenced attachments visible")
+    func attachmentIDsSkipAmbiguousAndUnreferenced() {
+        let duplicate = Attachment(displayName: "logo.png", fileReference: "ref-other")
+        let html = "<img src=\"cid:logo@test\">"
+
+        #expect(InlineImageReferences.attachmentIDs(inHTML: html, attachments: [logo, duplicate]).isEmpty)
+        #expect(InlineImageReferences.attachmentIDs(inHTML: html, attachments: [photo]).isEmpty)
+    }
+
+    @Test("attachmentIDs is empty when the body has no cid sources")
+    func attachmentIDsEmptyWithoutSources() {
+        #expect(
+            InlineImageReferences.attachmentIDs(inHTML: "<p>正文</p>", attachments: [logo, photo])
+                .isEmpty
+        )
+    }
 }
