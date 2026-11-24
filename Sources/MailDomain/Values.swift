@@ -92,6 +92,8 @@ public struct Message: Equatable, Sendable {
     public var bodyPreview: String?
     public var folderID: String?
     public var attachments: [Attachment]
+    /// Present when the message is a meeting request (REQ-0029 / REQ-0030).
+    public var meeting: MeetingInvite?
 
     public init(
         serverID: String,
@@ -104,7 +106,8 @@ public struct Message: Equatable, Sendable {
         bodyPreview: String? = nil,
         folderID: String? = nil,
         attachments: [Attachment] = [],
-        cc: String? = nil
+        cc: String? = nil,
+        meeting: MeetingInvite? = nil
     ) {
         self.serverID = serverID
         self.subject = subject
@@ -117,6 +120,7 @@ public struct Message: Equatable, Sendable {
         self.folderID = folderID
         self.attachments = attachments
         self.cc = cc
+        self.meeting = meeting
     }
 }
 
