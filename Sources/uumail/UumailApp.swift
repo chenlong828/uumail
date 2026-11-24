@@ -30,7 +30,7 @@ struct UumailApp: App {
                     switch composition.route {
                     case .mailbox:
                         if let viewModel = composition.mailbox {
-                            MailboxView(viewModel: viewModel)
+                            MailboxView(viewModel: viewModel, calendarModel: composition.calendar)
                         }
                     case .accountSetup:
                         AccountSetupView(viewModel: composition.accountSetup) {

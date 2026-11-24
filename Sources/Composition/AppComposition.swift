@@ -20,6 +20,8 @@ public final class AppComposition {
 
     public private(set) var route: Route
     public private(set) var mailbox: MailboxViewModel?
+    /// Calendar page state; built with the mailbox so both share one store and account.
+    public private(set) var calendar: CalendarViewModel?
     public let accountSetup: AccountSetupViewModel
 
     /// Whether a saved account exists; the developer-export command is only meaningful then.
@@ -167,6 +169,7 @@ public final class AppComposition {
             account: account,
             onEnqueued: { pump.signal() }
         )
+        calendar = CalendarViewModel(calendar: CalendarScene(store: store, account: account))
         self.pump = pump
     }
 

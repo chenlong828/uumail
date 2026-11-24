@@ -5,6 +5,9 @@ import WebKit
 
 struct MessageBodyView: View {
     let header: MessageHeaderPresentation?
+    /// Meeting card values for an invite (REQ-0030 / SCN-0023); nil for ordinary mail.
+    var meetingCard: MeetingCardPresentation? = nil
+    var onOpenInCalendar: () -> Void = {}
     let bodyPresentation: BodyPresentation
     /// The current body with inline `cid:` sources already rewritten to `data:` URLs. The
     /// view only swaps the display string; it never parses HTML or fetches attachments.
@@ -47,6 +50,7 @@ struct MessageBodyView: View {
         VStack(spacing: 0) {
             if let header {
                 MessageHeaderView(header: header)
+                meetingCardRow
                 Divider()
             }
             bodyContent
@@ -63,6 +67,7 @@ struct MessageBodyView: View {
                 VStack(spacing: 0) {
                     if let header {
                         MessageHeaderView(header: header)
+                        meetingCardRow
                     }
                     if case .loaded(_, let isTruncated) = bodyPresentation {
                         attachmentStrip
@@ -84,6 +89,14 @@ struct MessageBodyView: View {
                 bodyState
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var meetingCardRow: some View {
+        if let meetingCard {
+            MeetingCardView(card: meetingCard, onOpenInCalendar: onOpenInCalendar)
+            Divider()
         }
     }
 

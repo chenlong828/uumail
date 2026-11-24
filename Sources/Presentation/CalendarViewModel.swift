@@ -132,6 +132,16 @@ public final class CalendarViewModel {
         }
     }
 
+    /// iCalendar text for a meeting UID (reading pane export); sets `errorText` on failure.
+    public func icsText(uid: String) -> String? {
+        do {
+            return try scene.ics(uid: uid)
+        } catch {
+            errorText = ErrorText.text(for: Self.mailError(error))
+            return nil
+        }
+    }
+
     // MARK: - Helpers
 
     private func shift(by value: Int, component: Calendar.Component) {

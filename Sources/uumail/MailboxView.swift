@@ -6,6 +6,9 @@ import SwiftUI
 @MainActor
 struct MailboxView: View {
     @Bindable var viewModel: MailboxViewModel
+    /// Present in the running app; nil in probes that only host the mail side.
+    var calendarModel: CalendarViewModel?
+    @State private var showingCalendar = false
     @State private var attachmentActions: AttachmentActionModel
     @State private var compose: ComposeViewModel?
     @State private var searchText = ""
@@ -13,8 +16,9 @@ struct MailboxView: View {
     @State private var readingPaneSize = CGSize(width: 720, height: 560)
     @FocusState private var messageListFocused: Bool
 
-    init(viewModel: MailboxViewModel) {
+    init(viewModel: MailboxViewModel, calendarModel: CalendarViewModel? = nil) {
         _viewModel = Bindable(wrappedValue: viewModel)
+        self.calendarModel = calendarModel
         _attachmentActions = State(initialValue: AttachmentActionModel(
             currentKey: { viewModel.selectedListKey },
             download: { await viewModel.download($0) }
@@ -22,14 +26,60 @@ struct MailboxView: View {
     }
 
     var body: some View {
+        if showingCalendar, let calendarModel {
+            calendarSplit(calendarModel)
+        } else {
+            mailSplit
+        }
+    }
+
+    private func calendarSplit(_ model: CalendarViewModel) -> some View {
         NavigationSplitView {
+            sidebar
+        } detail: {
+            CalendarView(model: model) { folderID, serverID in
+                showingCalendar = false
+                viewModel.select(folderID: folderID)
+                viewModel.select(messageID: serverID)
+            }
+            .navigationSplitViewColumnWidth(min: 520, ideal: 760)
+        }
+    }
+
+    private var sidebar: some View {
+        VStack(spacing: 0) {
+            Button {
+                guard calendarModel != nil else { return }
+                showingCalendar = true
+            } label: {
+                Label("日历", systemImage: "calendar")
+                    .scaledInheritedFont(.body)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .background(showingCalendar ? Color.accentColor.opacity(0.15) : Color.clear)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 6)
+            .padding(.top, 6)
+            Divider()
             List(viewModel.folders, id: \.serverID, selection: folderSelection) { folder in
                 Label(folder.displayName, systemImage: icon(for: folder.type))
                     .scaledInheritedFont(.body)
                     .tag(folder.serverID)
             }
-            .navigationSplitViewColumnWidth(min: 180, ideal: 220)
-            .navigationTitle("文件夹")
+            .onChange(of: folderSelection.wrappedValue) { _, value in
+                if value != nil { showingCalendar = false }
+            }
+        }
+        .navigationSplitViewColumnWidth(min: 180, ideal: 220)
+        .navigationTitle("文件夹")
+    }
+
+    private var mailSplit: some View {
+        NavigationSplitView {
+            sidebar
         } content: {
             VStack(spacing: 0) {
                 messageList
@@ -88,6 +138,8 @@ struct MailboxView: View {
             GeometryReader { proxy in
                 MessageBodyView(
                     header: viewModel.headerPresentation,
+                    meetingCard: viewModel.meetingCard,
+                    onOpenInCalendar: openMeetingInCalendar,
                     bodyPresentation: viewModel.body,
                     inlineImageHTML: viewModel.inlineImageHTML,
                     notice: viewModel.bodyNotice,
@@ -111,6 +163,14 @@ struct MailboxView: View {
         .onChange(of: viewModel.selectedListKey) { _, _ in
             attachmentActions.syncSelection()
         }
+    }
+
+    private func openMeetingInCalendar() {
+        guard let uid = viewModel.selectedMessage?.meeting?.uid,
+              let calendarModel,
+              let text = calendarModel.icsText(uid: uid)
+        else { return }
+        _ = CalendarExport.present(text, uid: uid)
     }
 
     private var currentFolderName: String {
