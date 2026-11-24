@@ -126,6 +126,12 @@ public final class MailboxViewModel {
         selectedMessage.map { MessageHeaderPresentation(message: $0) }
     }
 
+    /// The reading pane card for a meeting request; nil for ordinary mail
+    /// (REQ-0030 / SCN-0023). Derived on read, no scene call, no network.
+    public var meetingCard: MeetingCardPresentation? {
+        MeetingCardPresentation.make(from: selectedMessage?.meeting)
+    }
+
     var selectedRef: MessageRef? {
         guard let message = selectedMessage else { return nil }
         return ref(for: message)
