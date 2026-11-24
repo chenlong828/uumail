@@ -27,3 +27,11 @@ component: CMP-MEETING-STORE
 - **删除测试**：删掉后会议 SQL 会回到 `MailStore.swift`，`CMP-STORE` 再次超 1000 行且会议写入不再有单一 owner → 真边界。
 - **来源**：`history/decisions/2026-11-24-risk-review-decisions.md` D1（先拆 `MailStore+Meetings.swift`）；
   2026-11-24 从 273 行单文件拆为读写两个文件，并从 `CMP-STORE` 预算中析出。
+
+## 实现（2026-11-24，R77 会议契约解耦）
+
+- 写入来源从 `Message.meeting` 改为 `MessageDelta.meetings`（`MeetingDeltaEntry`：serverID + 主题回退 + `MeetingInvite`）；
+  `upsertMeeting(_:account:folder:serverID:subject:invite:now:)`，不再接收 `Message`。
+- 读侧新增 `meeting(account:folder:serverID:)`（按消息键取一条，过滤取消与 `MessageType=4`），供 `ReadScene.meeting(for:)`。
+- 会议值类型现由 `MeetingDomain` 提供（`import MeetingDomain`）；组件 287/400 不变。
+

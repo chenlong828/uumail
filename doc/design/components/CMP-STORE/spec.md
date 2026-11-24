@@ -267,3 +267,12 @@ component: CMP-STORE
   窗口边界含等值秒、250 行不被截断、排序、文件夹隔离）；`PerformanceTests.windowBaseline`
   在 5,000 封窗口内数据上实测 `messages(since:)` **0.047s / 5,000 行**（阈值 1s）。
 - 既有 `messages(account:folder:limit:)` 保留但不再被列表调用；`MessageLookupTests` 同时钉住它的旧形状。
+
+## 实现（2026-11-24，R77 会议契约解耦）
+
+- `MessageDelta` 与同步端口迁至 `CMP-SYNC-CONTRACT`；`MailStore` 仍实现 `SyncStore`（新增 `import SyncContract`）。
+- 读侧不再 `attachMeetings`：`messages(account:folder:limit:)` / `messages(account:folder:since:)` / `message(account:folder:serverID:)`
+  与搜索都只返回 `Message`；邀请卡改走 `MailStore.meeting(account:folder:serverID:)`（由 `CMP-MEETING-STORE` 提供）。
+- 写侧 `applySyncBatch(account:folder:added:changed:removedServerIDs:syncKey:meetings:)` 新增 `meetings`（默认 `[]`），
+  `MessageDelta.meetings` 在 `applyDelta` 的同一事务内写入；`CMP-STORE` 实测 952/1000 不变。
+

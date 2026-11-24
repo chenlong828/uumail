@@ -24,7 +24,7 @@ Q1–Q7 的拍板结论见 `history/decisions/2026-11-24-risk-review-decisions.m
 | R72 | `Scenes` 合计 **1306/1200**（2026-11-24 16:45），且已有两个 HTML 纯工具（`HTMLText` 221 + `InlineImageHTML` 165） | **立 P1 拆分**（D1）：`HTMLText`/`InlineImageHTML` 到纯工具组件，预算不动 **已关闭（2026-11-24）**：`Scenes` 现 **923/1200**（`HTMLText`/`InlineImageHTML` 拆到 `CMP-HTML`，新 target `HTMLSupport`）。| 拆分触发条件已满足；不排在拆分前继续往 `Scenes` 加功能 `HTMLSupport` 391 行；`Scenes`/`Presentation` 各加一条 `import`。| `architecture.md` §7 第 12 条、`Scenes` 预算 |
 | R13 | 发送只入队，列表/状态栏没有待发/失败计数 | **下一批做**（D7）：W-M3-17 后单独小批加 `pending`/`failed` 角标 | 本轮不塞进浮窗批次；在角标落地前保留撰写页文案 | `CMP-PRES/spec.md`、`CMP-APP/spec.md`、`CMP-OUT/spec.md` |
 | R73 | 发布前证据未闭环：6 张核心场景卡仍 `designed`，多项 L3/真机冒烟未执行 | **发布前逐张补 `verified` + 人工冒烟清单**（D17） | 作为发布门，不是 W-M3-17 验收门；未完成不宣称「发布就绪」 | `roadmap.md`、各场景卡 §状态 |
-| R77 | `MailDomain` **1503/800 目标**（`Meeting.swift` 682 + 其它 821，2026-11-24 `wc -l`） | 会议值类型 2026-11-24 P1 加入后未重估预算 | 平台契约组件继续增长，契约评审与装载成本上升 | **另立 P1 决定**：拆会议契约到独立组件，或经人工上调目标；本批只登记与实测，不静默调预算 | `CMP-DOMAIN/spec.md` 预算节、`plan/roadmap.md` |
+| R77 | `MailDomain` **1503/800 目标**（`Meeting.swift` 682 + 其它 821，2026-11-24 `wc -l`） | 会议值类型 2026-11-24 P1 加入后未重估预算 **已关闭（2026-11-24）**：`MailDomain` 现 **756/800**（会议值类型→`MeetingDomain` 682，同步契约→`SyncContract` 87，`Message` 去 `meeting`）。| 平台契约组件继续增长，契约评审与装载成本上升 | **另立 P1 决定**：拆会议契约到独立组件，或经人工上调目标；本批只登记与实测，不静默调预算 决策与验证见 `history/decisions/2026-11-24-meeting-domain-split.md`。| `CMP-DOMAIN/spec.md` 预算节、`plan/roadmap.md` |
 
 ## 二、处置中（W-M3-17，设计完成、待实现）
 
@@ -92,6 +92,7 @@ SwiftUI `Window` 显示前不能可靠应用计算尺寸，改用 AppKit `NSWind
 
 ## 变更记录
 
+- 2026-11-24（R77 会议契约解耦，P1）：`Meeting.swift` → 新 target `MeetingDomain`（682）；`MessageDelta` 与 `MailGateway`/`MailWriteGateway`/`SyncStore` → 新 target `SyncContract`（87）；`Message.meeting` 删除，会议随 `MessageDelta.meetings` 同事务写入；读侧改为 `ReadScene.meeting(for:)`；`MailDomain` 756/800。R77 关闭。
 - 2026-11-24（W-REFACTOR-03 预算拆分）：R45 关闭（`CMP-STORE` 952/1000，`meetings` → `CMP-MEETING-STORE`）；R70 关闭（`MailboxViewModel` 366/400、`CalendarViewModel` 172）；R72 关闭（`Scenes` 923/1200，`HTMLText`/`InlineImageHTML` → `CMP-HTML`）；`CMP-EAS` 1513→1150/1500（`WBXML` → `CMP-WBXML`，363 行）；`CMP-APP` 各文件 ≤300（实测最大 293）；新增 R77（`MailDomain` 1503/800 目标，待 P1 决定）。
 - 2026-11-24（风险拍板）：Q1–Q7 与 R13/R21/R45/R49/R53/R54/R55/R60/R61/R66/R67/R68/R69/R70–R73 逐项拍板，
   结论见 `history/decisions/2026-11-24-risk-review-decisions.md`；新增 R74–R76（日历集合冲突、离线队列、3 个月删行）。

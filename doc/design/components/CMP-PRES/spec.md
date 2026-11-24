@@ -628,3 +628,11 @@ component: CMP-PRES
 - **公开面变更（P2）**：`MailboxViewModel.messages` 与 `.folders` 的 setter 由 `private(set)` 放宽为 `internal(set)`，供同模块扩展写；
   公开读面与语义不变，app/组合根仍只读。`MailboxViewModel.selection` 仍是 `internal(set)`（既有）。
 - 验证：`PresentationTests` 全绿；`MailboxViewModel` 单文件 366/400。
+
+## 实现（2026-11-24，R77 会议契约解耦）
+
+- `MailboxViewModel.meetingCard` 改为由 `meetingInvite` 派生；`meetingInvite: MeetingInvite?` 在选中/刷新时由
+  `refreshSelectedMeeting()` 调 `ReadScene.meeting(for:)` 取一次（setter `internal(set)`，公开读面不变）。
+- `ReaderViewModel.load` 同样经 `ReadScene.meeting(for:)` 取卡；不再有 `Message.meeting`。
+- 选中切换、刷新保留选中、删除后清空三条路径都覆盖：`select(_:open:)` 刷新、`clearSelection()` 置空。
+

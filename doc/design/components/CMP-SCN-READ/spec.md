@@ -224,3 +224,11 @@ component: CMP-SCN-READ
 - `ReadScene.message(_:)` 与 `messages(folderID:since:)` 落地（`Sources/Scenes/ReadScene.swift`，+2 方法、零网络）。
 - 测试 `Tests/ScenesTests/ReadSceneLookupTests.swift` 4 例：单封命中并断言 `gateway.calls.isEmpty`、窗口透传与倒序、
   无法解析的时间不被隐藏、既有 `messages(folderID:limit:)` 形状不变。
+
+## 实现（2026-11-24，R77 会议契约解耦）
+
+- 新增 `ReadScene.meeting(for ref:) -> MeetingInvite?`（透传 `MailStore.meeting(account:folder:serverID:)`），
+  供邀请卡读取；`ReadScene.message(_:)` / `messages(folderID:since:)` 签名不变、不再装饰会议。
+- `Scenes` 增加 `import SyncContract`（`MessageDelta` 与同步端口）与 `import MeetingDomain`（会议值类型）；
+  `Scenes` 932/1200。
+

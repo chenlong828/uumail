@@ -23,11 +23,13 @@ component: CMP-DOMAIN
 - 入口：`Sources/MailDomain/Values.swift#AccountID`、`Ports.swift#MailGateway`、`Errors.swift#MailError`、`Configuration.swift#ServerConfiguration`、`Contacts.swift#ContactAddress`、`#ContactEnvelope`、`#ContactDirectory`、`#RecipientText`（2026-11-18 新增）
 - 依赖：仅 Foundation。扇出 0。
 - 冷热：两侧共用；只做值传递。
-- 尺寸预算：目标 ≤800 行；**当前 1503 行已超**（2026-11-24 `wc -l`：`Meeting.swift` 682 + 其它 821；会议值类型 2026-11-24 P1 加入后未重新定预算）。是否拆出会议契约或上调预算需另行拍板（`plan/risks.md` R77），本批不静默调预算、不做拆分。
+- 尺寸预算：目标 ≤800 行；当前 **756 行**（2026-11-24 `wc -l`：`Values` 272 + `Contacts` 209 + `EnvelopeParser` 118 + `Ports` 21 + `Configuration` 52 + `Errors` 24 + `AddressList` 57 ≈ 756）。会议值类型已迁 `CMP-MEETING-DOMAIN`（682），同步契约（`MessageDelta`/`MailGateway`/`MailWriteGateway`/`SyncStore`）已迁 `CMP-SYNC-CONTRACT`（87）；本组件不再依赖会议子域（2026-11-24 R77 关闭）。
 - 单独运行：`./Scripts/swiftw test --filter MailDomainTests`
 - 删除测试：删掉后 `Scenes`、`MailStore`、`SyncEngine`、`Outbox` 各自定义同名类型并互相转换 → 复杂度集中，是真边界。
 
-## 契约卡：MailGateway v2
+> **已迁出（2026-11-24，R77）**：`MailGateway`/`MailWriteGateway`/`SyncStore` 与 `MessageDelta` 现属 `CMP-SYNC-CONTRACT`（`design/components/CMP-SYNC-CONTRACT/spec.md`）。本节保留为迁移前的契约摘要，**不作为现行设计依据**；增删字段以 `CMP-SYNC-CONTRACT` 为准。
+
+## 契约卡：MailGateway v2（已迁出）
 
 - 所属 / 目的：把服务器能力以本方概念提供给场景与同步。
 - 签名：
@@ -67,7 +69,7 @@ component: CMP-DOMAIN
 - 兼容性 / 废弃：v2 相对 v1 新增 `probe/fetchBody/fetchAttachment/send`；`FetchedBody` 为 D10 决策（`history/decisions/2026-11-13-fetched-body-contract.md`）。
 - 契约测试：`MailDomainTests` 值类型；`EASAdapterTests` 错误与正文映射；`EASClientTests` 协议层回放。
 
-## 契约卡：SyncStore
+## 契约卡：SyncStore（已迁出）
 
 - 所属 / 目的：同步引擎读写本地事实的最小端口，去掉旧的 `StoreAdapter` 与 `async`（D6）。
 - 签名：`folders`、`applyFolderSnapshot`、`syncKey`、`applySyncBatch`、`resetCollection`（均为同步 `throws`）；已实现 `markRead`、`commitMarkRead`、`commitDelete`（T-1114-14；见文末设计增量）。
@@ -223,7 +225,9 @@ component: CMP-DOMAIN
 - 测试：`MailDomainTests/ContactDirectoryTests`（名字保留/回退、最近非空名字、去重、匹配排序、畸形/DN/RFC 2047、limit/排除、空片段、引号内逗号/未闭合 `<>`、`Team <a@x;b@y>`/`a@x,b@y` 不产生候选）与 `RecipientTextTests`（尾片段/前缀/替换、引号与 `<>`、空片段）；`AddressList` 既有用例必须全绿（尤其保留 `/O=…`、`CN=z`、`Team <team>` 等非 SMTP 形状，不得因共享解析器归位而收窄）。场景/视图模型测试见 `SCN-0017`。
 - 定级/确认：本增量属 P1（平台级扇入模块新增 public 契约）；默认确认（未经人工）见 `history/decisions/2026-11-18-recipient-autocomplete.md`，交评审判断；A1–A6 细化见 `history/decisions/2026-11-18-recipient-autocomplete-design-addendum.md`。
 
-## 设计增量：会议邀请值类型与 iCalendar（REQ-0029 / REQ-0030，2026-11-24，P1 已确认、已实现）
+## 设计增量：会议邀请值类型与 iCalendar（已迁至 CMP-MEETING-DOMAIN，2026-11-24）
+
+> 本节描述的值类型与 iCalendar 序列化已于 2026-11-24 迁至 `CMP-MEETING-DOMAIN`（target `MeetingDomain`）；`Message` 不再携带 `meeting`，会议随 `MessageDelta.meetings` 走。现行契约见 `design/components/CMP-MEETING-DOMAIN/spec.md` 与 `CMP-SYNC-CONTRACT/spec.md`。以下保留为迁移前记录。
 
 - 来源：`REQ-0029`/`REQ-0030`；协议字段见 `CMP-EAS` 增量；存储见 `CMP-STORE` v12。
 - 新增 public 值类型（`Sources/MailDomain/Meeting.swift`，约 260 行）：

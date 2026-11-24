@@ -115,3 +115,10 @@ component: CMP-EASADAPTER
 - `EASAdapter.meeting(_:)`：只为 `IPM.Schedule.Meeting.*` 生成会议；取消标记、`instanceType` 例外、
   `biasMinutes → offsetSeconds`、位掩码展开均在映射层归一；`EASAdapter.message` 改为 internal 供测试直接调用。
 - 测试：`Tests/EASAdapterTests/EASAdapterTests.swift` 新增 5 例（字段映射、取消、普通邮件、缺时间、例外）。
+
+## 实现（2026-11-24，R77 会议契约解耦）
+
+- `fetchMessages` / `markRead` / `delete` 返回的 `MessageDelta` 现由 `CMP-SYNC-CONTRACT` 定义，并新增
+  `meetings: [MeetingDeltaEntry]`：`EASAdapter.delta` 把同一响应里的邀请映射成 `MeetingDeltaEntry(serverID:subject:invite:)`。
+- `EASAdapter.message(_:)` 不再构造会议；会议映射保留为 `EASAdapter.meeting(_:)`（测试直接调用）。
+

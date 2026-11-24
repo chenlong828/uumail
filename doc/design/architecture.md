@@ -9,7 +9,7 @@ updated: 2026-11-24
 
 macOS 原生邮件客户端，只支持 EAS（Exchange ActiveSync），以「一台已登记的 iPhone」身份接入私有化 Exchange 2016/2019。首版覆盖账号接入、文件夹与收件箱同步、阅读、发送、附件、本地搜索、离线缓存与系统通知。
 
-本文是**现行架构真相**。2026-11-10 起的场景收口与分层重构（W-SCN-REFACTOR）已冻结并落地：10 个库 target + 2 个可执行 target，`AppServices` 退役，4 个场景类收口每条业务流。过程记忆与裁决见 `history/works/2026-11-10-scene-refactor/`，不作为设计依据。
+本文是**现行架构真相**。2026-11-10 起的场景收口与分层重构（W-SCN-REFACTOR）已冻结并落地：12 个库 target + 2 个可执行 target，`AppServices` 退役，4 个场景类收口每条业务流。过程记忆与裁决见 `history/works/2026-11-10-scene-refactor/`，不作为设计依据。
 
 ## 0. 结论先行
 
@@ -123,6 +123,8 @@ graph TD
 |---|---|---|---|
 | `MailDomain` | L1 | Foundation | `Sources/MailDomain/{Values,Ports,Errors,Configuration}.swift` |
 | `HTMLSupport` | L1 工具 | `MailDomain` | `Sources/HTMLSupport/{HTMLText,InlineImageHTML}.swift`（2026-11-24 从 `Scenes` 析出，CMP-HTML） |
+| `MeetingDomain` | L1 值域 | Foundation | `Sources/MeetingDomain/Meeting.swift`（2026-11-24 从 `MailDomain` 析出，CMP-MEETING-DOMAIN） |
+| `SyncContract` | L1 契约 | `MailDomain`、`MeetingDomain` | `Sources/SyncContract/SyncContract.swift`（`MessageDelta` 与同步端口，CMP-SYNC-CONTRACT） |
 | `MailStore` | L1a | `MailDomain`、GRDB | `Sources/MailStore/MailStore.swift#MailStore`、`OutboxStore.swift#OutboxStore`（outbox 表读写）、`MeetingStore+{Read,Write}.swift`（meetings 表读写，CMP-MEETING-STORE） |
 | `SyncEngine` | L1b | `MailDomain` | `Sources/SyncEngine/SyncEngine.swift#SyncEngine` |
 | `Outbox` | L1b | `MailDomain`、`MailStore` | `Sources/Outbox/Outbox.swift#Outbox`、`MimeBuilder.swift#MimeBuilder` |
@@ -163,6 +165,8 @@ graph TD
 | `CMP-SCN-COMPOSE` | `design/components/CMP-SCN-COMPOSE/spec.md` | L2 场景 |
 | `CMP-OUTBOX-STORE` | `design/components/CMP-OUTBOX-STORE/spec.md` | L1a 数据（outbox 表） |
 | `CMP-MEETING-STORE` | `design/components/CMP-MEETING-STORE/spec.md` | L1a 数据（meetings 表） |
+| `CMP-MEETING-DOMAIN` | `design/components/CMP-MEETING-DOMAIN/spec.md` | L1 值域（会议） |
+| `CMP-SYNC-CONTRACT` | `design/components/CMP-SYNC-CONTRACT/spec.md` | L1 契约（同步批次） |
 | `CMP-SCN-CALENDAR` | `design/components/CMP-SCN-CALENDAR/spec.md` | L2 场景 |
 | `CMP-PRES` | `design/components/CMP-PRES/spec.md` | L3 表现 |
 | `CMP-APP` | `design/components/CMP-APP/spec.md` | L3 视图 |
@@ -193,8 +197,10 @@ graph TD
 | `Outbox` | 2 | ≤4 | `MailStore` + `MailGateway`（MIME 内部） |
 | `EASAdapter` | 2 | ≤5 | `MailDomain` + `EASClient` |
 | 每个场景 | 1–3 | ≤5 | 端口计入 `MailDomain`，不重复计；`ReadScene` 因写路径增 `SyncEngine`（T-1114-10 设计，2026-11-14 已实现）。原预算 1–2；上调至 1–3 是本次唯一新增的组件级依赖，已进 P1 确认清单与决策记录项，替代方案为窄 `SyncWriting` 端口（保持 2） |
-| `Scenes` | 5 | ≤8 | `MailDomain`、`MailStore`、`SyncEngine`、`Outbox`、`HTMLSupport`；单个场景仍 1–3（≤5） |
-| `Presentation` | 2 | ≤3 | `Scenes` + `HTMLSupport`（与 `MailDomain` 值类型） |
+| `Scenes` | 7 | ≤8 | `MailDomain`、`MeetingDomain`、`MailStore`、`SyncEngine`、`Outbox`、`HTMLSupport`、`SyncContract`；单个场景仍 1–3（≤5） |
+| `SyncContract` | 2 | ≤4 | `MailDomain` + `MeetingDomain`，无业务依赖 |
+| `MeetingDomain` | 0 | ≤5 | 纯会议值域 |
+| `Presentation` | 4 | 业务 1（`Scenes`） | 另三个是值/契约 target：`MailDomain`、`MeetingDomain`、`HTMLSupport` |
 | `HTMLSupport` | 1 | ≤5 | 只依赖 `MailDomain` 的 `Attachment` 值类型 |
 | `Composition` | 8 | 豁免 | 组合根（全部库 target） |
 
@@ -410,7 +416,7 @@ CommandLineComposition（127 行）
 ### 7.1 当前验证面
 
 - `./Scripts/swiftw test` → **460 tests / 77 suites**（2026-11-24，W-M3-17 完成后复测）。
-- 测试 target：`MailDomainTests`、`HTMLSupportTests`、`MailStoreTests`、`SyncEngineTests`、`OutboxTests`、`EASClientTests`、`EASAdapterTests`、`ScenesTests`、`PresentationTests`、`CompositionTests`。
+- 测试 target：`MailDomainTests`、`MeetingDomainTests`、`HTMLSupportTests`、`MailStoreTests`、`SyncEngineTests`、`OutboxTests`、`EASClientTests`、`EASAdapterTests`、`ScenesTests`、`PresentationTests`、`CompositionTests`。
 - `bash Scripts/check-architecture.sh` → 4 门：per-target import 白名单、场景互调、`AppComposition` ≤200 行、`Composition` 业务 switch。4 门全过。
 - schema 迁移：`MailStoreTests/MigrationTests` 的 pre-v8 与 pre-v9 fixture。
 - 性能：`MailStoreTests/PerformanceTests` 5k 基线；重构后未复测 P95。
@@ -505,6 +511,8 @@ D10 的决策记录：`history/decisions/2026-11-13-fetched-body-contract.md`。
 14. **日历时区按固定偏移展开**（2026-11-24 设计）：只解析 EAS `TimeZone` blob 的 `Bias` 与名称，`StandardDate/DaylightDate` 不解析；重复系列跨夏令时会偏一小时。本部署在 `Asia/Shanghai`（无夏令时），登记为可接受限制（`plan/open-questions.md` Q5、`plan/risks.md` R56）。
 15. **不回填历史邀请**（2026-11-24 人工确认）：`meetings` v12 不重置游标、不回扫历史；升级后日历从空开始，只有升级后新到的邀请出现，升级前的邀请邮件也没有会议卡。用户已确认接受该代价（空态文案必须说明）。
 16. **SQLite 已启用 WAL**（2026-11-24 人工确认）：`MailStore` 由默认 `delete` 改为 `Configuration.journalMode = .wal`（仍单 `DatabaseQueue`）；库旁出现 `mail.sqlite-wal`/`-shm`，备份需一并带走或用 `VACUUM INTO`（`plan/risks.md` R61）。修掉了「文档写 WAL、实现却是 delete」的偏差。
+
+14. **会议契约已解耦（R77，2026-11-24）**：`Meeting.swift` 迁 `MeetingDomain`（682），`MessageDelta` 与三个同步端口迁 `SyncContract`（87），`Message` 不再携带 `meeting`，会议随 `MessageDelta.meetings` 同事务写入；`MailDomain` 756/800、不再依赖会议子域。决策 `history/decisions/2026-11-24-meeting-domain-split.md`。
 
 ### 10.3 定级与冻结
 
