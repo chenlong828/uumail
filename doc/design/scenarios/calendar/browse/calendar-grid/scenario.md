@@ -65,6 +65,7 @@ scenario: SCN-0024
 - 证据（L1，组件级）：`Tests/PresentationTests/CalendarScenarioTests.swift` 的 `T-SCN-0024-01..04`，
   配合 `CalendarProjectionTests`/`CalendarViewModelTests`/`CalendarSceneTests`/`MeetingStoreTests`/
   `MeetingRecurrenceTests`/`MeetingICSTests`。全量 437 tests / 71 suites 绿，架构 4 门过，`make-app.sh` 成功。
+- 跳回邮件：`MailboxViewModel.reveal(folderID:serverID:)` + 列表滚动，`MailboxRevealTests` 3 例；见 `history/pitfalls.md` P1。
 - L2 说明：月/周网格的像素与帧位置未做无头探针（`plan/risks.md` R59）；网格算法与文案在 L1 断言，
   视觉冒烟登记为发布前人工项，与 A5 同类。
 

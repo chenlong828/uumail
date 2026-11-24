@@ -9,6 +9,7 @@ struct MailboxView: View {
     /// Present in the running app; nil in probes that only host the mail side.
     var calendarModel: CalendarViewModel?
     @State private var showingCalendar = false
+    @State private var calendarJumpNotice: String?
     @State private var attachmentActions: AttachmentActionModel
     @State private var compose: ComposeViewModel?
     @State private var searchText = ""
@@ -39,38 +40,44 @@ struct MailboxView: View {
         } detail: {
             CalendarView(model: model) { folderID, serverID in
                 showingCalendar = false
-                viewModel.select(folderID: folderID)
-                viewModel.select(messageID: serverID)
+                let found = viewModel.reveal(folderID: folderID, serverID: serverID)
+                calendarJumpNotice = found ? nil : "该邀请不在当前列表页（更早的邮件未加载）"
             }
             .navigationSplitViewColumnWidth(min: 520, ideal: 760)
         }
     }
 
+    private static let calendarTag = "__calendar__"
+
+    /// One selection drives both the calendar row and the folder rows; a single `List`
+    /// selection is more reliable than a button above a second list (2026-11-24 fix for
+    /// "calendar row stops responding after jumping to mail").
+    private var sidebarSelection: Binding<String?> {
+        Binding(
+            get: { showingCalendar ? Self.calendarTag : viewModel.selection.folderID },
+            set: { value in
+                if value == Self.calendarTag {
+                    showingCalendar = true
+                    calendarJumpNotice = nil
+                } else if let value {
+                    showingCalendar = false
+                    viewModel.select(folderID: value)
+                }
+            }
+        )
+    }
+
     private var sidebar: some View {
-        VStack(spacing: 0) {
-            Button {
-                guard calendarModel != nil else { return }
-                showingCalendar = true
-            } label: {
-                Label("日历", systemImage: "calendar")
-                    .scaledInheritedFont(.body)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
-                    .background(showingCalendar ? Color.accentColor.opacity(0.15) : Color.clear)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 6)
-            .padding(.top, 6)
-            Divider()
-            List(viewModel.folders, id: \.serverID, selection: folderSelection) { folder in
-                Label(folder.displayName, systemImage: icon(for: folder.type))
-                    .scaledInheritedFont(.body)
-                    .tag(folder.serverID)
-            }
-            .onChange(of: folderSelection.wrappedValue) { _, value in
-                if value != nil { showingCalendar = false }
+        List(selection: sidebarSelection) {
+            Label("日历", systemImage: "calendar")
+                .scaledInheritedFont(.body)
+                .tag(Self.calendarTag)
+            Section {
+                ForEach(viewModel.folders, id: \.serverID) { folder in
+                    Label(folder.displayName, systemImage: icon(for: folder.type))
+                        .scaledInheritedFont(.body)
+                        .tag(folder.serverID)
+                }
             }
         }
         .navigationSplitViewColumnWidth(min: 180, ideal: 220)
@@ -177,15 +184,6 @@ struct MailboxView: View {
         viewModel.folders.first { $0.serverID == viewModel.selection.folderID }?.displayName ?? "收件箱"
     }
 
-    private var folderSelection: Binding<String?> {
-        Binding(
-            get: { viewModel.selection.folderID },
-            set: { folderID in
-                if let folderID { viewModel.select(folderID: folderID) }
-            }
-        )
-    }
-
     private var messageSelection: Binding<String?> {
         Binding(
             get: { viewModel.selectedListKey },
@@ -197,6 +195,7 @@ struct MailboxView: View {
     }
 
     private var messageList: some View {
+        ScrollViewReader { proxy in
         List(selection: messageSelection) {
             ForEach(viewModel.visibleMessages, id: \.listKey) { message in
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -220,6 +219,7 @@ struct MailboxView: View {
                 }
                 .padding(.vertical, 2)
                 .tag(message.listKey)
+                .id(message.listKey)
             }
         }
         .focusable()
@@ -242,11 +242,19 @@ struct MailboxView: View {
                 )
             }
         }
+        .onChange(of: viewModel.selectedListKey) { _, key in
+            guard let key else { return }
+            withAnimation { proxy.scrollTo(key, anchor: .center) }
+        }
+        }
     }
 
     private var statusBar: some View {
         HStack {
-            if let deleteError = viewModel.deleteErrorText {
+            if let calendarJumpNotice {
+                Image(systemName: "info.circle").foregroundStyle(.orange)
+                Text(calendarJumpNotice).lineLimit(1)
+            } else if let deleteError = viewModel.deleteErrorText {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                 Text(deleteError).lineLimit(1)
             } else if let markReadError = viewModel.markReadErrorText {

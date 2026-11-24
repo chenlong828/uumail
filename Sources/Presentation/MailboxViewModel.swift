@@ -284,6 +284,28 @@ public final class MailboxViewModel {
         select(listKey: Self.listKey(for: message))
     }
 
+    /// Jump from the calendar to the invite that produced a meeting: leave search mode,
+    /// switch folder when needed, reload the page and select/open the message. Returns
+    /// whether the message exists in the loaded page.
+    @discardableResult
+    public func reveal(folderID: String, serverID: String) -> Bool {
+        selection.searchQuery = ""
+        selection.folderID = folderID
+        selection.messageID = nil
+        selectedListKey = nil
+        clearBody()
+        do {
+            try reloadCurrentList(autoSelect: false)
+        } catch {
+            messages = []
+            sync.phase = .failed(ErrorText.text(for: error))
+            return false
+        }
+        refreshDwell()
+        select(messageID: serverID)
+        return selectedListKey != nil
+    }
+
     /// View-facing selection by composite identity.
     public func select(listKey: String) {
         guard let message = messages.first(where: { Self.listKey(for: $0) == listKey }),

@@ -391,3 +391,12 @@ component: CMP-APP
   `CalendarExport.swift`（临时 `.ics` + `NSWorkspace`，opener 可注入）；`MessageBodyView` 在信封头与正文之间插入卡片；
   `MailboxView` 侧栏「日历」入口与二分支布局；`UumailApp` 传入 `calendarModel`。
 - 证据：437 tests / 71 suites、架构 4/4、`make-app.sh` 成功；月/周像素与 `NSWorkspace` 导入为发布前人工冒烟项（R59）。
+
+## 修复：日历跳回邮件的定位与侧栏选中（2026-11-24，REQ-0029/SCN-0024）
+
+- 现象与根因见 `history/pitfalls.md` P1：侧栏用「Button + 第二个 List」两套状态，分栏重建时 `onChange` 把日历状态改回邮件；
+  跳转只做 `select(folderID:)`+`select(messageID:)`，同文件夹早退、搜索模式下找不到、且列表不滚动。
+- 修复：侧栏改为单一 `List(selection:)`（`calendarTag` 哨兵 + folder id，`sidebarSelection` 一个 Binding 驱动两种内容）；
+  跳转改用 `MailboxViewModel.reveal(folderID:serverID:)`（清搜索 → 切文件夹 → 重载 → 选中，找不到返回 false）；
+  `MailboxView` 给消息列表加 `ScrollViewReader`，选中变化滚动到可视区；状态栏提示未加载的邀请。
+- 证据：`MailboxRevealTests` 3 例 + 全量 440 tests / 72 suites 绿、架构 4/4、`make-app.sh` 成功。

@@ -1563,3 +1563,54 @@ actor DwellSleeper {
         continuation.resume(throwing: CancellationError())
     }
 }
+
+@Suite("MailboxViewModel calendar jump")
+@MainActor
+struct MailboxRevealTests {
+    @Test("reveal switches to the invite's folder and selects it")
+    func revealFromAnotherFolder() throws {
+        let fixture = try makeMailboxFixture(
+            folders: [presentationInbox, presentationDrafts],
+            messages: ["13": [presentationMessage("invite-1", subject: "会议邀请")]]
+        )
+        fixture.viewModel.loadCached()
+        fixture.viewModel.select(folderID: "4")
+        #expect(fixture.viewModel.messages.isEmpty)
+
+        let found = fixture.viewModel.reveal(folderID: "13", serverID: "invite-1")
+
+        #expect(found)
+        #expect(fixture.viewModel.selection.folderID == "13")
+        #expect(fixture.viewModel.selectedMessage?.serverID == "invite-1")
+        #expect(fixture.viewModel.selection.messageID == "invite-1")
+    }
+
+    @Test("reveal leaves search mode before selecting")
+    func revealClearsSearch() async throws {
+        let fixture = try makeMailboxFixture(
+            folders: [presentationInbox],
+            messages: ["13": [presentationMessage("invite-1", subject: "会议邀请")]]
+        )
+        fixture.viewModel.loadCached()
+        await fixture.viewModel.search("会议")
+        #expect(fixture.viewModel.selection.searchQuery == "会议")
+
+        let found = fixture.viewModel.reveal(folderID: "13", serverID: "invite-1")
+
+        #expect(found)
+        #expect(fixture.viewModel.selection.searchQuery.isEmpty)
+        #expect(fixture.viewModel.selectedMessage?.serverID == "invite-1")
+    }
+
+    @Test("reveal reports a message that is not in the loaded page")
+    func revealMissing() throws {
+        let fixture = try makeMailboxFixture(
+            folders: [presentationInbox],
+            messages: ["13": [presentationMessage("invite-1", subject: "会议邀请")]]
+        )
+        fixture.viewModel.loadCached()
+
+        #expect(fixture.viewModel.reveal(folderID: "13", serverID: "gone") == false)
+        #expect(fixture.viewModel.selectedMessage == nil)
+    }
+}
