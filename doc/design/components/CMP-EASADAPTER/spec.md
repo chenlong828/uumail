@@ -99,7 +99,7 @@ component: CMP-EASADAPTER
 
 **实现（2026-11-14）**：`EASAdapter` 同时遵循 `MailGateway` 与 `MailWriteGateway`；读/写响应共用 `Self.delta` 全量透传。`EASAdapterTests` 9 例绿，含 markRead/delete delta、写 401、3/4、503、500 映射。
 
-## 设计增量：会议邀请映射（REQ-0029 / REQ-0030，2026-11-24，未实现）
+## 设计增量：会议邀请映射（REQ-0029 / REQ-0030，2026-11-24，已实现）
 
 - 来源：`CMP-EAS` 的 `EASMeeting`/`EASRecurrence`/`EASMeetingTimeZone`（见其增量）→ `MailDomain.MeetingInvite`。
 - `map(message:)` 增补（`EASAdapter.swift` +约 60 行）：

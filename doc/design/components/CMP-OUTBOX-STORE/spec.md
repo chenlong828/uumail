@@ -61,7 +61,7 @@ component: CMP-OUTBOX-STORE
 | 数据/迁移 | `MigrationTests` 不回归；v12 只加 `meetings`，不动 outbox |
 | 预算 | `wc -l Sources/MailStore/OutboxStore.swift` ≤400；`MailStore` 组件总量降到约 814 行 |
 
-## 设计增量：REQ-0029 前置拆分（2026-11-24，P1 待记录确认）
+## 设计增量：REQ-0029 前置拆分（2026-11-24，P1 已确认、已实现）
 
 - 用户 2026-11-24 拍板「先拆 MailStore」并选择先拆 outbox；`MailStore` 由 1024 行降到约 814 行，加日历 `meetings` 约 110 行后约 924 行，回到 1000 行以内，不再需要调预算。
 - 存储边界：**同一 `mail.sqlite` + 同一 `DatabaseQueue`**；`MailStore` 内部持有 `OutboxStore` 并通过 `public var outbox: OutboxStore` 暴露给组合根，`Outbox` 的依赖从 `MailStore` 换成 `OutboxStore`（签名其余不变）。每张表仍只有一个写入口，事务不跨表。

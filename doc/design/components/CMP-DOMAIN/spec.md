@@ -223,7 +223,7 @@ component: CMP-DOMAIN
 - 测试：`MailDomainTests/ContactDirectoryTests`（名字保留/回退、最近非空名字、去重、匹配排序、畸形/DN/RFC 2047、limit/排除、空片段、引号内逗号/未闭合 `<>`、`Team <a@x;b@y>`/`a@x,b@y` 不产生候选）与 `RecipientTextTests`（尾片段/前缀/替换、引号与 `<>`、空片段）；`AddressList` 既有用例必须全绿（尤其保留 `/O=…`、`CN=z`、`Team <team>` 等非 SMTP 形状，不得因共享解析器归位而收窄）。场景/视图模型测试见 `SCN-0017`。
 - 定级/确认：本增量属 P1（平台级扇入模块新增 public 契约）；默认确认（未经人工）见 `history/decisions/2026-11-18-recipient-autocomplete.md`，交评审判断；A1–A6 细化见 `history/decisions/2026-11-18-recipient-autocomplete-design-addendum.md`。
 
-## 设计增量：会议邀请值类型与 iCalendar（REQ-0029 / REQ-0030，2026-11-24，P1 待确认，未实现）
+## 设计增量：会议邀请值类型与 iCalendar（REQ-0029 / REQ-0030，2026-11-24，P1 已确认、已实现）
 
 - 来源：`REQ-0029`/`REQ-0030`；协议字段见 `CMP-EAS` 增量；存储见 `CMP-STORE` v12。
 - 新增 public 值类型（`Sources/MailDomain/Meeting.swift`，约 260 行）：

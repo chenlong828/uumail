@@ -77,7 +77,7 @@ component: CMP-SCN-CALENDAR
 | 数据/迁移 | 依赖 `MailStoreTests/MigrationTests` 的 v12 fixture |
 | 观测 | 无需新增指标；`truncated`/`unexpandedUIDs` 仅在视图提示 |
 
-## 设计增量：REQ-0029 / SCN-0024（2026-11-24，未实现）
+## 设计增量：REQ-0029 / SCN-0024（2026-11-24，已实现）
 
 - 为何新增组件而不是塞进 `ReadScene`：阅读场景已因写路径超预算（`Scenes` 1006 行，`design/architecture.md` §10），且日历浏览与「打开一封邮件」的旅程不同；按「一条业务流一个场景」的收口规则（D1），日程浏览独立成 `CMP-SCN-CALENDAR`，仍然住在既有 `Scenes` target，**不新增 target**。
 - 与 `ReadScene` 的关系：两者共享 `MailStore` 与「读本地零网络」不变量，但互不调用；视图层需要「从日历跳回邮件」时只交出 `(folderID, serverID)`，由 `CMP-APP` 转调 `MailboxViewModel.select`。

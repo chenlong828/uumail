@@ -103,7 +103,7 @@ component: CMP-ROOT
 
 **实现（2026-11-14）**：`GatewayEndpoints{read,write}` 与 `GatewayFactory` 端点化；`PlatformGateway.make` 返回同一个 `EASAdapter` 的 read/write；`AppComposition`/`CommandLineComposition` 把 `endpoints.write` 传给 `SyncEngine`，把同一个 `engine` 传给 `ReadScene`。`CompositionTests` 17 例绿，含 `write is EASAdapter` 断言；`AppComposition` 182 行（上限 200）。
 
-## 设计增量：日历场景与视图模型装配（REQ-0029 / REQ-0030，2026-11-24，未实现）
+## 设计增量：日历场景与视图模型装配（REQ-0029 / REQ-0030，2026-11-24，已实现）
 
 - 来源：`CMP-SCN-CALENDAR`（新场景）与 `CMP-PRES#CalendarViewModel`；只做构造与注入，不做业务判断（D9）。
 - `AppComposition`（184 → 约 194 行，仍 ≤200）：

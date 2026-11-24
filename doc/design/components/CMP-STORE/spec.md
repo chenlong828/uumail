@@ -158,7 +158,7 @@ component: CMP-STORE
 - **数据所有权**：`messages` 仍是 `CMP-STORE` 唯一写入口；联系人目录是会话内只读投影，不持久、不是第二真相；旧邮件清理、未同步文件夹或超出 500/文件夹、5,000 总计上限后名字/联系人不出现，已在 `SCN-0017` 失败路径、R46 与决策记录中接受。
 - **验证**：本组件无新增测试；`MailStoreTests` 既有用例不回归即可。聚合行为由 `ScenesTests/ComposeSceneTests.recipientDirectory*` 覆盖。
 
-## 设计增量：schema v12 会议邀请（REQ-0029 / REQ-0030，2026-11-24，P1 待确认，未实现）
+## 设计增量：schema v12 会议邀请（REQ-0029 / REQ-0030，2026-11-24，P1 已确认、已实现）
 
 - 来源：`REQ-0029`（日历视图）/`REQ-0030`（会议卡与导出）；数据来自 EAS `Sync` 信封里的 `MessageClass`+`MeetingRequest`（见 `CMP-EAS` 增量），由 `applySyncBatch` 在同一事务落库。
 - **新表**（`Migrations.swift` 注册 `v12_meetings`）：

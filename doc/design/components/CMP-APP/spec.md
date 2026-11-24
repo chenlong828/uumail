@@ -361,7 +361,7 @@ component: CMP-APP
 - 残余：带 `align`/浮动的显式宽度表可能改变环绕版式；无显式宽度且内容超宽的畸形表仍可能溢出。发布前真实样本冒烟。
 - 实现进度（2026-11-23，`T-1123-04`）：规则已加入 `MessageBodyStyle.baseCSS`（50 行）；L2 `TableLayoutProbe` 6/6 PASS（120/145/175/225、窄表、图片表），真实样本 120% 979/978、145/175/225% 810/671/522、`overflowCount=0`；全量 384 tests/59 suites、架构 4/4、`make-app.sh` 通过。证据 `doc/history/works/2026-11-23-table-adapt/evidence/`。
 
-## 设计增量：日历页与会议卡（REQ-0029 / SCN-0024、REQ-0030 / SCN-0023，2026-11-24，未实现）
+## 设计增量：日历页与会议卡（REQ-0029 / SCN-0024、REQ-0030 / SCN-0023，2026-11-24，已实现）
 
 - 来源：`REQ-0029`/`SCN-0024`、`REQ-0030`/`SCN-0023`；`CMP-PRES` 同批增量提供 `CalendarViewModel`、`MeetingCardPresentation` 与网格投影；`CMP-SCN-CALENDAR` 提供 `ics` 文本。
 - **导航**（`MailboxView.swift`，+约 70 行，≤300）：

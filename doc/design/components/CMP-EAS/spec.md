@@ -190,7 +190,7 @@ component: CMP-EAS
 
 **实现（2026-11-14）**：`EASClient.sync(change:)` 支持 `.read`（`Change/ApplicationData/Read=1`）与 `.delete`（`Delete/ServerId`），写请求只带 `SyncKey/CollectionId/Commands`；写 401 → `deviceNotRegistered`，读 401 仍 `authFailed`。`EASClientTests` 32 例绿，含两条 golden 请求体、写 key、写 401/3/4、`Collection` 内与顶层 `MoreAvailable`。**R16 已取证（2026-11-14 真机）**：两命令均被接受并返回新 key；`MoreAvailable` 在写响应中是正常分页；not-found 为成功 no-op；删除进入「已删除邮件」。证据见 `task-spaces/20261114-232232/evidence/r16-real-gateway.txt`。
 
-## 设计增量：会议邀请与重复规则解析（REQ-0029 / REQ-0030，2026-11-24，未实现）
+## 设计增量：会议邀请与重复规则解析（REQ-0029 / REQ-0030，2026-11-24，已实现）
 
 - 来源：2026-11-24 实测（`ItemOperations/Fetch`，临时探针，未入库）：本网关在邮件信封里返回 `MessageClass=IPM.Schedule.Meeting.Request`、`ContentClass=urn:content-classes:calendarmessage` 与完整 `MeetingRequest` 子树；同一响应里 `Body/Type=2`（HTML），**要 MIME（`BodyPreference Type=4`）也只回 HTML**，所以 ICS 原文拿不到，必须按结构化字段重建（与 `REQ-0030` 的 `.ics` 自生成口径一致）。
 - `EASMessage` 新增（additive，`public`）：

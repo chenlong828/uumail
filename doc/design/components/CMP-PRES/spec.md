@@ -518,7 +518,7 @@ component: CMP-PRES
 - 残余：内联图渲染失败时该附件已不在附件条，用户无保存入口；属用户 2026-11-23 确认的代价。
 - 实现进度（2026-11-23，`T-1123-03`）：`MailboxViewModel+Body.startInlineImageRender` 先算 `InlineImageReferences` 再 `removeAll` 命中项（`+Body.swift` 150 行）；`MailboxViewModelInlineImageTests` 新增 4 例（`hidesReferencedInlineAttachment`、`hidesInlineAttachmentByContentID`、`keepsAttachmentsWithoutCID`、`ambiguousInlineReferenceKeepsAttachments`），该 suite 8 例绿；全量 384 tests/59 suites、架构 4/4。
 
-## 设计增量：日历视图与会议卡（REQ-0029 / SCN-0024、REQ-0030 / SCN-0023，2026-11-24，P1 待确认，未实现）
+## 设计增量：日历视图与会议卡（REQ-0029 / SCN-0024、REQ-0030 / SCN-0023，2026-11-24，P1 已确认、已实现）
 
 - 来源：`REQ-0029`/`SCN-0024`（月/周视图）与 `REQ-0030`/`SCN-0023`（阅读页会议卡）；结构决策与候选方案见 `doc/history/decisions/2026-11-24-calendar-view-scope.md`。
 - 新增 public `CalendarViewModel`（`@MainActor @Observable`，`Sources/Presentation/CalendarViewModel.swift`，预计 ≤260 行）：
