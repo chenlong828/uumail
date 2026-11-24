@@ -198,6 +198,37 @@ struct MailStoreSyncTests {
         #expect(message.cc == "c@corp.test")
     }
 
+    @Test("a Change carrying only the Read flag keeps subject, sender and date")
+    func partialReadChangeKeepsEnvelope() throws {
+        let (store, id) = try seededStore()
+        try store.applySyncBatch(
+            account: id,
+            folder: "13",
+            added: [
+                MailMessage(serverID: "202", subject: "季度评审", sender: "\"王权英\" <wangqy@corp.test>",
+                            receivedRaw: "2026-11-08T05:11:18.000Z"),
+            ],
+            changed: [],
+            removedServerIDs: [],
+            syncKey: "2"
+        )
+        // R21: the gateway may send only `<Change><ServerId/><Read/></Change>`.
+        try store.applySyncBatch(
+            account: id,
+            folder: "13",
+            added: [],
+            changed: [MailMessage(serverID: "202", isRead: true)],
+            removedServerIDs: [],
+            syncKey: "3"
+        )
+
+        let message = try #require(try store.messages(account: id, folder: "13").first)
+        #expect(message.isRead)
+        #expect(message.subject == "季度评审")
+        #expect(message.sender == "\"王权英\" <wangqy@corp.test>")
+        #expect(message.receivedRaw == "2026-11-08T05:11:18.000Z")
+    }
+
     @Test("re-applying the same batch keeps one row per server id")
     func idempotentBatch() throws {
         let (store, id) = try seededStore()

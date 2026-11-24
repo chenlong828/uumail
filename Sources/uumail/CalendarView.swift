@@ -4,11 +4,14 @@ import SwiftUI
 
 /// The calendar page (SCN-0024): month grid and week timeline over the meetings the user
 /// received by mail. Every interaction is local; nothing here touches the network.
+///
+/// Interaction (REQ-0032): a single click selects a block (highlight only, no detail
+/// sheet); a double click, Return or Space opens the source invitation in the floating
+/// reader (`SCN-0025`). The reader's calendar toolbar offers 转发 and 在日历中打开.
 struct CalendarView: View {
     @Bindable var model: CalendarViewModel
-    var onOpenMail: (String, String) -> Void
 
-    @State private var detail: SelectedOccurrence?
+    @State private var selectedKey: String?
     @State private var exportFailed = false
 
     var body: some View {
@@ -16,14 +19,19 @@ struct CalendarView: View {
             header
             Divider()
             if let errorText = model.errorText {
-                banner(errorText)
+                CalendarBanner(text: errorText)
             }
             content
         }
         .navigationTitle("日历")
         .task { await model.activate() }
-        .sheet(item: $detail) { item in
-            detailSheet(item.occurrence)
+        .focusable()
+        .onKeyPress(.return) { openSelectedOccurrence() }
+        .onKeyPress(.space) { openSelectedOccurrence() }
+        .onKeyPress(.escape) {
+            guard selectedKey != nil else { return .ignored }
+            selectedKey = nil
+            return .handled
         }
         .alert("无法生成日历文件", isPresented: $exportFailed) {
             Button("好", role: .cancel) {}
@@ -71,18 +79,6 @@ struct CalendarView: View {
             get: { model.mode },
             set: { mode in Task { await model.setMode(mode) } }
         )
-    }
-
-    private func banner(_ text: String) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: "exclamationmark.triangle.fill")
-            Text(text)
-            Spacer()
-        }
-        .scaledInheritedFont(.callout)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 6)
-        .background(.yellow.opacity(0.15))
     }
 
     @ViewBuilder
@@ -141,19 +137,7 @@ struct CalendarView: View {
                 .foregroundStyle(day.isInMonth ? (day.isToday ? Color.accentColor : Color.primary) : Color.secondary)
                 .fontWeight(day.isToday ? .bold : .regular)
             ForEach(Array(day.chips.enumerated()), id: \.offset) { _, chip in
-                Button {
-                    detail = SelectedOccurrence(occurrence: chip.occurrence)
-                } label: {
-                    Text(chip.title)
-                        .scaledInheritedFont(.caption2)
-                        .lineLimit(1)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(chip.isAllDay ? Color.secondary.opacity(0.2) : Color.accentColor.opacity(0.18))
-                        .clipShape(RoundedRectangle(cornerRadius: 3))
-                }
-                .buttonStyle(.plain)
+                monthChip(chip, isSelected: key(for: chip.occurrence) == selectedKey)
             }
             if day.hiddenCount > 0 {
                 Text("+\(day.hiddenCount)")
@@ -166,6 +150,15 @@ struct CalendarView: View {
         .frame(maxWidth: .infinity, minHeight: 74, alignment: .topLeading)
         .background(day.isInMonth ? Color.clear : Color.secondary.opacity(0.06))
         .border(Color.secondary.opacity(0.15))
+    }
+
+    private func monthChip(_ chip: CalendarChip, isSelected: Bool) -> some View {
+        CalendarChipView(
+            chip: chip,
+            isSelected: isSelected,
+            onSelect: { selectedKey = key(for: chip.occurrence) },
+            onOpen: { open(chip.occurrence) }
+        )
     }
 
     // MARK: - Week
@@ -222,30 +215,17 @@ struct CalendarView: View {
                                             .frame(height: hourHeight)
                                     }
                                 }
+                                let laneCount = max(1, (column.blocks.map(\.lane).max() ?? 0) + 1)
                                 ForEach(Array(column.blocks.enumerated()), id: \.offset) { _, block in
-                                    let laneCount = max(1, (column.blocks.map(\.lane).max() ?? 0) + 1)
-                                    let width = (columnWidth - 6) / CGFloat(laneCount)
-                                    Button {
-                                        detail = SelectedOccurrence(occurrence: block.occurrence)
-                                    } label: {
-                                        VStack(alignment: .leading, spacing: 1) {
-                                            Text(block.title)
-                                                .scaledInheritedFont(.caption2)
-                                                .lineLimit(1)
-                                            Text(String(format: "%02d:%02d", block.startMinute / 60, block.startMinute % 60))
-                                                .scaledInheritedFont(.caption2)
-                                                .foregroundStyle(.secondary)
-                                        }
-                                        .padding(3)
-                                        .frame(width: width - 2, alignment: .topLeading)
-                                        .frame(height: max(18, CGFloat(block.endMinute - block.startMinute) / 60 * hourHeight - 2), alignment: .topLeading)
-                                        .background(Color.accentColor.opacity(0.2))
-                                        .clipShape(RoundedRectangle(cornerRadius: 4))
-                                    }
-                                    .buttonStyle(.plain)
-                                    .offset(
-                                        x: CGFloat(block.lane) * width + 2,
-                                        y: CGFloat(block.startMinute - model.week.startHour * 60) / 60 * hourHeight
+                                    CalendarWeekBlockView(
+                                        block: block,
+                                        isSelected: key(for: block.occurrence) == selectedKey,
+                                        laneCount: laneCount,
+                                        startHour: model.week.startHour,
+                                        columnWidth: columnWidth,
+                                        hourHeight: hourHeight,
+                                        onSelect: { selectedKey = key(for: block.occurrence) },
+                                        onOpen: { open(block.occurrence) }
                                     )
                                 }
                             }
@@ -267,59 +247,46 @@ struct CalendarView: View {
         return formatter.string(from: date)
     }
 
-    // MARK: - Detail
+    // MARK: - Selection & opening
 
-    private func detailSheet(_ occurrence: MeetingOccurrence) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(occurrence.subject ?? "会议")
-                .scaledFont(.title3).fontWeight(.semibold)
-            Label(timeRange(occurrence), systemImage: "clock")
-            if let location = occurrence.location, !location.isEmpty {
-                Label(location, systemImage: "mappin.and.ellipse")
-            }
-            if let organizer = occurrence.organizer, !organizer.isEmpty {
-                Label(DisplayFormat.senderName(organizer), systemImage: "person")
-            }
-            Spacer()
-            HStack {
-                Button("在日历中打开") {
-                    guard let text = model.icsText(for: occurrence) else {
-                        exportFailed = true
-                        return
-                    }
-                    if !CalendarExport.present(text, uid: occurrence.uid) {
-                        exportFailed = true
-                    }
-                }
-                Spacer()
-                Button("打开邮件") {
-                    let source = (occurrence.folderID, occurrence.serverID)
-                    detail = nil
-                    onOpenMail(source.0, source.1)
-                }
-                .keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(20)
-        .frame(width: 360, height: 240)
+    /// Stable identity of one occurrence: the same meeting can appear on several days.
+    private func key(for occurrence: MeetingOccurrence) -> String {
+        "\(occurrence.uid)\u{1F}\(occurrence.start.timeIntervalSince1970)"
     }
 
-    private func timeRange(_ occurrence: MeetingOccurrence) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_CN")
-        formatter.dateFormat = "M月d日 HH:mm"
-        if occurrence.isAllDay {
-            formatter.dateFormat = "M月d日"
-            return "\(formatter.string(from: occurrence.start)) 全天"
-        }
-        let end = DateFormatter()
-        end.locale = Locale(identifier: "zh_CN")
-        end.dateFormat = "HH:mm"
-        return "\(formatter.string(from: occurrence.start))–\(end.string(from: occurrence.end))"
+    private func open(_ occurrence: MeetingOccurrence) {
+        selectedKey = key(for: occurrence)
+        let coordinator = ReaderCoordinator.shared
+        coordinator.show(
+            folderID: occurrence.folderID,
+            serverID: occurrence.serverID,
+            geometry: coordinator.geometry(readingPaneWidth: nil),
+            style: .calendar,
+            openInCalendar: { openInCalendar(occurrence) }
+        )
     }
-}
 
-private struct SelectedOccurrence: Identifiable {
-    let id = UUID()
-    let occurrence: MeetingOccurrence
+    /// Return / Space act on the selected block, mirroring the list's Enter/Space.
+    private func openSelectedOccurrence() -> KeyPress.Result {
+        guard let key = selectedKey, let occurrence = occurrence(withKey: key) else { return .ignored }
+        open(occurrence)
+        return .handled
+    }
+
+    private func occurrence(withKey key: String) -> MeetingOccurrence? {
+        let candidates = model.mode == .month
+            ? model.month.weeks.flatMap { $0.days.flatMap { $0.chips.map(\.occurrence) } }
+            : model.week.days.flatMap { $0.blocks.map(\.occurrence) }
+        return candidates.first { self.key(for: $0) == key }
+    }
+
+    private func openInCalendar(_ occurrence: MeetingOccurrence) {
+        guard let text = model.icsText(for: occurrence) else {
+            exportFailed = true
+            return
+        }
+        if !CalendarExport.present(text, uid: occurrence.uid) {
+            exportFailed = true
+        }
+    }
 }

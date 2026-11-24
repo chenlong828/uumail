@@ -9,12 +9,11 @@ struct MailboxView: View {
     /// Present in the running app; nil in probes that only host the mail side.
     var calendarModel: CalendarViewModel?
     @State private var showingCalendar = false
-    @State private var calendarJumpNotice: String?
     @State private var attachmentActions: AttachmentActionModel
     @State private var compose: ComposeViewModel?
     @State private var searchText = ""
     /// The reading pane's current size; the compose sheet matches it (REQ-0021).
-    @State private var readingPaneSize = CGSize(width: 720, height: 560)
+    @State var readingPaneSize = CGSize(width: 720, height: 560)
     @FocusState private var messageListFocused: Bool
 
     init(viewModel: MailboxViewModel, calendarModel: CalendarViewModel? = nil) {
@@ -38,12 +37,8 @@ struct MailboxView: View {
         NavigationSplitView {
             sidebar
         } detail: {
-            CalendarView(model: model) { folderID, serverID in
-                showingCalendar = false
-                let found = viewModel.reveal(folderID: folderID, serverID: serverID)
-                calendarJumpNotice = found ? nil : "该邀请不在当前列表页（更早的邮件未加载）"
-            }
-            .navigationSplitViewColumnWidth(min: 520, ideal: 760)
+            CalendarView(model: model)
+                .navigationSplitViewColumnWidth(min: 520, ideal: 760)
         }
     }
 
@@ -58,7 +53,6 @@ struct MailboxView: View {
             set: { value in
                 if value == Self.calendarTag {
                     showingCalendar = true
-                    calendarJumpNotice = nil
                 } else if let value {
                     showingCalendar = false
                     viewModel.select(folderID: value)
@@ -105,7 +99,10 @@ struct MailboxView: View {
             // A SwiftUI window's scenePhase stays `.active` when the app is deactivated on
             // macOS (measured 2026-11-14), so foreground state comes from NSApplication:
             // the view only forwards, the view model owns the timer rule.
-            .onAppear { viewModel.setApplicationActive(NSApp.isActive) }
+            .onAppear {
+                viewModel.setApplicationActive(NSApp.isActive)
+                ReaderCoordinator.shared.attach(viewModel: viewModel)
+            }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                 viewModel.setApplicationActive(true)
             }
@@ -199,28 +196,10 @@ struct MailboxView: View {
         ScrollViewReader { proxy in
         List(selection: messageSelection) {
             ForEach(viewModel.visibleMessages, id: \.listKey) { message in
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Circle()
-                        .fill(message.isRead ? Color.clear : Color.accentColor)
-                        .frame(width: 6, height: 6)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(message.subject ?? "(无主题)")
-                            .scaledInheritedFont(.body)
-                            .fontWeight(message.isRead ? .regular : .semibold)
-                            .lineLimit(1)
-                        Text(DisplayFormat.senderName(message.sender))
-                            .scaledFont(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                    Spacer()
-                    Text(DisplayFormat.messageDate(message.receivedRaw))
-                        .scaledFont(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.vertical, 2)
-                .tag(message.listKey)
-                .id(message.listKey)
+                MessageRowView(message: message)
+                    .tag(message.listKey)
+                    .id(message.listKey)
+                    .onTapGesture(count: 2) { openReader(message) }
             }
         }
         .focusable()
@@ -233,6 +212,16 @@ struct MailboxView: View {
             // guard makes a duplicate delivery harmless.
             guard messageListFocused else { return .ignored }
             Task { await viewModel.deleteSelected() }
+            return .handled
+        }
+        .onKeyPress(.return) {
+            guard messageListFocused, viewModel.selectedMessage != nil else { return .ignored }
+            openSelectedInReader()
+            return .handled
+        }
+        .onKeyPress(.space) {
+            guard messageListFocused, viewModel.selectedMessage != nil else { return .ignored }
+            openSelectedInReader()
             return .handled
         }
         .overlay {
@@ -252,10 +241,7 @@ struct MailboxView: View {
 
     private var statusBar: some View {
         HStack {
-            if let calendarJumpNotice {
-                Image(systemName: "info.circle").foregroundStyle(.orange)
-                Text(calendarJumpNotice).lineLimit(1)
-            } else if let deleteError = viewModel.deleteErrorText {
+            if let deleteError = viewModel.deleteErrorText {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                 Text(deleteError).lineLimit(1)
             } else if let markReadError = viewModel.markReadErrorText {

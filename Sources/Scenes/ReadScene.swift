@@ -68,6 +68,18 @@ public struct ReadScene: Sendable {
         try store.messages(account: account, folder: folderID, limit: limit)
     }
 
+    /// One message by its natural key (REQ-0031): the floating reader and the calendar
+    /// entry need a message that is not necessarily on the current list page.
+    public func message(_ ref: MessageRef) throws -> Message? {
+        try store.message(account: account, folder: ref.folderID, serverID: ref.serverID)
+    }
+
+    /// The folder's messages received at or after `since`, newest first, no row cap
+    /// (REQ-0033). The window start is computed by the presentation layer.
+    public func messages(folderID: String, since: Date) throws -> [Message] {
+        try store.messages(account: account, folder: folderID, since: since)
+    }
+
     public func search(_ query: String, limit: Int = 100) throws -> [Message] {
         try store.searchLocal(account: account, query: query, limit: limit)
     }

@@ -362,6 +362,12 @@ public final class MailboxViewModel {
         selection.folderID = folders.first(where: \.isInbox)?.serverID ?? folders.first?.serverID
     }
 
+    /// Surfaces a local list reload failure from extensions in other files (the setter of
+    /// `sync` is private to this file).
+    func presentLocalListFailure(_ error: Error) {
+        sync.phase = .failed(ErrorText.text(for: error))
+    }
+
     func reloadCurrentList(autoSelect: Bool) throws {
         let query = selection.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         if query.isEmpty {
@@ -370,7 +376,9 @@ public final class MailboxViewModel {
                 clearSelection()
                 return
             }
-            messages = try read.messages(folderID: folder, limit: 200)
+            // REQ-0033: the folder's last 30 days, no row cap (the sync window is one
+            // month, so this is everything the local store holds for the folder).
+            messages = try read.messages(folderID: folder, since: Self.listWindowStart())
         } else {
             messages = try read.search(query, limit: 100)
         }

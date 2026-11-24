@@ -290,11 +290,11 @@ public final class MailStore: @unchecked Sendable {
                          received_raw, is_read, importance, preview, deleted_at, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
                     ON CONFLICT(account_id, folder_id, server_id) DO UPDATE SET
-                        subject = excluded.subject,
-                        sender = excluded.sender,
+                        subject = COALESCE(excluded.subject, messages.subject),
+                        sender = COALESCE(excluded.sender, messages.sender),
                         recipients = COALESCE(excluded.recipients, messages.recipients),
                         cc = COALESCE(excluded.cc, messages.cc),
-                        received_raw = excluded.received_raw,
+                        received_raw = COALESCE(excluded.received_raw, messages.received_raw),
                         is_read = excluded.is_read,
                         importance = excluded.importance,
                         preview = COALESCE(excluded.preview, messages.preview),
