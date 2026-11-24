@@ -209,13 +209,12 @@ struct CalendarView: View {
                         }
                         ForEach(Array(model.week.days.enumerated()), id: \.offset) { _, column in
                             ZStack(alignment: .topLeading) {
-                                VStack(spacing: 0) {
-                                    ForEach(model.week.startHour..<model.week.endHour, id: \.self) { _ in
-                                        Rectangle()
-                                            .fill(Color.secondary.opacity(0.08))
-                                            .frame(height: hourHeight)
-                                    }
-                                }
+                                CalendarHourGrid(
+                                    startHour: model.week.startHour,
+                                    endHour: model.week.endHour,
+                                    hourHeight: hourHeight,
+                                    width: columnWidth
+                                )
                                 let laneCount = max(1, (column.blocks.map(\.lane).max() ?? 0) + 1)
                                 ForEach(Array(column.blocks.enumerated()), id: \.offset) { _, block in
                                     CalendarWeekBlockView(
@@ -231,6 +230,7 @@ struct CalendarView: View {
                                 }
                             }
                             .frame(width: columnWidth, height: totalHeight, alignment: .topLeading)
+                            .clipped()
                             .border(Color.secondary.opacity(0.1))
                         }
                     }

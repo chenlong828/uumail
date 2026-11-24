@@ -1,0 +1,11 @@
+PROBE catchers=3
+PROBE select a
+PROBE after row0 clickCount=1
+PROBE select b
+PROBE open b
+PROBE after row1 clickCount=1,2
+PROBE open c
+PROBE after row2 clickCount=2
+PROBE select c
+PROBE after window.sendEvent hitTest at 26,124
+PROBE done

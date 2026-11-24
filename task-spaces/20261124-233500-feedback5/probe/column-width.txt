@@ -1,0 +1,21 @@
+PROBE   column sidebar=220
+PROBE   column detail=100
+PROBE   column list=480
+PROBE   column list=252
+PROBE   column list=480
+PROBE   column detail=731
+PROBE window width=1440
+PROBE   measured: sidebar=220 list=480 detail=731
+PROBE   column detail=491
+PROBE window width=1200
+PROBE   measured: sidebar=220 list=480 detail=491
+PROBE   column detail=291
+PROBE window width=1000
+PROBE   measured: sidebar=220 list=480 detail=291
+PROBE   column detail=191
+PROBE window width=900
+PROBE   measured: sidebar=220 list=480 detail=191
+PROBE   column detail=51
+PROBE window width=760
+PROBE   measured: sidebar=220 list=480 detail=51
+PROBE done

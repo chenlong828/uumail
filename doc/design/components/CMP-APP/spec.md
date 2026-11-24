@@ -2,7 +2,7 @@
 layer: design
 module: app
 status: active
-updated: 2026-11-23
+updated: 2026-11-24
 component: CMP-APP
 ---
 
@@ -465,3 +465,68 @@ component: CMP-APP
   `ReaderCoordinator.shared`，入口传 `folderID`/`serverID` 字符串，`MessageRef` 只在 `Presentation` 内部出现。
 - 证据（L2）：`evidence/calendar-click/calendar-click.txt`（生产 `CalendarSelection` 的 `hitTest` 命中与 clickCount 映射）；
   载体机制证据 `probe/appkit-window.txt`。真实点击/拖动/缩放/多屏与撰写关闭确认框登记为发布前人工项。
+- 后续（2026-11-24，`T-1124-23`…`T-1124-25`）：列表列宽、行双击、浮窗默认居中与周视图小时虚线 4 处修复完成；
+  461 tests / 77 suites、架构 4/4；L2 证据 `task-spaces/20261124-233500-feedback5/probe/`；`make-app.sh` 成功（release，2026-11-24 23:33 CST）。
+
+## 设计增量：列表默认列宽与双击入口修复（REQ-0034 / REQ-0031 修复，2026-11-24，P3）
+
+- 来源：用户反馈（2026-11-24，W-M3-18）「列表太窄」「双击没反应，只有 Enter 能打开」；`REQ-0034` 收列宽，
+  双击入口按 `REQ-0031` 的修复处理。本增量只动 `CMP-APP`，不改 `CMP-PRES`、场景卡与需求口径。
+- 列宽：消息列表列 `.navigationSplitViewColumnWidth(min: 320, ideal: 480)`（原 `280/380`）；侧栏仍 `180/220`（未改）。
+  L2 探针实测（`task-spaces/20261124-233500-feedback5/probe/column-width.txt`）：
+  - 窗口 1440 宽：侧栏 220 / 列表 480 / 正文 731；
+  - 1000：220 / 480 / 291；900：220 / 480 / 191；760：220 / 480 / 51（低于窗口下限 900，仅探针）。
+  - 列表优先保 480，窗口变窄时正文列先让位；不再回到 280 的窄列。
+- 双击根因：SwiftUI `.onTapGesture(count: 2)` 挂在 `List(selection:)` 的行上在 macOS 不触发（列表消费点击；
+  用户实测只有 Enter 能打开）。改为在行上 overlay 一层 AppKit 点击捕获，复用 `CalendarSelection.swift` 的
+  `ClickCatcherView`。
+- 新文件 `Sources/uumail/MessageRowClick.swift`（21 行，internal）：
+  - 只有 `onSelect`/`onOpen` 两个闭包，body 为
+    `ClickCatcher(singleClickDelay: 0, onSingleClick: onSelect, onDoubleClick: onOpen)`；
+    不读 `Message`、不建窗口、不复刻打开逻辑。
+  - `MailboxView` 在 `MessageRowView` 上 `.overlay { MessageRowClick(onSelect:onOpen:) }`；单击立即写
+    `messageSelection.wrappedValue = message.listKey` 并 `messageListFocused = true`，双击调 `openReader(message)`
+    （`MailboxView+Reader.swift`，30 行）。
+- `ClickCatcherView` 增加实例级 `singleClickDelay`（默认 `ClickCatcherView.singleClickDelay = 0.28`，保持日历行为）；
+  `ClickCatcher` 的 `makeNSView`/`updateNSView` 都透传。延迟 >0 时单击挂 `DispatchWorkItem`、双击取消；
+  列表传 0：单击同步执行，双击回调只负责打开。
+- 入口路径：
+  - 单击：只选中并聚焦列表，不打开浮窗；
+  - 双击：系统事件 `1→2` 时先选中、随即打开；只有 `2` 时直接打开（探针覆盖）；
+  - Enter / 空格：列表聚焦且有选中 → `openSelectedInReader()`，与双击共用 `openReader` →
+    `ReaderCoordinator.shared.show(...)`；无选中或焦点不在列表时返回 `.ignored`；
+  - 三条路径都不新增命令、不改变主窗口选中语义。
+- 行预算：`MailboxView.swift` **299 行**（≤300）；`MessageRowClick.swift` 21；`MailboxView+Reader.swift` 30；
+  本修复只新增 `MessageRowClick.swift`（周视图的 `CalendarHourGrid.swift` 见下一节）；不改 schema，
+  不新增 target/依赖/公开面。
+- 证据：`probe/column-width.txt`（1440/1000/900/760 三列实测）、`probe/message-row-click.txt`
+  （catchers=3；行单击只选中；`1,2` 选中+打开；纯 `2` 打开；`window.sendEvent` 的 `hitTest` 命中）；
+  探针源 `MailboxColumnWidthProbe.swift`/`MessageRowClickProbe.swift`。
+
+## 设计增量：浮窗默认居中与周视图小时虚线（REQ-0035 / REQ-0036，2026-11-24，P3）
+
+- 来源：用户反馈浮窗每次出现在主窗口右上、像偏在一侧；周视图每小时一块灰色实心带，读不出小时网格。
+  `REQ-0035` 收居中，`REQ-0036` 收小时虚线；定位纯函数在 `CMP-PRES`（见其同日增量），本组件只负责 AppKit
+  窗口放置与绘制。
+- 浮窗默认居中（`ReaderCoordinator`）：
+  - 原实现固定 `setFrameTopLeftPoint` 贴主窗口右上；改为调
+    `ReaderRouter.centeredOrigin(in: mailbox.frame, size: window.frame.size, visible: screen.visibleFrame)`，
+    以主窗口中心为浮窗中心，再夹进屏幕可用区。
+  - autosave 名 `uumail.reader.centered`（原 `uumail.reader`）：旧名字默认保存的是右上角 frame，继续用会把
+    「默认居中」抵消；换名后旧 frame 不再被恢复。
+  - 新增 `UserDefaults` 键 `uumail.reader.userMoved`：`windowDidMove` 且
+    `NSApp.currentEvent?.type == .leftMouseDragged`、非程序化放置（`isPlacing`）时置 true；未拖动过 → 每次启动
+    重新居中（保留已恢复的尺寸）；已拖动过 → `setFrameUsingName` 恢复位置与尺寸，不再居中。
+  - 默认尺寸仍由 `ReaderRouter.readerSize(for:)` 决定；本增量不改 480/460 下限、85% 高与屏幕高 cap。
+- 周视图小时虚线（`CalendarHourGrid` + `CalendarView`）：
+  - 新文件 `Sources/uumail/CalendarHourGrid.swift`（23 行，internal）：一个 `Path` 画 `startHour...endHour`
+    共 17 条横线（8…24），`hourHeight = 48`，最后一条落在 `totalHeight - 0.5`；
+    `stroke(Color.gray.opacity(0.45), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))`。
+  - `CalendarView` 周视图用 `CalendarHourGrid` 替掉每小时一块的 `Rectangle().fill(secondary.opacity(0.08))`
+    实心带；时间槽标签、事件块定位、lane、全天条均不变。
+  - **实现坑**：`Color.secondary` 作为 `Path.stroke` 的颜色在 SwiftUI 里不渲染（实测无可见线）；改为
+    `.gray.opacity(0.45)`。语义色需求若以后要跟随主题，必须重新实测，不能直接换回 `.secondary`。
+- 范围/预算：不新增 target/依赖/公开面，不改 schema；`ReaderCoordinator` 163 行、`CalendarView` 293 行、
+  `CalendarHourGrid` 23 行，均 ≤300。
+- 证据：`task-spaces/20261124-233500-feedback5/probe/hour-grid.png`（1024×1824 预览，17 条虚线）；
+  探针源 `HourGridPreview.swift`。真实拖动/缩放/多屏行为仍属发布前人工冒烟项。

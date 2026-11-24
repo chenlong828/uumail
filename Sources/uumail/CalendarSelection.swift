@@ -11,7 +11,12 @@ import SwiftUI
 /// the pending selection and opens immediately.
 final class ClickCatcherView: NSView {
     /// 0.28s sits inside the agreed 250–300ms window and matches the system default.
+    /// List rows pass 0 so the first click selects immediately and the second opens.
     static let singleClickDelay: TimeInterval = 0.28
+
+    /// Override for hosts that must not defer the single click. Calendar blocks keep the
+    /// default so a double click does not flash the selection first.
+    var singleClickDelay: TimeInterval = ClickCatcherView.singleClickDelay
 
     var onSingleClick: (() -> Void)?
     var onDoubleClick: (() -> Void)?
@@ -26,9 +31,14 @@ final class ClickCatcherView: NSView {
         switch event.clickCount {
         case 1:
             pendingSingleClick?.cancel()
-            let work = DispatchWorkItem { [weak self] in self?.onSingleClick?() }
-            pendingSingleClick = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + Self.singleClickDelay, execute: work)
+            if singleClickDelay > 0 {
+                let work = DispatchWorkItem { [weak self] in self?.onSingleClick?() }
+                pendingSingleClick = work
+                DispatchQueue.main.asyncAfter(deadline: .now() + singleClickDelay, execute: work)
+            } else {
+                pendingSingleClick = nil
+                onSingleClick?()
+            }
         case 2:
             pendingSingleClick?.cancel()
             pendingSingleClick = nil
@@ -48,17 +58,20 @@ final class ClickCatcherView: NSView {
 }
 
 struct ClickCatcher: NSViewRepresentable {
+    var singleClickDelay: TimeInterval = ClickCatcherView.singleClickDelay
     var onSingleClick: () -> Void = {}
     var onDoubleClick: () -> Void = {}
 
     func makeNSView(context: Context) -> ClickCatcherView {
         let view = ClickCatcherView()
+        view.singleClickDelay = singleClickDelay
         view.onSingleClick = onSingleClick
         view.onDoubleClick = onDoubleClick
         return view
     }
 
     func updateNSView(_ nsView: ClickCatcherView, context: Context) {
+        nsView.singleClickDelay = singleClickDelay
         nsView.onSingleClick = onSingleClick
         nsView.onDoubleClick = onDoubleClick
     }

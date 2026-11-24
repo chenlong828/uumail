@@ -96,7 +96,7 @@ struct CalendarProjectionTests {
         #expect(thursday?.blocks.first?.endMinute == 12 * 60)
         #expect(thursday?.blocks.map(\.lane) == [0, 1])
         #expect(grid.startHour == 8)
-        #expect(grid.endHour == 18)
+        #expect(grid.endHour == 24)
     }
 
     @Test("all-day meetings go to the week's top row")

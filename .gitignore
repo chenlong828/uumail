@@ -7,3 +7,6 @@ logs/
 State/
 output/
 dist/uumail.app/
+
+# Swift probe module caches (task-spaces)
+**/.module-cache/

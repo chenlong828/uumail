@@ -13,11 +13,18 @@ final class ReaderCoordinator: NSObject, NSWindowDelegate {
     /// target may not import Observation).
     static let shared = ReaderCoordinator()
 
+    /// A new name for the centered placement (REQ-0035): the old `uumail.reader` frame was
+    /// always parked at the mailbox's top-right, so restoring it would keep the old offset.
+    private static let frameAutosaveName = "uumail.reader.centered"
+    /// Set once the user drags the reader; from then on the saved frame wins over centering.
+    private static let userMovedKey = "uumail.reader.userMoved"
+
     let router = ReaderRouter()
 
     private weak var mailbox: MailboxViewModel?
     private var model: ReaderViewModel?
     private var window: NSWindow?
+    private var isPlacing = false
 
     /// Called by the mailbox view when it appears; the reader borrows the same scenes.
     func attach(viewModel: MailboxViewModel) {
@@ -79,21 +86,45 @@ final class ReaderCoordinator: NSObject, NSWindowDelegate {
         window.delegate = self
         window.isReleasedWhenClosed = false
         window.isRestorable = false
-        window.setFrameAutosaveName("uumail.reader")
+        window.setFrameAutosaveName(Self.frameAutosaveName)
+        let restored = window.setFrameUsingName(Self.frameAutosaveName)
         window.contentView = host
-        window.setContentSize(size)
-        position(window)
+        if restored {
+            // Keep the user's size and, after a drag, their position. A never-moved window
+            // is re-centered on the mailbox every launch (REQ-0035).
+            if !UserDefaults.standard.bool(forKey: Self.userMovedKey) {
+                centerOnMailbox(window)
+            }
+        } else {
+            window.setContentSize(size)
+            centerOnMailbox(window)
+        }
         self.window = window
     }
 
-    /// Top-right of the mailbox window, inset so the window never covers the list fully.
-    private func position(_ window: NSWindow) {
-        let reference = NSApp.windows.first { $0.title == "uumail" } ?? NSApp.keyWindow
-        guard let reference else { return }
-        let frame = reference.frame
-        window.setFrameTopLeftPoint(
-            CGPoint(x: frame.maxX - 40, y: frame.maxY - 40)
+    /// Center the reader on the mailbox window, clamped to that screen's usable area. The
+    /// rectangle is computed by `ReaderRouter` so the placement rule stays testable.
+    private func centerOnMailbox(_ window: NSWindow) {
+        guard let reference = mailboxWindow else { return }
+        guard let visible = (reference.screen ?? NSScreen.main)?.visibleFrame else { return }
+        isPlacing = true
+        window.setFrameOrigin(
+            ReaderRouter.centeredOrigin(
+                in: reference.frame,
+                size: window.frame.size,
+                visible: visible
+            )
         )
+        isPlacing = false
+    }
+
+    /// The mailbox window is the app's main window. Identify it by exclusion because its
+    /// title changes with the selected folder.
+    private var mailboxWindow: NSWindow? {
+        if let main = NSApp.mainWindow, main !== window { return main }
+        return NSApp.windows.first {
+            $0 !== window && $0.isVisible && $0.styleMask.contains(.titled)
+        }
     }
 
     private func reveal() {
@@ -103,6 +134,14 @@ final class ReaderCoordinator: NSObject, NSWindowDelegate {
     }
 
     // MARK: - NSWindowDelegate
+
+    /// Remember a user drag, but not the programmatic centering above (no current mouse
+    /// event during `setFrameOrigin`).
+    func windowDidMove(_ notification: Notification) {
+        guard !isPlacing, (notification.object as? NSWindow) === window else { return }
+        guard NSApp.currentEvent?.type == .leftMouseDragged else { return }
+        UserDefaults.standard.set(true, forKey: Self.userMovedKey)
+    }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         guard router.isComposing else { return true }

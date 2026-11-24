@@ -117,4 +117,23 @@ public final class ReaderRouter {
         let height = max(460, min(geometry.windowHeight * 0.85, geometry.screenHeight))
         return CGSize(width: width, height: height)
     }
+
+    /// Window origin that centers `size` on `container` (the mailbox window) and keeps the
+    /// whole window inside the screen's `visibleFrame` (REQ-0035). The previous placement
+    /// pinned the reader to the mailbox's top-right corner, which read as "off to the side"
+    /// no matter where the main window was.
+    public static func centeredOrigin(
+        in container: CGRect,
+        size: CGSize,
+        visible: CGRect
+    ) -> CGPoint {
+        let maxX = max(visible.minX, visible.maxX - size.width)
+        let maxY = max(visible.minY, visible.maxY - size.height)
+        let centeredX = container.midX - size.width / 2
+        let centeredY = container.midY - size.height / 2
+        return CGPoint(
+            x: min(max(centeredX, visible.minX), maxX),
+            y: min(max(centeredY, visible.minY), maxY)
+        )
+    }
 }

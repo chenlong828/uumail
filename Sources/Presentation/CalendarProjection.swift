@@ -77,8 +77,6 @@ public enum CalendarProjection {
 
         var columns: [WeekColumn] = []
         var allDay: [CalendarChip] = []
-        var minMinute = 8 * 60
-        var maxMinute = 18 * 60
 
         for offset in 0..<7 {
             guard let date = calendar.date(byAdding: .day, value: offset, to: start) else { continue }
@@ -104,8 +102,6 @@ public enum CalendarProjection {
                 let endDate = max(event.end, event.start.addingTimeInterval(60))
                 let endMinute = calendar.component(.hour, from: endDate) * 60
                     + calendar.component(.minute, from: endDate)
-                minMinute = min(minMinute, startMinute)
-                maxMinute = max(maxMinute, endMinute)
 
                 var lane = 0
                 while lane < laneEnds.count && laneEnds[lane] > startMinute {
@@ -131,8 +127,10 @@ public enum CalendarProjection {
             ))
         }
 
-        let startHour = max(0, min(8, minMinute / 60))
-        let endHour = min(24, max(18, (maxMinute + 59) / 60))
+        // Fixed day window (REQ-0036): the week timeline always covers 08:00–24:00 so the
+        // grid does not change height as the week's meetings change.
+        let startHour = 8
+        let endHour = 24
         let first = columns.first?.date ?? anchor
         let last = columns.last?.date ?? anchor
         return WeekGridPresentation(

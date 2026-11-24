@@ -23,3 +23,8 @@ extension MailboxView {
         )
     }
 }
+
+extension Message {
+    /// Folder + server id: search results can contain the same server id in two folders.
+    var listKey: String { MailboxViewModel.listKey(for: self) }
+}

@@ -28,6 +28,33 @@ struct ReaderRouterTests {
         #expect(tall.height == 900)
     }
 
+    @Test("the reader opens centered on the mailbox, clamped inside the screen")
+    func centeredOrigin() {
+        // 1200×800 mailbox at (100,100); 600×400 reader → origin (400,300).
+        let centered = ReaderRouter.centeredOrigin(
+            in: CGRect(x: 100, y: 100, width: 1200, height: 800),
+            size: CGSize(width: 600, height: 400),
+            visible: CGRect(x: 0, y: 0, width: 1440, height: 900)
+        )
+        #expect(centered == CGPoint(x: 400, y: 300))
+
+        // The mailbox sits near the screen's top-left; centering would put the reader off
+        // screen, so the origin is clamped to the visible frame.
+        let clamped = ReaderRouter.centeredOrigin(
+            in: CGRect(x: 0, y: 500, width: 1200, height: 400),
+            size: CGSize(width: 600, height: 400),
+            visible: CGRect(x: 0, y: 0, width: 1440, height: 900)
+        )
+        #expect(clamped == CGPoint(x: 300, y: 500))
+
+        let offscreen = ReaderRouter.centeredOrigin(
+            in: CGRect(x: 100, y: 100, width: 1200, height: 800),
+            size: CGSize(width: 600, height: 400),
+            visible: CGRect(x: 200, y: 200, width: 800, height: 600)
+        )
+        #expect(offscreen == CGPoint(x: 400, y: 300))
+    }
+
     @Test("first open creates, the next one replaces, and composing refuses to replace")
     func stateMachine() throws {
         let router = ReaderRouter()

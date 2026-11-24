@@ -128,7 +128,7 @@ struct CalendarGridScenarioTests {
         #expect(blocks.first?.endMinute == 12 * 60)
         #expect(Set(blocks.map(\.lane)).count == 2)
         #expect(model.week.allDayChips.isEmpty)
-        #expect(model.week.startHour <= 9 && model.week.endHour >= 12)
+        #expect(model.week.startHour == 8 && model.week.endHour == 24)
     }
 
     @MainActor

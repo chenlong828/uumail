@@ -12,6 +12,9 @@ struct MailboxView: View {
     @State private var attachmentActions: AttachmentActionModel
     @State private var compose: ComposeViewModel?
     @State private var searchText = ""
+    /// Selection that came from a mouse click must not scroll itself to the center (a
+    /// scroll between the two clicks would move the row out from under the pointer).
+    @State private var clickSelectionKey: String?
     /// The reading pane's current size; the compose sheet matches it (REQ-0021).
     @State var readingPaneSize = CGSize(width: 720, height: 560)
     @FocusState private var messageListFocused: Bool
@@ -88,7 +91,7 @@ struct MailboxView: View {
                 statusBar
             }
             .navigationTitle(currentFolderName)
-            .navigationSplitViewColumnWidth(min: 280, ideal: 380)
+            .navigationSplitViewColumnWidth(min: 320, ideal: 480)
             .searchable(text: $searchText, placement: .toolbar, prompt: "搜索邮件")
             .onChange(of: searchText) { _, query in
                 Task { await viewModel.search(query) }
@@ -186,7 +189,10 @@ struct MailboxView: View {
         Binding(
             get: { viewModel.selectedListKey },
             set: { listKey in
-                if let listKey { viewModel.select(listKey: listKey) }
+                if let listKey {
+                    clickSelectionKey = listKey
+                    viewModel.select(listKey: listKey)
+                }
                 attachmentActions.syncSelection()
             }
         )
@@ -199,7 +205,15 @@ struct MailboxView: View {
                 MessageRowView(message: message)
                     .tag(message.listKey)
                     .id(message.listKey)
-                    .onTapGesture(count: 2) { openReader(message) }
+                    .overlay {
+                        MessageRowClick(
+                            onSelect: {
+                                messageSelection.wrappedValue = message.listKey
+                                messageListFocused = true
+                            },
+                            onOpen: { openReader(message) }
+                        )
+                    }
             }
         }
         .focusable()
@@ -233,7 +247,7 @@ struct MailboxView: View {
             }
         }
         .onChange(of: viewModel.selectedListKey) { _, key in
-            guard let key else { return }
+            guard let key, key != clickSelectionKey else { return }
             withAnimation { proxy.scrollTo(key, anchor: .center) }
         }
         }
@@ -282,10 +296,4 @@ struct MailboxView: View {
         default: "folder"
         }
     }
-}
-
-
-private extension Message {
-    /// Folder + server id: search results can contain the same server id in two folders.
-    var listKey: String { MailboxViewModel.listKey(for: self) }
 }

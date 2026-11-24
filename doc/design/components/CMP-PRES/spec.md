@@ -2,7 +2,7 @@
 layer: design
 module: presentation
 status: active
-updated: 2026-11-23
+updated: 2026-11-24
 component: CMP-PRES
 ---
 
@@ -635,4 +635,36 @@ component: CMP-PRES
   `refreshSelectedMeeting()` 调 `ReadScene.meeting(for:)` 取一次（setter `internal(set)`，公开读面不变）。
 - `ReaderViewModel.load` 同样经 `ReadScene.meeting(for:)` 取卡；不再有 `Message.meeting`。
 - 选中切换、刷新保留选中、删除后清空三条路径都覆盖：`select(_:open:)` 刷新、`clearSelection()` 置空。
+
+## 设计增量：浮窗居中与周视图固定时间窗（REQ-0035 / REQ-0036，2026-11-24，P3，已实现）
+
+- 来源：`REQ-0035`（浮窗默认居中）/ `REQ-0036`（周视图固定为 8:00–24:00）；`CMP-APP` 同日增量负责 AppKit
+  放置与小时虚线绘制，本节只收纯函数与投影规则。
+- `ReaderRouter` 新增 additive public 纯函数：
+
+  ```swift
+  public static func centeredOrigin(
+      in container: CGRect,
+      size: CGSize,
+      visible: CGRect
+  ) -> CGPoint
+  ```
+
+- 不变量：
+  - 以 `container` 的中心为浮窗中心：`x = container.midX - size.width / 2`，`y` 同理；
+  - 再夹进 `visible`：x 的上界为 `max(visible.minX, visible.maxX - size.width)`，y 同理；
+    尺寸不超过屏幕时结果完整落在 `visible` 内；
+  - 尺寸大于 `visible` 时上界退化为 `visible.minX`/`minY`，即贴 min 边，不把窗口放到负方向；
+  - 纯函数：不读 `NSWindow`/`NSScreen`、不写状态、不触网；App 层只传
+    `mailbox.frame`、窗口 `frame.size`、`screen.visibleFrame` 三个矩形。
+- `CalendarProjection.week` 固定 `startHour = 8` / `endHour = 24`：删除按会议最早/最晚的
+  `minMinute`/`maxMinute` 伸缩；时间轴固定从 8:00 开始、到 24:00 结束，高度不再随本周会议变化；
+  `WeekGridPresentation` 的字段与消费方不变。
+- 公开面：`ReaderRouter.centeredOrigin` 是本次唯一新增 public 面，additive；`open`/`reset`/
+  `beginComposing`/`endComposing`/`readerSize`/`ReaderGeometry` 与 `CalendarViewModel`/
+  `CalendarProjection` 既有签名均不变；不改 schema/依赖/target。
+- L1：`ReaderViewModelTests` 的 `centeredOrigin` 覆盖居中（1200×800 容器 + 600×400 浮窗 → `(400,300)`）、
+  贴边夹取与完整落在 `visible` 内；`CalendarViewModelTests` 与 `CalendarScenarioTests` 断言
+  `week.startHour == 8 && week.endHour == 24`。全量 461 tests / 77 suites、架构 4/4。
+- 定级：**P3**（单模块内部定位/投影规则；additive public 纯函数；无 schema/依赖/公开契约语义变化）。
 
