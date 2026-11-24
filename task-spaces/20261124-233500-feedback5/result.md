@@ -26,7 +26,7 @@ updated: 2026-11-24
 
 - `./Scripts/swiftw test`：**461 tests / 77 suites 全绿**（含 `ReaderRouter` 居中 3 组、日历投影固定 8/24）。
 - `bash Scripts/check-architecture.sh`：**4/4 PASS**。
-- `./Scripts/make-app.sh`：成功，`dist/build-info.txt` 记录 `commit 9cc90d1`、`2026-11-24 23:33:06 CST`、release。
+- `./Scripts/make-app.sh`：成功，`dist/build-info.txt` 记录 release 构建。
 - L2 探针：`probe/run.sh` 可复跑；输出已提交。
 - 文件预算：`MailboxView.swift` 299/300；`CalendarView.swift` 293/300；`CalendarHourGrid.swift` 20；`MessageRowClick.swift` 21。
 

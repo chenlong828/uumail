@@ -466,7 +466,7 @@ component: CMP-APP
 - 证据（L2）：`evidence/calendar-click/calendar-click.txt`（生产 `CalendarSelection` 的 `hitTest` 命中与 clickCount 映射）；
   载体机制证据 `probe/appkit-window.txt`。真实点击/拖动/缩放/多屏与撰写关闭确认框登记为发布前人工项。
 - 后续（2026-11-24，`T-1124-23`…`T-1124-25`）：列表列宽、行双击、浮窗默认居中与周视图小时虚线 4 处修复完成；
-  461 tests / 77 suites、架构 4/4；L2 证据 `task-spaces/20261124-233500-feedback5/probe/`；`make-app.sh` 成功（release，2026-11-24 23:33 CST）。
+  461 tests / 77 suites、架构 4/4；L2 证据 `task-spaces/20261124-233500-feedback5/probe/`；`make-app.sh` 成功（release）。
 
 ## 设计增量：列表默认列宽与双击入口修复（REQ-0034 / REQ-0031 修复，2026-11-24，P3）
 

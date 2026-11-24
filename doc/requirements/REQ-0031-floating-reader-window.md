@@ -43,5 +43,5 @@ updated: 2026-11-24
   - 2026-11-24 **人工确认**：键盘入口 = 双击 + Enter + 空格三者等价。
   - 2026-11-24 默认（未经人工）：浮窗内会议卡只读无按钮；撰写编辑器仍阻止远程资源；宽下限 480pt、高下限 460pt；非当前选中邮件也可打开（按引用读取，见 `REQ-0032`）。
   - 2026-11-24 **反馈（修复）**：列表双击未生效，根因是 SwiftUI `List(selection:)` 行把手势吞掉（`.onTapGesture(count:2)` 不触发）；改用 AppKit ClickCatcher（`MessageRowClick`）——单击立即选中，双击 / Enter / 空格打开。README 不写代码行号。
-- **状态**：`delivered`（2026-11-24 实现并验证：`SCN-0025` verified，460 tests / 77 suites、架构 4/4，当时发布构建已完成；同日修复双击入口并补 L2 证据 `task-spaces/20261124-233500-feedback5/probe/message-row-click.txt`，本轮 461 tests / 77 suites、架构 4/4，`make-app.sh` 成功（release，2026-11-24 23:33 CST））
+- **状态**：`delivered`（2026-11-24 实现并验证：`SCN-0025` verified，460 tests / 77 suites、架构 4/4，当时发布构建已完成；同日修复双击入口并补 L2 证据 `task-spaces/20261124-233500-feedback5/probe/message-row-click.txt`，本轮 461 tests / 77 suites、架构 4/4，`make-app.sh` 成功（release））
 - **验收归属**：`SCN-0025` 的 3 正 1 反 + 增量断言（`T-SCN-0025-05` 的 L1 部分、`T-SCN-0025-06`）通过 + 上述约束逐条无违反 + 回归场景不退化；需求不另立测试。
