@@ -350,30 +350,30 @@ struct MailStoreOutboxTests {
     @Test("a claimed row appears in pending; marking it sent removes it")
     func queueAndSend() throws {
         let (store, id) = try seeded()
-        let raw = try store.enqueueOutbox(account: id, draft: draft())
+        let raw = try store.outbox.enqueueOutbox(account: id, draft: draft())
         let outboxID = OutboxID(raw)
-        #expect(try store.pendingOutbox(account: id).map(\.id) == [raw])
+        #expect(try store.outbox.pendingOutbox(account: id).map(\.id) == [raw])
 
-        let claimed = try #require(try store.claimOutbox(account: id, now: now(), lease: .seconds(120)))
+        let claimed = try #require(try store.outbox.claimOutbox(account: id, now: now(), lease: .seconds(120)))
         #expect(claimed.id == raw)
         #expect(claimed.state == "sending")
 
-        try store.markOutboxSent(account: id, outboxID: outboxID)
-        #expect(try store.pendingOutbox(account: id).isEmpty)
-        #expect(try store.outboxItem(account: id, id: outboxID) == nil)
+        try store.outbox.markOutboxSent(account: id, outboxID: outboxID)
+        #expect(try store.outbox.pendingOutbox(account: id).isEmpty)
+        #expect(try store.outbox.outboxItem(account: id, id: outboxID) == nil)
     }
 
     @Test("a retryable failure keeps content, error, attempt count and next attempt")
     func failedStaysPending() throws {
         let (store, id) = try seeded()
-        let outboxID = OutboxID(try store.enqueueOutbox(account: id, draft: draft()))
-        _ = try store.claimOutbox(account: id, now: now(), lease: .seconds(120))
+        let outboxID = OutboxID(try store.outbox.enqueueOutbox(account: id, draft: draft()))
+        _ = try store.outbox.claimOutbox(account: id, now: now(), lease: .seconds(120))
         let next = now().addingTimeInterval(30)
-        try store.markOutboxFailed(
+        try store.outbox.markOutboxFailed(
             account: id, outboxID: outboxID, error: "offline", retryable: true, nextAttempt: next
         )
 
-        let pending = try store.pendingOutbox(account: id)
+        let pending = try store.outbox.pendingOutbox(account: id)
         #expect(pending.count == 1)
         #expect(pending.first?.state == "failed_retryable")
         #expect(pending.first?.attempts == 1)
@@ -385,93 +385,93 @@ struct MailStoreOutboxTests {
     @Test("a permanent failure is kept but has no next attempt")
     func permanentFailure() throws {
         let (store, id) = try seeded()
-        let outboxID = OutboxID(try store.enqueueOutbox(account: id, draft: draft()))
-        _ = try store.claimOutbox(account: id, now: now(), lease: .seconds(120))
-        try store.markOutboxFailed(
+        let outboxID = OutboxID(try store.outbox.enqueueOutbox(account: id, draft: draft()))
+        _ = try store.outbox.claimOutbox(account: id, now: now(), lease: .seconds(120))
+        try store.outbox.markOutboxFailed(
             account: id, outboxID: outboxID, error: "authFailed", retryable: false, nextAttempt: nil
         )
 
-        let item = try #require(try store.outboxItem(account: id, id: outboxID))
+        let item = try #require(try store.outbox.outboxItem(account: id, id: outboxID))
         #expect(item.state == "failed_permanent")
         #expect(item.attempts == 1)
         #expect(item.nextAttemptAt == nil)
         // It stays visible for the compose status line, but is not auto-claimable.
-        #expect(try store.pendingOutbox(account: id).map(\.id) == [outboxID.raw])
-        #expect(try store.claimOutbox(account: id, now: now().addingTimeInterval(86_400), lease: .seconds(120)) == nil)
+        #expect(try store.outbox.pendingOutbox(account: id).map(\.id) == [outboxID.raw])
+        #expect(try store.outbox.claimOutbox(account: id, now: now().addingTimeInterval(86_400), lease: .seconds(120)) == nil)
     }
 
     @Test("a second claim returns nil while the lease is live")
     func singleClaim() throws {
         let (store, id) = try seeded()
-        let raw = try store.enqueueOutbox(account: id, draft: draft())
-        #expect(try store.claimOutbox(account: id, now: now(), lease: .seconds(120))?.id == raw)
-        #expect(try store.claimOutbox(account: id, now: now(), lease: .seconds(120)) == nil)
+        let raw = try store.outbox.enqueueOutbox(account: id, draft: draft())
+        #expect(try store.outbox.claimOutbox(account: id, now: now(), lease: .seconds(120))?.id == raw)
+        #expect(try store.outbox.claimOutbox(account: id, now: now(), lease: .seconds(120)) == nil)
     }
 
     @Test("a failed retryable row is claimable only once its backoff elapsed")
     func backoffGating() throws {
         let (store, id) = try seeded()
-        let raw = try store.enqueueOutbox(account: id, draft: draft())
+        let raw = try store.outbox.enqueueOutbox(account: id, draft: draft())
         let outboxID = OutboxID(raw)
-        _ = try store.claimOutbox(account: id, now: now(), lease: .seconds(120))
-        try store.markOutboxFailed(
+        _ = try store.outbox.claimOutbox(account: id, now: now(), lease: .seconds(120))
+        try store.outbox.markOutboxFailed(
             account: id, outboxID: outboxID, error: "offline",
             retryable: true, nextAttempt: now().addingTimeInterval(30)
         )
 
-        #expect(try store.claimOutbox(account: id, now: now(), lease: .seconds(120)) == nil)
-        #expect(try store.claimOutbox(account: id, now: now().addingTimeInterval(29), lease: .seconds(120)) == nil)
-        #expect(try store.claimOutbox(account: id, now: now().addingTimeInterval(30), lease: .seconds(120))?.id == raw)
+        #expect(try store.outbox.claimOutbox(account: id, now: now(), lease: .seconds(120)) == nil)
+        #expect(try store.outbox.claimOutbox(account: id, now: now().addingTimeInterval(29), lease: .seconds(120)) == nil)
+        #expect(try store.outbox.claimOutbox(account: id, now: now().addingTimeInterval(30), lease: .seconds(120))?.id == raw)
     }
 
     @Test("an expired sending lease is reclaimable; a live one is not")
     func expiredLease() throws {
         let (store, id) = try seeded()
-        let raw = try store.enqueueOutbox(account: id, draft: draft())
-        #expect(try store.claimOutbox(account: id, now: now(), lease: .seconds(120))?.id == raw)
+        let raw = try store.outbox.enqueueOutbox(account: id, draft: draft())
+        #expect(try store.outbox.claimOutbox(account: id, now: now(), lease: .seconds(120))?.id == raw)
 
-        #expect(try store.claimOutbox(account: id, now: now().addingTimeInterval(119), lease: .seconds(120)) == nil)
-        #expect(try store.claimOutbox(account: id, now: now().addingTimeInterval(120), lease: .seconds(120))?.id == raw)
+        #expect(try store.outbox.claimOutbox(account: id, now: now().addingTimeInterval(119), lease: .seconds(120)) == nil)
+        #expect(try store.outbox.claimOutbox(account: id, now: now().addingTimeInterval(120), lease: .seconds(120))?.id == raw)
     }
 
     @Test("release returns a claimed row to the queue")
     func release() throws {
         let (store, id) = try seeded()
-        let raw = try store.enqueueOutbox(account: id, draft: draft())
+        let raw = try store.outbox.enqueueOutbox(account: id, draft: draft())
         let outboxID = OutboxID(raw)
-        _ = try store.claimOutbox(account: id, now: now(), lease: .seconds(120))
+        _ = try store.outbox.claimOutbox(account: id, now: now(), lease: .seconds(120))
 
-        try store.releaseOutbox(account: id, outboxID: outboxID)
-        #expect(try store.outboxItem(account: id, id: outboxID)?.state == "queued")
-        #expect(try store.claimOutbox(account: id, now: now(), lease: .seconds(120))?.id == raw)
+        try store.outbox.releaseOutbox(account: id, outboxID: outboxID)
+        #expect(try store.outbox.outboxItem(account: id, id: outboxID)?.state == "queued")
+        #expect(try store.outbox.claimOutbox(account: id, now: now(), lease: .seconds(120))?.id == raw)
     }
 
     @Test("cancel records a canceled row that is neither pending nor claimable")
     func cancel() throws {
         let (store, id) = try seeded()
-        let outboxID = OutboxID(try store.enqueueOutbox(account: id, draft: draft()))
+        let outboxID = OutboxID(try store.outbox.enqueueOutbox(account: id, draft: draft()))
 
-        try store.cancelOutbox(account: id, outboxID: outboxID)
-        #expect(try store.outboxItem(account: id, id: outboxID)?.state == "canceled")
-        #expect(try store.pendingOutbox(account: id).isEmpty)
-        #expect(try store.claimOutbox(account: id, now: now(), lease: .seconds(120)) == nil)
+        try store.outbox.cancelOutbox(account: id, outboxID: outboxID)
+        #expect(try store.outbox.outboxItem(account: id, id: outboxID)?.state == "canceled")
+        #expect(try store.outbox.pendingOutbox(account: id).isEmpty)
+        #expect(try store.outbox.claimOutbox(account: id, now: now(), lease: .seconds(120)) == nil)
     }
 
     @Test("marking a row that was never claimed reports outboxNotClaimable")
     func unclaimedMark() throws {
         let (store, id) = try seeded()
-        let outboxID = OutboxID(try store.enqueueOutbox(account: id, draft: draft()))
+        let outboxID = OutboxID(try store.outbox.enqueueOutbox(account: id, draft: draft()))
 
         #expect(throws: MailStoreError.outboxNotClaimable(account: id, outboxID: outboxID)) {
-            try store.markOutboxSent(account: id, outboxID: outboxID)
+            try store.outbox.markOutboxSent(account: id, outboxID: outboxID)
         }
     }
 
     @Test("drafts are stored but not pending")
     func draftsAreNotPending() throws {
         let (store, id) = try seeded()
-        _ = try store.saveDraft(account: id, draft: MailDraft(to: "a@b.c", cc: nil, subject: "draft", body: "", isDraft: true))
-        #expect(try store.pendingOutbox(account: id).isEmpty)
+        _ = try store.outbox.saveDraft(account: id, draft: MailDraft(to: "a@b.c", cc: nil, subject: "draft", body: "", isDraft: true))
+        #expect(try store.outbox.pendingOutbox(account: id).isEmpty)
     }
 }
 

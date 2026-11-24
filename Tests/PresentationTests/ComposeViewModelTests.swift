@@ -21,7 +21,7 @@ struct ComposeViewModelTests {
         #expect(sent)
         #expect(compose.status == .queued)
         #expect(compose.statusText == "已加入发件箱")
-        let pending = try fixture.store.pendingOutbox(account: fixture.account)
+        let pending = try fixture.store.outbox.pendingOutbox(account: fixture.account)
         #expect(pending.count == 1)
         #expect(pending.first?.subject == "hi")
         #expect(pending.first?.to == "a@b.c")
@@ -44,7 +44,7 @@ struct ComposeViewModelTests {
         #expect(compose.statusText == ErrorText.text(for: .invalidInput(reason: "recipient is empty")))
         #expect(compose.body == "text")
         #expect(compose.to.isEmpty)
-        #expect(try fixture.store.pendingOutbox(account: fixture.account).isEmpty)
+        #expect(try fixture.store.outbox.pendingOutbox(account: fixture.account).isEmpty)
     }
 
     @Test("saving a draft never enqueues it")
@@ -60,7 +60,7 @@ struct ComposeViewModelTests {
         #expect(saved)
         #expect(compose.status == .saved)
         #expect(compose.statusText == "草稿已保存")
-        #expect(try fixture.store.pendingOutbox(account: fixture.account).isEmpty)
+        #expect(try fixture.store.outbox.pendingOutbox(account: fixture.account).isEmpty)
     }
 
     @Test("reply prefills the sender, keeps a single Re: prefix and quotes the body")
@@ -157,7 +157,7 @@ struct ComposeViewModelTests {
 
         #expect(sent)
         #expect(compose.status == .queued)
-        let pending = try fixture.store.pendingOutbox(account: fixture.account)
+        let pending = try fixture.store.outbox.pendingOutbox(account: fixture.account)
         #expect(pending.count == 1)
         #expect(pending.first?.to == "z@corp.test; a@corp.test")
         #expect(pending.first?.cc == "c@corp.test")
@@ -200,7 +200,7 @@ struct ComposeViewModelTests {
         compose.setEditorHTML(html)
 
         #expect(await compose.send())
-        let pending = try #require(try fixture.store.pendingOutbox(account: fixture.account).first)
+        let pending = try #require(try fixture.store.outbox.pendingOutbox(account: fixture.account).first)
         #expect(pending.bodyHTML == html)
         #expect(pending.body == "hello world", "the plain-text part is derived from the edited HTML")
     }
@@ -315,7 +315,7 @@ struct ComposeViewModelTests {
         #expect(compose.selectRecipientSuggestion(at: 0))
 
         #expect(await compose.send())
-        let pending = try #require(try fixture.store.pendingOutbox(account: fixture.account).first)
+        let pending = try #require(try fixture.store.outbox.pendingOutbox(account: fixture.account).first)
         #expect(pending.to == "zhang.san@corp.test;")
         #expect(!pending.to.contains("张三"))
     }

@@ -31,7 +31,7 @@ struct ComposeSceneTests {
         )
 
         #expect(await gateway.sendCalls == 0, "send must not wait for delivery")
-        let stored = try store.outboxItem(account: account, id: id)
+        let stored = try store.outbox.outboxItem(account: account, id: id)
         #expect(stored?.to == "a@b.c", "the recipient is trimmed")
         #expect(stored?.state == "queued")
 
@@ -50,7 +50,7 @@ struct ComposeSceneTests {
             )
         }
 
-        #expect(try store.pendingOutbox(account: account).isEmpty)
+        #expect(try store.outbox.pendingOutbox(account: account).isEmpty)
     }
 
     @Test("saveDraft stores a draft row that is never queued")
@@ -62,7 +62,7 @@ struct ComposeSceneTests {
             account: account
         )
 
-        #expect(try store.outboxItem(account: account, id: id)?.state == "draft")
+        #expect(try store.outbox.outboxItem(account: account, id: id)?.state == "draft")
         let pending = try await scene.pending(account: account)
         #expect(pending.isEmpty)
         #expect(await gateway.sendCalls == 0)
@@ -190,7 +190,7 @@ struct ComposeSceneTests {
         let migrated = try #require(try store.messages(account: account, folder: "13").first)
         #expect(migrated.serverID == "101")
         #expect(migrated.cc == nil)
-        let legacyDraft = try #require(try store.outboxItem(account: account, id: OutboxID("old-outbox")))
+        let legacyDraft = try #require(try store.outbox.outboxItem(account: account, id: OutboxID("old-outbox")))
         #expect(legacyDraft.bodyHTML == nil, "pre-v10 rows read back as plain text only")
         #expect(try store.syncKey(account: account, collection: "13") == "0")
 

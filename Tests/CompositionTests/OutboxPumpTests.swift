@@ -69,7 +69,7 @@ struct OutboxPumpTests {
         pump.start()
         defer { pump.stop() }
 
-        try await waitUntil { try store.pendingOutbox(account: account).isEmpty }
+        try await waitUntil { try store.outbox.pendingOutbox(account: account).isEmpty }
         #expect(await gateway.clientIDs.count == 1)
     }
 
@@ -86,17 +86,17 @@ struct OutboxPumpTests {
             Draft(to: "a@b.c", cc: nil, subject: "startup", body: "text"),
             account: account
         )
-        try await waitUntil { try store.pendingOutbox(account: account).isEmpty }
+        try await waitUntil { try store.outbox.pendingOutbox(account: account).isEmpty }
 
         _ = try await outbox.enqueue(
             Draft(to: "a@b.c", cc: nil, subject: "later", body: "text"),
             account: account
         )
-        #expect(try store.pendingOutbox(account: account).count == 1)
+        #expect(try store.outbox.pendingOutbox(account: account).count == 1)
 
         pump.signal()
 
-        try await waitUntil { try store.pendingOutbox(account: account).isEmpty }
+        try await waitUntil { try store.outbox.pendingOutbox(account: account).isEmpty }
         #expect(await gateway.clientIDs.count == 2)
     }
 
@@ -112,12 +112,12 @@ struct OutboxPumpTests {
             Draft(to: "a@b.c", cc: nil, subject: "again", body: "text"),
             account: account
         )
-        #expect(try store.pendingOutbox(account: account).count == 1)
+        #expect(try store.outbox.pendingOutbox(account: account).count == 1)
         #expect(await gateway.clientIDs.isEmpty)
 
         pump.start()
         defer { pump.stop() }
-        try await waitUntil { try store.pendingOutbox(account: account).isEmpty }
+        try await waitUntil { try store.outbox.pendingOutbox(account: account).isEmpty }
         #expect(await gateway.clientIDs.count == 1)
     }
 }

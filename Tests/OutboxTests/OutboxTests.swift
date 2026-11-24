@@ -71,7 +71,7 @@ struct OutboxDeliveryTests {
         )
         let id = try await outbox.enqueue(draft, account: account)
 
-        let stored = try #require(try store.outboxItem(account: account, id: id))
+        let stored = try #require(try store.outbox.outboxItem(account: account, id: id))
         #expect(stored.bodyHTML == html)
         #expect(stored.body == "hello")
 
@@ -188,7 +188,7 @@ struct OutboxDeliveryTests {
         let (store, account, gateway, clock, outbox) = try fixture()
         let id = try await outbox.enqueue(makeDraft(), account: account)
 
-        let claimed = try #require(try store.claimOutbox(account: account, now: clock.now, lease: .seconds(120)))
+        let claimed = try #require(try store.outbox.claimOutbox(account: account, now: clock.now, lease: .seconds(120)))
         #expect(claimed.id == id.raw)
         #expect(claimed.state == "sending")
 
@@ -238,7 +238,7 @@ struct OutboxDeliveryTests {
         let (store, account, _, clock, outbox) = try fixture(gateway: FakeGateway(outcomes: [.offline]))
         let id = try await outbox.enqueue(makeDraft(), account: account)
         // Simulate an in-flight claim from this or another process.
-        _ = try store.claimOutbox(account: account, now: clock.now, lease: .seconds(120))
+        _ = try store.outbox.claimOutbox(account: account, now: clock.now, lease: .seconds(120))
 
         try await outbox.cancel(id, account: account)
         let whileSending = try await outbox.state(of: id, account: account)
@@ -301,7 +301,7 @@ struct OutboxDeliveryTests {
         #expect(state == .failedPermanent)
         #expect(await gateway.attempts == 0)
         // The real account is untouched.
-        #expect(try store.pendingOutbox(account: account).isEmpty)
+        #expect(try store.outbox.pendingOutbox(account: account).isEmpty)
     }
 }
 

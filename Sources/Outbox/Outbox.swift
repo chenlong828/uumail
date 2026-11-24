@@ -38,12 +38,12 @@ public actor Outbox {
     /// Persists a send intent. No MIME build, no network: delivery happens in `flush*`.
     @discardableResult
     public func enqueue(_ draft: Draft, account: AccountID) throws -> OutboxID {
-        OutboxID(try store.enqueueOutbox(account: account, draft: draft))
+        OutboxID(try store.outbox.enqueueOutbox(account: account, draft: draft))
     }
 
     /// Claims and delivers one row, or returns `nil` when nothing is deliverable.
     public func flushOnce(account: AccountID) async -> DeliveryOutcome? {
-        guard let item = try? store.claimOutbox(account: account, now: clock.now, lease: lease) else {
+        guard let item = try? store.outbox.claimOutbox(account: account, now: clock.now, lease: lease) else {
             return nil
         }
         return await deliver(item, account: account)
@@ -61,27 +61,27 @@ public actor Outbox {
 
     /// Puts a failed row back in the queue for an immediate attempt (manual retry).
     public func retry(_ id: OutboxID, account: AccountID) throws {
-        guard let item = try store.outboxItem(account: account, id: id),
+        guard let item = try store.outbox.outboxItem(account: account, id: id),
               let state = OutboundState(rawValue: item.state),
               state == .failedRetryable || state == .failedPermanent
         else {
             return
         }
-        try store.releaseOutbox(account: account, outboxID: id)
+        try store.outbox.releaseOutbox(account: account, outboxID: id)
         cancelRequested.remove(id)
     }
 
     /// Cancels a row that has not been delivered. A `sending` row only records the
     /// request; `flushOnce` settles it when delivery returns.
     public func cancel(_ id: OutboxID, account: AccountID) throws {
-        guard let item = try store.outboxItem(account: account, id: id),
+        guard let item = try store.outbox.outboxItem(account: account, id: id),
               let state = OutboundState(rawValue: item.state)
         else {
             return
         }
         switch state {
         case .queued, .failedRetryable, .failedPermanent:
-            try store.cancelOutbox(account: account, outboxID: id)
+            try store.outbox.cancelOutbox(account: account, outboxID: id)
         case .sending:
             cancelRequested.insert(id)
         case .draft, .sent, .canceled:
@@ -92,12 +92,12 @@ public actor Outbox {
     // MARK: - Observation
 
     public func state(of id: OutboxID, account: AccountID) throws -> OutboundState? {
-        guard let item = try store.outboxItem(account: account, id: id) else { return nil }
+        guard let item = try store.outbox.outboxItem(account: account, id: id) else { return nil }
         return OutboundState(rawValue: item.state)
     }
 
     public func pending(account: AccountID) throws -> [OutboxItem] {
-        try store.pendingOutbox(account: account)
+        try store.outbox.pendingOutbox(account: account)
     }
 
     // MARK: - Delivery
@@ -112,11 +112,11 @@ public actor Outbox {
             // the four gateway failures in the §4.6 table.
             let error = MailError.invalidInput(reason: "account \(account.raw) is missing")
             if canceled {
-                try? store.releaseOutbox(account: account, outboxID: id)
-                try? store.cancelOutbox(account: account, outboxID: id)
+                try? store.outbox.releaseOutbox(account: account, outboxID: id)
+                try? store.outbox.cancelOutbox(account: account, outboxID: id)
                 return .canceled(id)
             }
-            try? store.markOutboxFailed(
+            try? store.outbox.markOutboxFailed(
                 account: account, outboxID: id, error: String(describing: error),
                 retryable: false, nextAttempt: nil
             )
@@ -147,7 +147,7 @@ public actor Outbox {
 
         // The mail is on the wire, so a cancel request is moot: a send that succeeded is
         // final. A failed state write is recoverable through the lease.
-        try? store.markOutboxSent(account: account, outboxID: id)
+        try? store.outbox.markOutboxSent(account: account, outboxID: id)
         return .sent(id)
     }
 
@@ -161,14 +161,14 @@ public actor Outbox {
         if canceled {
             // Walk the legal edge: sending → queued → canceled (a direct
             // sending → canceled transition is not part of the state machine).
-            try? store.releaseOutbox(account: account, outboxID: id)
-            try? store.cancelOutbox(account: account, outboxID: id)
+            try? store.outbox.releaseOutbox(account: account, outboxID: id)
+            try? store.outbox.cancelOutbox(account: account, outboxID: id)
             return .canceled(id)
         }
 
         let errorText = String(describing: error)
         if OutboxBackoff.isPermanent(error) {
-            try? store.markOutboxFailed(
+            try? store.outbox.markOutboxFailed(
                 account: account,
                 outboxID: id,
                 error: errorText,
@@ -183,7 +183,7 @@ public actor Outbox {
             failedAttempts: item.attempts + 1,
             now: clock.now
         )
-        try? store.markOutboxFailed(
+        try? store.outbox.markOutboxFailed(
             account: account,
             outboxID: id,
             error: errorText,

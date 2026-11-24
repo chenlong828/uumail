@@ -123,7 +123,7 @@ struct AppCompositionTests {
         compose.body = "text"
         let enqueued = await compose.send()
         #expect(enqueued)
-        try await waitUntil { try store.pendingOutbox(account: account).isEmpty }
+        try await waitUntil { try store.outbox.pendingOutbox(account: account).isEmpty }
         let sendCalls = await gateway.sendCalls
         #expect(sendCalls == 1, "the pump delivers each queued row exactly once")
 

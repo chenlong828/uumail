@@ -30,7 +30,7 @@ struct MigrationTests {
         // Old rows stay readable after the upgrade.
         #expect(try store.accounts() == [account])
         #expect(try store.account(account)?.address == "jdoe@corp.test")
-        let item = try #require(try store.outboxItem(account: account, id: OutboxID("outbox-1")))
+        let item = try #require(try store.outbox.outboxItem(account: account, id: OutboxID("outbox-1")))
         #expect(item.state == "failed_retryable")
         #expect(item.to == "a@b.c")
         #expect(item.subject == "old draft")
@@ -41,7 +41,7 @@ struct MigrationTests {
         #expect(item.nextAttemptAt == nil)
 
         // The renamed state is deliverable again: no backoff was stored by the old row.
-        let claimed = try store.claimOutbox(
+        let claimed = try store.outbox.claimOutbox(
             account: account,
             now: Date(timeIntervalSince1970: 2_000),
             lease: .seconds(120)

@@ -144,7 +144,7 @@ public struct ComposeScene: Sendable {
         var stored = draft
         stored.isDraft = true
         do {
-            return OutboxID(try store.saveDraft(account: account, draft: stored))
+            return OutboxID(try store.outbox.saveDraft(account: account, draft: stored))
         } catch {
             throw Self.classify(error)
         }

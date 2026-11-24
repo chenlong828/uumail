@@ -102,7 +102,7 @@ struct RecipientAutocompleteTests {
         compose.subject = "manual"
         compose.body = "text"
         #expect(await compose.send())
-        let pending = try #require(try fixture.store.pendingOutbox(account: fixture.account).first)
+        let pending = try #require(try fixture.store.outbox.pendingOutbox(account: fixture.account).first)
         #expect(pending.to == "manual@corp.test")
     }
 }
