@@ -131,7 +131,7 @@ public struct EASAdapter: MailGateway, MailWriteGateway {
         }
     }
 
-    private static func message(_ message: EASMessage) -> Message {
+    static func message(_ message: EASMessage) -> Message {
         Message(
             serverID: message.serverID,
             subject: message.subject,
@@ -149,7 +149,68 @@ public struct EASAdapter: MailGateway, MailWriteGateway {
                     contentID: $0.contentID
                 )
             },
-            cc: message.cc
+            cc: message.cc,
+            meeting: meeting(message)
+        )
+    }
+
+    /// Maps an EAS meeting request onto the domain value; `nil` for plain mail, cancelled
+    /// requests stay as a meeting flagged `isCancelled` so the store can delete the row.
+    static func meeting(_ message: EASMessage) -> MeetingInvite? {
+        guard let meetingClass = message.messageClass,
+              meetingClass.hasPrefix("IPM.Schedule.Meeting."),
+              let eas = message.meeting,
+              let uid = eas.uid, !uid.isEmpty,
+              let start = eas.start,
+              let end = eas.end
+        else { return nil }
+
+        let cancelled = meetingClass == "IPM.Schedule.Meeting.Canceled"
+        let frequency: RecurrenceRule.Frequency? = eas.recurrence.flatMap {
+            switch $0.type {
+            case 0: .daily
+            case 1: .weekly
+            case 2: .monthlyDay
+            case 3: .monthlyWeekday
+            case 5: .yearlyDay
+            case 6: .yearlyWeekday
+            default: nil
+            }
+        }
+        let rule = eas.recurrence.flatMap { recurrence -> RecurrenceRule? in
+            guard let frequency, eas.instanceType != 3 else { return nil }
+            let mask = recurrence.daysOfWeek ?? 0
+            return RecurrenceRule(
+                frequency: frequency,
+                interval: max(1, recurrence.interval ?? 1),
+                until: recurrence.until,
+                occurrences: recurrence.occurrences,
+                weekdays: Weekday.set(fromMask: mask),
+                dayOfMonth: recurrence.dayOfMonth,
+                weekOfMonth: recurrence.weekOfMonth,
+                monthOfYear: recurrence.monthOfYear,
+                firstDayOfWeek: Weekday.calendarWeekday(recurrence.firstDayOfWeek),
+                lastDayOfMonth: mask == 127
+            )
+        }
+        return MeetingInvite(
+            uid: uid,
+            subject: message.subject,
+            start: start,
+            end: end,
+            isAllDay: eas.allDay,
+            location: eas.location,
+            organizer: eas.organizer,
+            reminderMinutes: eas.reminderMinutes,
+            responseRequested: eas.responseRequested,
+            busyStatus: eas.busyStatus,
+            messageType: MeetingMessageType(rawValue: eas.messageType ?? 1) ?? .initial,
+            isCancelled: cancelled,
+            dtstamp: eas.dtstamp,
+            timeZone: eas.timeZone.map {
+                MeetingTimeZone(name: $0.name, offsetSeconds: -$0.biasMinutes * 60)
+            },
+            recurrence: rule
         )
     }
 

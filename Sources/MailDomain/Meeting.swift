@@ -49,6 +49,19 @@ public enum Weekday: Int, Sendable, Equatable, CaseIterable {
         }
     }
 
+    /// Maps the EAS `FirstDayOfWeek` value (0 = Sunday … 6 = Saturday).
+    public static func calendarWeekday(_ value: Int?) -> Weekday {
+        switch value {
+        case 0: .sunday
+        case 2: .tuesday
+        case 3: .wednesday
+        case 4: .thursday
+        case 5: .friday
+        case 6: .saturday
+        default: .monday
+        }
+    }
+
     /// Expands an EAS bit mask; `127` is the "last day of month" marker, not a set.
     public static func set(fromMask mask: Int) -> Set<Weekday> {
         guard mask != 127 else { return [] }

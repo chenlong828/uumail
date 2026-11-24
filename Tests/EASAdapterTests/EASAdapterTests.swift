@@ -275,3 +275,85 @@ struct EASAdapterTests {
         }
     }
 }
+
+@Suite("EASAdapter meeting requests")
+struct EASAdapterMeetingTests {
+    private func date(_ value: String) -> Date {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: value)!
+    }
+
+    private func easMessage(
+        messageClass: String = "IPM.Schedule.Meeting.Request",
+        meeting: EASMeeting? = EASMeeting(
+            uid: "u-1",
+            start: ISO8601DateFormatter().date(from: "2026-11-19T01:30:00Z"),
+            end: ISO8601DateFormatter().date(from: "2026-11-19T04:00:00Z"),
+            dtstamp: ISO8601DateFormatter().date(from: "2026-11-13T09:54:53Z"),
+            location: "C4519",
+            organizer: "\"王权英\" <wangqy@hundsun.com>",
+            reminderMinutes: 900,
+            responseRequested: true,
+            busyStatus: 2,
+            messageType: 2,
+            instanceType: 1,
+            timeZone: EASMeetingTimeZone(name: "China Standard Time", biasMinutes: -480),
+            recurrence: EASRecurrence(type: 1, interval: 1, daysOfWeek: 2, firstDayOfWeek: 1)
+        )
+    ) -> EASMessage {
+        EASMessage(
+            serverID: "m-1",
+            subject: "【会议预告】",
+            from: "wangqy@hundsun.com",
+            messageClass: messageClass,
+            meeting: meeting
+        )
+    }
+
+    @Test("a meeting request maps onto the domain invite")
+    func mapsRequest() throws {
+        let message = EASAdapter.message(easMessage())
+        let meeting = try #require(message.meeting)
+        #expect(meeting.uid == "u-1")
+        #expect(meeting.location == "C4519")
+        #expect(meeting.organizer == "\"王权英\" <wangqy@hundsun.com>")
+        #expect(meeting.reminderMinutes == 900)
+        #expect(meeting.responseRequested)
+        #expect(meeting.messageType == .update)
+        #expect(meeting.isCancelled == false)
+        #expect(meeting.timeZone?.offsetSeconds == 28800)
+        #expect(meeting.timeZone?.name == "China Standard Time")
+        let rule = try #require(meeting.recurrence)
+        #expect(rule.frequency == .weekly)
+        #expect(rule.interval == 1)
+        #expect(rule.weekdays == [.monday])
+        #expect(rule.firstDayOfWeek == .monday)
+    }
+
+    @Test("a cancelled request keeps the meeting but flags it")
+    func mapsCancellation() throws {
+        let message = EASAdapter.message(easMessage(messageClass: "IPM.Schedule.Meeting.Canceled"))
+        #expect(try #require(message.meeting).isCancelled)
+    }
+
+    @Test("a plain note never produces a meeting")
+    func plainNoteHasNoMeeting() {
+        let message = EASAdapter.message(easMessage(messageClass: "IPM.Note"))
+        #expect(message.meeting == nil)
+    }
+
+    @Test("a request without times degrades to plain mail")
+    func missingTimesDegrade() {
+        var incomplete = easMessage()
+        incomplete.meeting?.start = nil
+        #expect(EASAdapter.message(incomplete).meeting == nil)
+    }
+
+    @Test("an exception instance does not carry the series rule")
+    func exceptionDropsRecurrence() {
+        var exception = easMessage()
+        exception.meeting?.instanceType = 3
+        #expect(EASAdapter.message(exception).meeting?.recurrence == nil)
+    }
+}
