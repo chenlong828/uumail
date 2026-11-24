@@ -1,7 +1,7 @@
 ---
 layer: design
 module: mail
-status: designed
+status: verified
 updated: 2026-11-24
 flow: mail/read
 scenario: SCN-0023
@@ -49,13 +49,21 @@ scenario: SCN-0023
 
 | ID | 类型 | 方案 |
 |---|---|---|
-| `T-SCN-0023-01` | 正 | 打开样本邀请（2026-11-19 09:30–12:00、C4519、王权英）→ 卡片显示「11月19日 09:30–12:00」「C4519」「王权英」；重复样本显示「每周一」 |
-| `T-SCN-0023-02` | 正 | 打开非邀请邮件（普通正文）→ 无卡片节点；信封头与正文与改造前一致（回归 `SCN-0012`/`SCN-0004` 断言不退化） |
-| `T-SCN-0023-03` | 正 | 点「在日历中打开」→ 生成文本含 `BEGIN:VEVENT`、`DTSTART`、`DTEND`、`SUMMARY`、`LOCATION`、`UID`；重复会议含 `RRULE:FREQ=WEEKLY`；`NSWorkspace` 替身被调用 1 次且 URL 存在 |
-| `T-SCN-0023-04` | 反 | `TimeZone` 缺失且 `StartTime` 合法 → 卡片仍显示 UTC 换算后的本机时间，导出 `.ics` 成功且与卡片一致；`StartTime` 缺失 → 卡片不显示时间行但其余字段可用，不崩 |
+| `T-SCN-0023-01` | 正 | 打开样本邀请（2026-11-19 09:30–12:00、C4519、王权英）→ 卡片显示「11月19日 09:30–12:00」「C4519」「王权英」；重复样本显示「每周一」。**已通过**（`T-SCN-0023-01`，L1） |
+| `T-SCN-0023-02` | 正 | 打开非邀请邮件（普通正文）→ 无卡片节点；信封头与正文与改造前一致（回归 `SCN-0012`/`SCN-0004` 断言不退化）。**已通过**（`T-SCN-0023-02`；437 tests 全量回归不退化） |
+| `T-SCN-0023-03` | 正 | 点「在日历中打开」→ 生成文本含 `BEGIN:VEVENT`、`DTSTART`、`DTEND`、`SUMMARY`、`LOCATION`、`UID`；重复会议含 `RRULE:FREQ=WEEKLY`；`NSWorkspace` 替身被调用 1 次且 URL 存在。**文本部分已通过**（`T-SCN-0023-03`，L1）；`NSWorkspace` 调用为发布前人工冒烟项 |
+| `T-SCN-0023-04` | 反 | `TimeZone` 缺失且 `StartTime` 合法 → 卡片仍显示 UTC 换算后的本机时间，导出 `.ics` 成功且与卡片一致；`StartTime` 缺失 → 卡片不显示时间行但其余字段可用，不崩。**已通过**（`T-SCN-0023-04`） |
 
 ## 状态
 
-`designed`（2026-11-24 设计落卡；P1 已于 2026-11-24 确认，实现待 `T-1124-03`…`T-1124-12`）。
+`verified`（2026-11-24 实现并验证）。
+
+- 实现：`T-1124-03`…`T-1124-12`；卡片 `MeetingCardView` 位于信封头与正文之间，导出 `CalendarExport` 走
+  `NSWorkspace`，不引入 EventKit。
+- 证据（L1）：`Tests/PresentationTests/CalendarScenarioTests.swift` 的 `T-SCN-0023-01..04`，
+  配合 `MeetingICSTests`/`CalendarSceneTests`/`EASAdapterTests`。全量 437 tests / 71 suites 绿、架构 4 门过、
+  `make-app.sh` 成功。
+- L2 说明：`NSWorkspace` 打开动作由 `CalendarExport.opener` 注入，可在探针替换；本轮未做无头点击探针，
+  真实「点击 → 日历应用导入」登记为发布前人工冒烟项（R59 同类）。
 
 - 测试载体：`T-SCN-0023-01/02/04` 走 L1（`MeetingCardPresentationTests` + `MeetingICS` 纯函数用例）；`T-SCN-0023-03` 的「点击 → 生成 → 调用 opener」走 L2 视图探针（卡片按钮可触发、opener 用注入替身），失败按 `plan/risks.md` R41 处理。

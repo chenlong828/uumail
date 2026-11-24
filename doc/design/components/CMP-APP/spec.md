@@ -384,3 +384,10 @@ component: CMP-APP
   - 卡片：邀请邮件出现卡片文本，非邀请无卡片节点；
   - 导出：点击调 `CalendarOpening` 替身 1 次且 URL 存在，删除后临时文件被清理。
   - 若某个 seam 不可行（R41），由 `SCN-0024`/`SCN-0023` 声明 L3 并写理由，不用 L1 投影冒充。
+
+## 实现（2026-11-24，T-1124-11/12）
+
+- `Sources/uumail/CalendarView.swift`（月网格/周时间轴/事件详情/导出）、`MeetingCardView.swift`、
+  `CalendarExport.swift`（临时 `.ics` + `NSWorkspace`，opener 可注入）；`MessageBodyView` 在信封头与正文之间插入卡片；
+  `MailboxView` 侧栏「日历」入口与二分支布局；`UumailApp` 传入 `calendarModel`。
+- 证据：437 tests / 71 suites、架构 4/4、`make-app.sh` 成功；月/周像素与 `NSWorkspace` 导入为发布前人工冒烟项（R59）。

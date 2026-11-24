@@ -560,3 +560,10 @@ component: CMP-PRES
 - 尺寸：`Presentation` 现 1669 行 + 约 440 行 → 约 2109 行；`MailboxViewModel.swift` 388 → 约 400（`meetingCard` 计算属性 ≤12 行），仍在 400 上限；不新增 target/依赖。
 - 测试（L1，`PresentationTests/CalendarViewModelTests` + `CalendarProjectionTests`）：月网格 6×7 与补灰格、周一为首列、3+1 折叠、周时间轴范围与 lane、翻月/翻周不触网（fake scene 计数）、错误文案映射、截断标记、`meetingCard` 的 nil/非 nil 与重复摘要。
 - 定级与确认：**P1**（新 public 视图模型 + 新 public 展示类型 + 依赖新场景组件）；P1 已于 2026-11-24 确认（`history/decisions/2026-11-24-calendar-view-scope.md`）。
+
+## 实现（2026-11-24，T-1124-10）
+
+- `Sources/Presentation/CalendarViewModel.swift`：`CalendarViewModel` + `CalendarProjection` + `MeetingFormat`；
+  `Sources/Presentation/CalendarPresentation.swift`：月/周/卡片展示值；`MailboxViewModel.meetingCard` 只读计算属性。
+- 测试：`Tests/PresentationTests/CalendarViewModelTests.swift` 11 例（6×7 网格、+N、周 lane 与整点范围、全天、
+  模式切换、翻页、ICS、卡片字段/全天/无卡片）。

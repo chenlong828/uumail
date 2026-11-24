@@ -313,3 +313,11 @@ component: CMP-DOMAIN
 - 尺寸：`MailDomain` 现约 1100 行 + 约 260 行；`Meeting.swift` 单文件 ≤300 行。
 - 兼容性：纯 additive；`Message` 新字段默认 `nil`；`MailDomain` 扇入平台级（6+），本批属 P1 契约变更，需确认门。
 - 测试（`MailDomainTests/MeetingRecurrenceTests`、`MeetingICSTests`）：每日/每周（周一二三）/每月按日（31 号跳月）/每月第 2 个周四/最后一天/每年按日/每年第 N 个周一；`until`/`occurrences`/`limit` 边界；例外替换与删除；`.ics` 关键行与转义、折行、CRLF、`RRULE` 生成。
+
+## 实现（2026-11-24，T-1124-06）
+
+- `Sources/MailDomain/Meeting.swift`（约 520 行）：`MeetingInvite`/`RecurrenceRule`/`MeetingException`/
+  `MeetingOccurrence`/`MeetingTimeZone`/`MeetingMessageType`/`Weekday`/`MeetingEntry`，以及 `occurrences(in:limit:)`
+  与 `ics(now:)`；`Message.meeting` additive。
+- 测试：`Tests/MailDomainTests/MeetingTests.swift` 12 例（单次/每日/每周/每月按日与第 N 个/最后/每年/边界/
+  例外/全天/ICS 三例）。

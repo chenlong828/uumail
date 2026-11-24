@@ -34,7 +34,7 @@ macOS 原生邮件客户端，只支持 EAS（Exchange ActiveSync），以「一
 | 远程图片放行 | `MailboxViewModel` + `MailboxToolbar` | 主工具栏「加载远程图片」 | 当前正文以放行档 CSP 重渲染；放行后远程图片实际请求并渲染（交付载体带 WebView 内容 ATS 例外） | 默认关；仅当前邮件；切邮件重置；不写偏好；禁 JS/白底/其它 CSP 档不变 | 无（会话内视图状态） | 无正文/未加载/失败不可用；图片失败不弹错 | 低 | 热 | 已实现并验证（2026-11-16，T-1116-12/13；2026-11-19 交付载体 ATS 例外 T-1119-04/05，`SCN-0018` `verified`/`REQ-0024` `delivered`；A5 发布前人工冒烟待办） |
 | 键盘删除 | `ReadScene` + `MailboxViewModel` | 列表聚焦 Delete/Backspace | 行消失、服务器删除、本地软删 | 服务器确认后原子软删；失败恢复并提示；单飞 | messages、sync_state | 恢复行/选中 + 中文错误 | 中 | 热（隐藏）+ 冷（写） | 已实现（T-1114-11…18，2026-11-14）；已验证（T-1114-20，2026-11-15） |
 | 附件 | `ReadScene` + `MailboxViewModel` + `AttachmentStripView` / `AttachmentExport` / `AttachmentActionModel`（2026-11-20 设计，第 3 轮修订，REQ-0026/SCN-0020） | 附件条双击/右键「打开」/「另存为…」 | 缓存文件并用系统默认程序打开；另存为副本到用户选择位置且保留缓存 | 单击只选中；同一附件单飞；缓存 2 GB 最旧优先；失败可见可重试；另存为复制在后台 async/可取消，主线程不阻塞；APP 动作代际防迟到串台 | attachments、附件文件 | 提示失败可重试；不打开缺失文件；复制失败/取消清理临时文件、目标不变；源被 prune 不自动重下、给可重试文案 | 中 | 冷 | 已实现并验证（`SCN-0020` `verified`、`REQ-0026` `delivered`；`task-spaces/20261120-160446/review7.md` §8）；无 25MB 上限、续传、名称回退 |
-| 日历浏览 | `CalendarScene`（2026-11-24 设计新增，`CMP-SCN-CALENDAR`） | 侧栏「日历」或打开会议邀请 | 月/周视图按时间展示收到的会议邀请；会议卡「在日历中打开」导出 `.ics` | 只读本地库、零网络；同一 `UID` 只出一条；取消/过期不出；重复展开有界；不改服务器日历 | meetings（只读）、messages（主题） | 读失败给中文错误 + 保留旧投影；无会空态并说明覆盖窗口 | 中 | 热（本地） | 设计完成、未实现（P1 待确认，`T-1124-02`） |
+| 日历浏览 | `CalendarScene`（2026-11-24 设计新增，`CMP-SCN-CALENDAR`） | 侧栏「日历」或打开会议邀请 | 月/周视图按时间展示收到的会议邀请；会议卡「在日历中打开」导出 `.ics` | 只读本地库、零网络；同一 `UID` 只出一条；取消/过期不出；重复展开有界；不改服务器日历 | meetings（只读）、messages（主题） | 读失败给中文错误 + 保留旧投影；无会空态并说明覆盖窗口 | 中 | 热（本地） | 已实现并验证（`SCN-0024`/`SCN-0023` `verified`、`REQ-0029`/`REQ-0030` `delivered`；437 tests / 71 suites、架构 4/4） |
 | 本地搜索 | `ReadScene` | 输入关键字 | 结果列表 | 本地优先；<3 字符走 LIKE | messages、fts | 空结果/错误提示 | 中 | 热 | 已实现 |
 | 撰写/回复/转发 | `ComposeScene` | 新建/回复/转发 | 草稿或入队 | 引用规则；发送只入队 | outbox | 入队失败提示 | 中 | 热（入队） | 已实现 |
 | 收件人输入联想 | `ComposeScene.recipientDirectory` + `ComposeViewModel` | 撰写页聚焦 `To`/`Cc` 并输入 | 字段下方候选浮层，选中补全纯地址 | 只读本地已收信封；首次聚焦一次聚合（500/文件夹、5,000 总计）；不触网、不逐键查库；排除自己/已填；默认不高亮；无候选静默；候选行名字优先、邮箱保底到 `@` 两侧可见的最小宽（100% 优先 130pt，紧张时退到该下限；邮箱显示串显式中间缩短且完整地址保留在 `.help`）；100%/145%/175% 下 15 字组织/姓名完整，仅 225%×480 确定性降级（REQ-0023） | messages（只读，会话内投影） | 目录读取失败→空候选；超上限的旧联系人不出现（已接受），撰写/发送照常 | 中 | 热（内存过滤） | 已实现并验证（T-1118-02，2026-11-18；`SCN-0017` 已 `verified`/`REQ-0022` 已 `delivered`）；2026-11-19 因 `REQ-0023` 显示宽度增量转回 `designed`，待重验 |
@@ -403,7 +403,7 @@ CommandLineComposition（127 行）
 
 ### 7.1 当前验证面
 
-- `./Scripts/swiftw test` → **239 tests / 44 suites**（2026-11-14，W-M3-03 回退重跑后复测）。
+- `./Scripts/swiftw test` → **437 tests / 71 suites**（2026-11-24，W-M3-16 完成后复测）。
 - 测试 target：`MailDomainTests`、`MailStoreTests`、`SyncEngineTests`、`OutboxTests`、`EASClientTests`、`EASAdapterTests`、`ScenesTests`、`PresentationTests`、`CompositionTests`。
 - `bash Scripts/check-architecture.sh` → 4 门：per-target import 白名单、场景互调、`AppComposition` ≤200 行、`Composition` 业务 switch。4 门全过。
 - schema 迁移：`MailStoreTests/MigrationTests` 的 pre-v8 与 pre-v9 fixture。

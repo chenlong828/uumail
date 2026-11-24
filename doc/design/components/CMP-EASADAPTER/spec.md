@@ -109,3 +109,9 @@ component: CMP-EASADAPTER
   - `start/end` 缺失 → 不生成 `MeetingInvite`（退化为普通邮件，不阻塞信封落库）。
 - 不变量：映射不改变信封字段；不触网；EAS 类型不外漏；纯函数（可单测）。
 - 测试（`EASAdapterTests`）：请求/取消/其它 Class 三条；位掩码 62/65/127；每月第 3 个周三；`bias -480` → `offsetSeconds 28800`；缺 `start` 退化为无会议。
+
+## 实现（2026-11-24，T-1124-07）
+
+- `EASAdapter.meeting(_:)`：只为 `IPM.Schedule.Meeting.*` 生成会议；取消标记、`instanceType` 例外、
+  `biasMinutes → offsetSeconds`、位掩码展开均在映射层归一；`EASAdapter.message` 改为 internal 供测试直接调用。
+- 测试：`Tests/EASAdapterTests/EASAdapterTests.swift` 新增 5 例（字段映射、取消、普通邮件、缺时间、例外）。

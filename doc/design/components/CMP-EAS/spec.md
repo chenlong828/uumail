@@ -240,3 +240,10 @@ component: CMP-EAS
 - 错误模式：`MeetingRequest` 缺 `StartTime`/`UID` 时 `meeting` 仍返回（字段可空），不抛；`Until`/时间解析失败置 `nil` 并保留原串于 `EASError.malformedResponse` 之外——本层不因单个坏字段让整批 Sync 失败（与 `parseMessage` 既有「坏附件只跳过该条」口径一致）。
 - 不改：`Sync` 请求体（`Options` 最小化，playbook §3）、`BodyPreference`、`fetchBody`/`fetchAttachment`、`send`；不新增 EAS 命令；不调 `MeetingResponse`（后续 B 方案）。
 - 测试（`EASClientTests`）：样本 XML（脱敏）覆盖：单次会议、每周重复（`Type=1`+`DayOfWeek=2`）、每月第 N 个周一（`Type=3`+`WeekOfMonth`+`DayOfWeek`）、`Until` compact 解析、`TimeZone` blob 解码（-480 / China Standard Time）、缺字段容错、非会议邮件（无 `MeetingRequest`）。
+
+## 实现（2026-11-24，T-1124-05）
+
+- `EASMeeting`/`EASRecurrence`/`EASMeetingTimeZone` 与 `EASMessage.messageClass`/`meeting` 落在
+  `Sources/EASClient/EASClient.swift`；`MeetingRequest` 子树、`Recurrences/Recurrence`、Compact `Until`、
+  `TimeZone` blob（`Bias` + 名称）均按设计解析，坏字段只丢该字段。
+- 测试：`Tests/EASClientTests/EASClientTests.swift` 新增 3 例（完整请求、普通邮件、畸形时区块）。

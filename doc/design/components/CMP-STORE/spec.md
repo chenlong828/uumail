@@ -221,3 +221,12 @@ component: CMP-STORE
 - 同一 SQLite、同一 `DatabaseQueue`：每张表一个写入口，事务不跨表；跨组件不另开连接。
 - 拆分收益：`MailStore` 约 1024 → 814 行，为 `meetings`（约 110 行）腾出空间，预算保持 1000；`OutboxStore` 单独 ≤400 行。
 - 测试迁移：`OutboxTests`/`MailStoreTests` 中 outbox 行级用例平移到 `OutboxStoreTests`，断言逐字保留；`CompositionTests` 只改装配引用。
+
+## 实现（2026-11-24，T-1124-03/04/08）
+
+- WAL：`MailStore.init` 设置 `Configuration.journalMode = .wal`（文件库），新增 `DatabaseJournalModeTests` 2 例。
+- outbox 拆出：`OutboxStore.swift`（210 行）+ `MailStore.outbox`；`Outbox` 依赖切换；`MailStore` 586 行。
+- v12：`v12_meetings` 建表/索引；`applySyncBatch` 同事务 upsert（`DtStamp` 只升不降）、取消删除、例外合并；
+  `MailStore+Meetings.swift` 提供 `meetings(account:from:to:limit:)`/`meetingInvite(account:uid:)`，列表页左连会议。
+- 不回填：迁移不重置游标（与 v9/v11 不同），`MEETING` 历史为空是已确认口径。
+- 测试：`MeetingStoreTests` 6 例 + `MigrationTests` v12 1 例 + WAL 2 例；`MailStore` 59 tests 全绿。

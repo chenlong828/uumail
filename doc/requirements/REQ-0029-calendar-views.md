@@ -2,7 +2,7 @@
 layer: requirements
 module: calendar
 scope: project:uumail
-status: accepted
+status: delivered
 updated: 2026-11-24
 ---
 
@@ -39,5 +39,5 @@ updated: 2026-11-24
     旧邀请以 `DtStamp` 只升不降覆盖；例外合并进系列；L2 探针先证 seam、不行则场景声明 L3；网关不下发会议字段时退化为普通邮件。
   - 2026-11-24 **人工确认（前置拆分）**：`MailStore` 不调预算，先把 outbox 物理读写拆到 `CMP-OUTBOX-STORE`；
     账号/文件夹拆分另立 `W-REFACTOR-02`；SQLite 启用 WAL（单队列）。
-- **状态**：`accepted`（2026-11-24；场景 `SCN-0024` 已落 `designed`；P1 已于 2026-11-24 确认，待实现）
+- **状态**：`delivered`（2026-11-24 实现并验证）
 - **验收归属**：`SCN-0024` 的 3 正 1 反通过 + 上述约束逐条无违反 + 回归场景不退化；需求不另立测试。

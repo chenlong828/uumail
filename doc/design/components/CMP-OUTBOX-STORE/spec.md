@@ -1,7 +1,7 @@
 ---
 layer: design
 module: store
-status: planned
+status: active
 updated: 2026-11-24
 component: CMP-OUTBOX-STORE
 ---
@@ -10,7 +10,7 @@ component: CMP-OUTBOX-STORE
 
 ## 模块卡
 
-- 状态：`planned`（2026-11-24 设计拆分，由 `T-1124-04` 落地转 `active`；无代码）
+- 状态：`active`（2026-11-24 由 `T-1124-04` 落地）
 - 单元：组件（L1a 数据服务；住 `MailStore` target，**不新增 target**）
 - 层 / 类型：L1a；数据
 - 业务价值：把「outbox 表的物理读写」从已经超预算的 `MailStore` 剥出来，让每张表只有一个写入口、每个组件各自守 1000 行预算；没有它，日历需求只能在超限的 `MailStore` 上继续加行，或被迫引入跨组件事务。
@@ -66,3 +66,11 @@ component: CMP-OUTBOX-STORE
 - 用户 2026-11-24 拍板「先拆 MailStore」并选择先拆 outbox；`MailStore` 由 1024 行降到约 814 行，加日历 `meetings` 约 110 行后约 924 行，回到 1000 行以内，不再需要调预算。
 - 存储边界：**同一 `mail.sqlite` + 同一 `DatabaseQueue`**；`MailStore` 内部持有 `OutboxStore` 并通过 `public var outbox: OutboxStore` 暴露给组合根，`Outbox` 的依赖从 `MailStore` 换成 `OutboxStore`（签名其余不变）。每张表仍只有一个写入口，事务不跨表。
 - 账号/文件夹的拆分不在本批：`sync_state` 同时承载消息游标与文件夹游标，`applySyncBatch`/`applyFolderSnapshot`/`discardAccount` 要求同事务，另立 `W-REFACTOR-02` 先设计事务边界。
+
+## 实现（2026-11-24，T-1124-04）
+
+- `Sources/MailStore/OutboxStore.swift`（210 行）接管 outbox 表全部 SQL；`MailStore` 以 `public let outbox` 暴露，
+  与 `MailStore` 共享同一 `DatabaseQueue`。
+- `Outbox` 的行级调用改为 `outboxStore`，账号只读仍走 `MailStore`；状态机/租约/退避语义逐字不变
+  （`Tests/MailStoreTests/MigrationTests.swift` 与 `OutboxTests` 全绿）。
+- `MailStore` 由 1024 行降到 586 行（组件合计 842），为 v12 的约 110 行留出预算。

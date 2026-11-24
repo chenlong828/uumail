@@ -1,7 +1,7 @@
 ---
 layer: design
 module: scenes
-status: planned
+status: active
 updated: 2026-11-24
 component: CMP-SCN-CALENDAR
 ---
@@ -84,3 +84,10 @@ component: CMP-SCN-CALENDAR
 - 不拥有写路径：不调 `SyncEngine`，不做已读回写；打开日历不改变任何邮件状态。
 - 展开细节：`MeetingInvite.occurrences` 是 `CMP-DOMAIN` 的纯函数，`CalendarScene` 只负责「取行 → 调纯函数 → 合并」，不复制规则。
 - 导出细节：`ics` 只生成文本；临时文件与 `NSWorkspace` 唤起在 `CMP-APP`（见 `CMP-APP` 增量），因此本组件可在无 UI 的测试里完整验证。
+
+## 实现（2026-11-24，T-1124-09）
+
+- `Sources/Scenes/CalendarScene.swift`（约 90 行）：`events(from:to:limit:)`、`meeting(uid:)`、`ics(uid:now:)`；
+  查询多取一行以识别截断，单系列上限 200，范围上限 400 天。
+- 测试：`Tests/ScenesTests/CalendarSceneTests.swift` 5 例（范围/排序、重复展开与截断、取消隐藏、ICS 与缺失、非法范围）。
+- 零网络：不 import `EASClient`/`SyncEngine`；`Scenes` 总量未新增 target。

@@ -113,3 +113,8 @@ component: CMP-ROOT
 - `UumailApp`：把 `CalendarViewModel` 传给 `MailboxView`（新增参数）；根视图仍只在配置页/邮箱之间路由。
 - `CommandLineComposition`：本批不新增 CLI 命令；如后续要诊断，另立 `CMP-CLI` 增量（`meetings` 探针），不混进本批。
 - 尺寸与门禁：`AppComposition` ≤200 行（门 3）；`Composition` 业务 switch 门（门 4）不新增 `switch`；不新增 target/依赖。
+
+## 实现（2026-11-24，T-1124-12）
+
+- `AppComposition` 在 `attachMailbox` 中构造 `CalendarScene` 与 `CalendarViewModel` 并暴露 `calendar`；
+  `UumailApp` 传给 `MailboxView`。`AppComposition` 188 行（≤200），架构门 4/4。

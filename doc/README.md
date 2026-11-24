@@ -18,7 +18,7 @@ macOS 原生邮件客户端，只走 Exchange ActiveSync（以「一台已登记
 
 2026-11-20 完成 `REQ-0026`（附件取用交互：双击打开、右键另存为）与 W-M3-13：单击只选中，双击/Return 打开，右键/Control-单击菜单「打开」「另存为…」；另存为在 APP 层 `NSSavePanel` + 后台分块复制 + 临时文件原子落位，缓存保留；失败经 `attachmentErrorText`/`saveErrorText` 可见可重试；不改 CSP/schema/`Scenes`/`Composition`。`T-SCN-0020-01..10`（3 正 1 反 + 回归/接线/质量）L1+L2 全 PASS，全量 360 tests / 58 suites、L2 83 PASS、架构 4/4（`task-spaces/20261120-160446/test.md`/`test2.md`/`review7.md` §8）；`SCN-0020` 转 `verified`、`REQ-0026` 转 `delivered`、`T-1120-06`…`T-1120-11` 与 W-M3-13 完成。真实右键/Control-单击、`NSSavePanel`、VoiceOver、像素级视觉验收、元素级联动与 A5 真样本冒烟**未执行**，仍是发布前/人工项。
 
-2026-11-24 追加需求与设计（W-M3-16，日历）：`REQ-0029`（日历月/周视图）与 `REQ-0030`（阅读页会议卡与「在日历中打开」）均 `accepted`；`SCN-0024`（`calendar/browse/calendar-grid`）与 `SCN-0023`（`mail/read/meeting-card`）落 `designed`；新增场景组件 `CMP-SCN-CALENDAR`（`planned`）与 schema v12 `meetings` 表（P1 待确认，`T-1124-02`）；范围只限「收到的会议邀请」，不接受/拒绝、不同步 Exchange 日历集合；设计与取舍见 `history/decisions/2026-11-24-calendar-view-scope.md`，任务表见 `plan/roadmap.md` §W-M3-16。
+2026-11-24 追加需求与设计（W-M3-16，日历）：`REQ-0029`（日历月/周视图）与 `REQ-0030`（阅读页会议卡与「在日历中打开」）均 `accepted`；`SCN-0024`（`calendar/browse/calendar-grid`）与 `SCN-0023`（`mail/read/meeting-card`）落 `designed`；同日实现并验证：新场景组件 `CMP-SCN-CALENDAR`、`CMP-OUTBOX-STORE` 与 schema v12 `meetings` 落地，SQLite 启用 WAL；437 tests / 71 suites、架构 4/4、`make-app.sh` 成功，两场景 `verified`、两需求 `delivered`。范围只限「收到的会议邀请」，不接受/拒绝、不同步 Exchange 日历集合、不回填历史邀请；设计与取舍见 `history/decisions/2026-11-24-calendar-view-scope.md`，任务表见 `plan/roadmap.md` §W-M3-16。
 
 ## 阅读顺序
 
