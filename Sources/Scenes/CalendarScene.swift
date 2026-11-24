@@ -46,7 +46,8 @@ public struct CalendarScene: Sendable {
         let end = min(to, from.addingTimeInterval(TimeInterval(Self.maxRangeDays) * 86_400))
         let range = from...end
 
-        let entries = try store.meetings(account: account, from: from, to: end, limit: limit)
+        // Ask for one extra row so a truncated page is detectable after expansion.
+        let entries = try store.meetings(account: account, from: from, to: end, limit: limit + 1)
         var occurrences: [MeetingOccurrence] = []
         var unexpanded: [String] = []
 
