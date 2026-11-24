@@ -1,6 +1,7 @@
 import Foundation
 import MailDomain
 import Testing
+import SyncContract
 
 @testable import SyncEngine
 

@@ -171,7 +171,7 @@ struct MailboxView: View {
     }
 
     private func openMeetingInCalendar() {
-        guard let uid = viewModel.selectedMessage?.meeting?.uid,
+        guard let uid = viewModel.meetingInvite?.uid,
               let calendarModel,
               let text = calendarModel.icsText(uid: uid)
         else { return }

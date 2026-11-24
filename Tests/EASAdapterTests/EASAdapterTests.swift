@@ -2,6 +2,7 @@ import EASClient
 import Foundation
 import MailDomain
 import Testing
+import MeetingDomain
 
 @testable import EASAdapter
 
@@ -313,8 +314,8 @@ struct EASAdapterMeetingTests {
 
     @Test("a meeting request maps onto the domain invite")
     func mapsRequest() throws {
-        let message = EASAdapter.message(easMessage())
-        let meeting = try #require(message.meeting)
+        let message = easMessage()
+        let meeting = try #require(EASAdapter.meeting(message))
         #expect(meeting.uid == "u-1")
         #expect(meeting.location == "C4519")
         #expect(meeting.organizer == "\"王权英\" <wangqy@hundsun.com>")
@@ -333,27 +334,26 @@ struct EASAdapterMeetingTests {
 
     @Test("a cancelled request keeps the meeting but flags it")
     func mapsCancellation() throws {
-        let message = EASAdapter.message(easMessage(messageClass: "IPM.Schedule.Meeting.Canceled"))
-        #expect(try #require(message.meeting).isCancelled)
+        let meeting = EASAdapter.meeting(easMessage(messageClass: "IPM.Schedule.Meeting.Canceled"))
+        #expect(try #require(meeting).isCancelled)
     }
 
     @Test("a plain note never produces a meeting")
     func plainNoteHasNoMeeting() {
-        let message = EASAdapter.message(easMessage(messageClass: "IPM.Note"))
-        #expect(message.meeting == nil)
+        #expect(EASAdapter.meeting(easMessage(messageClass: "IPM.Note")) == nil)
     }
 
     @Test("a request without times degrades to plain mail")
     func missingTimesDegrade() {
         var incomplete = easMessage()
         incomplete.meeting?.start = nil
-        #expect(EASAdapter.message(incomplete).meeting == nil)
+        #expect(EASAdapter.meeting(incomplete) == nil)
     }
 
     @Test("an exception instance does not carry the series rule")
     func exceptionDropsRecurrence() {
         var exception = easMessage()
         exception.meeting?.instanceType = 3
-        #expect(EASAdapter.message(exception).meeting?.recurrence == nil)
+        #expect(EASAdapter.meeting(exception)?.recurrence == nil)
     }
 }

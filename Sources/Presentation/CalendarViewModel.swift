@@ -2,6 +2,7 @@ import Foundation
 import MailDomain
 import Observation
 import Scenes
+import MeetingDomain
 
 /// Calendar page state (CMP-PRES): month/week mode, the anchor date, the last query result
 /// and the pure grid projections the view binds to. All reads are local; the scene never

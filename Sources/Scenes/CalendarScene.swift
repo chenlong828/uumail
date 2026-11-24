@@ -1,6 +1,7 @@
 import Foundation
 import MailDomain
 import MailStore
+import MeetingDomain
 
 /// One query's worth of calendar occurrences.
 public struct CalendarEvents: Equatable, Sendable {

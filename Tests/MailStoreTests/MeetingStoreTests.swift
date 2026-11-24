@@ -1,6 +1,8 @@
 import Foundation
 import MailDomain
 import Testing
+import MeetingDomain
+import SyncContract
 
 @testable import MailStore
 
@@ -53,25 +55,27 @@ struct MeetingStoreTests {
         )
     }
 
-    private func message(
+    /// Seeds one message plus its meeting through the sync batch, the only write path.
+    private func seed(
+        _ store: MailStore,
+        _ account: AccountID,
+        key: String,
         serverID: String = "m-1",
-        meeting: MeetingInvite?,
-        subject: String = "会议邀请"
-    ) -> Message {
-        Message(serverID: serverID, subject: subject, receivedRaw: "2026-11-13T09:54:55Z", meeting: meeting)
+        subject: String = "会议邀请",
+        invite: MeetingInvite
+    ) throws {
+        try store.applySyncBatch(
+            account: account, folder: "13",
+            added: [Message(serverID: serverID, subject: subject, receivedRaw: "2026-11-13T09:54:55Z")],
+            changed: [], removedServerIDs: [], syncKey: key,
+            meetings: [MeetingDeltaEntry(serverID: serverID, subject: subject, invite: invite)]
+        )
     }
 
     @Test("a synced meeting is stored once per UID and read back with its source")
     func upsertAndRead() throws {
         let (store, account) = try seeded()
-        try store.applySyncBatch(
-            account: account,
-            folder: "13",
-            added: [message(meeting: invite())],
-            changed: [],
-            removedServerIDs: [],
-            syncKey: "2"
-        )
+        try seed(store, account, key: "2", invite: invite())
 
         let entries = try store.meetings(
             account: account,
@@ -89,37 +93,24 @@ struct MeetingStoreTests {
         #expect(invite.start == date("2026-11-19T01:30:00Z"))
     }
 
-    @Test("the list page carries the meeting for the reading pane card")
-    func listAttachesMeeting() throws {
+    @Test("the reading pane resolves the meeting by message key instead of decorating rows")
+    func meetingByMessageKey() throws {
         let (store, account) = try seeded()
-        try store.applySyncBatch(
-            account: account,
-            folder: "13",
-            added: [message(meeting: invite())],
-            changed: [],
-            removedServerIDs: [],
-            syncKey: "2"
-        )
+        try seed(store, account, key: "2", invite: invite())
+
         let page = try store.messages(account: account, folder: "13")
-        #expect(page.first?.meeting?.uid == "u-1")
+        #expect(page.count == 1, "the list page no longer carries meeting values")
+
+        #expect(try store.meeting(account: account, folder: "13", serverID: "m-1")?.uid == "u-1")
+        #expect(try store.meeting(account: account, folder: "13", serverID: "m-9") == nil)
     }
 
     @Test("a newer DtStamp replaces the row, an older one does not")
     func dtstampMonotonic() throws {
         let (store, account) = try seeded()
-        try store.applySyncBatch(
-            account: account,
-            folder: "13",
-            added: [message(meeting: invite(start: "2026-11-23T08:00:00Z", end: "2026-11-23T09:00:00Z", dtstamp: "2026-11-16T08:16:17Z"))],
-            changed: [], removedServerIDs: [], syncKey: "2"
-        )
+        try seed(store, account, key: "2", invite: invite(start: "2026-11-23T08:00:00Z", end: "2026-11-23T09:00:00Z", dtstamp: "2026-11-16T08:16:17Z"))
         // A late-arriving older invite must not roll the time back.
-        try store.applySyncBatch(
-            account: account,
-            folder: "13",
-            added: [message(serverID: "m-0", meeting: invite(start: "2026-11-16T08:00:00Z", end: "2026-11-16T09:00:00Z", dtstamp: "2026-11-09T08:19:58Z"))],
-            changed: [], removedServerIDs: [], syncKey: "3"
-        )
+        try seed(store, account, key: "3", serverID: "m-0", invite: invite(start: "2026-11-16T08:00:00Z", end: "2026-11-16T09:00:00Z", dtstamp: "2026-11-09T08:19:58Z"))
         let invite = try #require(try store.meetingInvite(account: account, uid: "u-1"))
         #expect(invite.start == date("2026-11-23T08:00:00Z"))
         #expect(try store.meetings(
@@ -132,16 +123,8 @@ struct MeetingStoreTests {
     @Test("a cancellation deletes the meeting but keeps the mail")
     func cancellationDeletesRow() throws {
         let (store, account) = try seeded()
-        try store.applySyncBatch(
-            account: account, folder: "13",
-            added: [message(meeting: invite())],
-            changed: [], removedServerIDs: [], syncKey: "2"
-        )
-        try store.applySyncBatch(
-            account: account, folder: "13",
-            added: [message(serverID: "m-2", meeting: invite(dtstamp: "2026-11-20T00:00:00Z", cancelled: true))],
-            changed: [], removedServerIDs: [], syncKey: "3"
-        )
+        try seed(store, account, key: "2", invite: invite())
+        try seed(store, account, key: "3", serverID: "m-2", invite: invite(dtstamp: "2026-11-20T00:00:00Z", cancelled: true))
         #expect(try store.meetingInvite(account: account, uid: "u-1") == nil)
         #expect(try store.messages(account: account, folder: "13").count == 2)
     }
@@ -150,21 +133,13 @@ struct MeetingStoreTests {
     func exceptionMerges() throws {
         let (store, account) = try seeded()
         let rule = RecurrenceRule(frequency: .weekly, weekdays: [.monday], firstDayOfWeek: .monday)
-        try store.applySyncBatch(
-            account: account, folder: "13",
-            added: [message(meeting: invite(rule: rule))],
-            changed: [], removedServerIDs: [], syncKey: "2"
-        )
-        try store.applySyncBatch(
-            account: account, folder: "13",
-            added: [message(serverID: "m-2", meeting: invite(
-                start: "2026-11-26T02:00:00Z",
-                end: "2026-11-26T03:00:00Z",
-                dtstamp: "2026-11-20T00:00:00Z",
-                exceptionID: date("2026-11-26T01:30:00Z")
-            ))],
-            changed: [], removedServerIDs: [], syncKey: "3"
-        )
+        try seed(store, account, key: "2", invite: invite(rule: rule))
+        try seed(store, account, key: "3", serverID: "m-2", invite: invite(
+            start: "2026-11-26T02:00:00Z",
+            end: "2026-11-26T03:00:00Z",
+            dtstamp: "2026-11-20T00:00:00Z",
+            exceptionID: date("2026-11-26T01:30:00Z")
+        ))
         let stored = try #require(try store.meetingInvite(account: account, uid: "u-1"))
         #expect(stored.recurrence != nil)
         #expect(stored.exceptions.count == 1)
@@ -174,11 +149,7 @@ struct MeetingStoreTests {
     @Test("removing the source message removes its meeting row")
     func removedMessageDeletesMeeting() throws {
         let (store, account) = try seeded()
-        try store.applySyncBatch(
-            account: account, folder: "13",
-            added: [message(meeting: invite())],
-            changed: [], removedServerIDs: [], syncKey: "2"
-        )
+        try seed(store, account, key: "2", invite: invite())
         try store.applySyncBatch(
             account: account, folder: "13",
             added: [], changed: [], removedServerIDs: ["m-1"], syncKey: "3"

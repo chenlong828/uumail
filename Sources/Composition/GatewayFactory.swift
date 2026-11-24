@@ -1,6 +1,7 @@
 import EASAdapter
 import EASClient
 import MailDomain
+import SyncContract
 
 /// The two gateway ports a composition root needs. `write` is deliberately non-optional:
 /// a production build has no "read-only" degradation path.

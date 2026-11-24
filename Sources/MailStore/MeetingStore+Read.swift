@@ -1,6 +1,7 @@
 import Foundation
 import GRDB
 import MailDomain
+import MeetingDomain
 
 /// Meeting persistence (schema v12). Kept in its own file so the `MailStore` component
 /// stays inside its 1000-line budget; the table still has exactly one writer — this file,
@@ -67,40 +68,6 @@ extension MailStore {
     }
 
     /// Attaches the meeting carried by each message of a list page (one query per page).
-    func attachMeetings(_ db: Database, account id: AccountID, messages: [StoredMessage]) throws -> [StoredMessage] {
-        let keys: Set<String> = Set(messages.compactMap { message -> String? in
-            guard let folder = message.folderID else { return nil }
-            return "\(folder)\u{1F}\(message.serverID)"
-        })
-        guard !keys.isEmpty else { return messages }
-
-        var byKey: [String: MeetingInvite] = [:]
-        let folders: Set<String> = Set(messages.compactMap(\.folderID))
-        for folder in folders {
-            let rows = try Row.fetchAll(
-                db,
-                sql: """
-                    SELECT * FROM meetings
-                    WHERE account_id = ? AND folder_id = ? AND is_cancelled = 0 AND message_type <> 4
-                    """,
-                arguments: [id.raw, folder]
-            )
-            for row in rows {
-                guard let invite = try? Self.decodeMeeting(row),
-                      let folderID: String = row["folder_id"],
-                      let serverID: String = row["server_id"]
-                else { continue }
-                byKey["\(folderID)\u{1F}\(serverID)"] = invite
-            }
-        }
-        return messages.map { message in
-            var copy = message
-            if let folder = message.folderID {
-                copy.meeting = byKey["\(folder)\u{1F}\(message.serverID)"]
-            }
-            return copy
-        }
-    }
 
     private static func decodeMeeting(_ row: Row) throws -> MeetingInvite {
         let decoder = JSONDecoder()
@@ -136,5 +103,23 @@ extension MailStore {
             recurrence: rule,
             exceptions: exceptions
         )
+    }
+
+    /// The meeting request attached to one message, if any. Used by the reading pane
+    /// instead of decorating every list row (R77).
+    public func meeting(account id: AccountID, folder folderID: String, serverID: String) throws -> MeetingInvite? {
+        try dbQueue.read { db in
+            guard let row = try Row.fetchOne(
+                db,
+                sql: """
+                    SELECT * FROM meetings
+                    WHERE account_id = ? AND folder_id = ? AND server_id = ?
+                      AND is_cancelled = 0 AND message_type <> 4
+                    LIMIT 1
+                    """,
+                arguments: [id.raw, folderID, serverID]
+            ) else { return nil }
+            return try? Self.decodeMeeting(row)
+        }
     }
 }

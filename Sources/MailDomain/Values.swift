@@ -92,8 +92,6 @@ public struct Message: Equatable, Sendable {
     public var bodyPreview: String?
     public var folderID: String?
     public var attachments: [Attachment]
-    /// Present when the message is a meeting request (REQ-0029 / REQ-0030).
-    public var meeting: MeetingInvite?
 
     public init(
         serverID: String,
@@ -106,8 +104,7 @@ public struct Message: Equatable, Sendable {
         bodyPreview: String? = nil,
         folderID: String? = nil,
         attachments: [Attachment] = [],
-        cc: String? = nil,
-        meeting: MeetingInvite? = nil
+        cc: String? = nil
     ) {
         self.serverID = serverID
         self.subject = subject
@@ -120,7 +117,6 @@ public struct Message: Equatable, Sendable {
         self.folderID = folderID
         self.attachments = attachments
         self.cc = cc
-        self.meeting = meeting
     }
 }
 
@@ -132,29 +128,6 @@ public struct FolderListing: Equatable, Sendable {
     public init(folders: [Folder], syncKey: String) {
         self.folders = folders
         self.syncKey = syncKey
-    }
-}
-
-/// One Sync response: what changed since `syncKey`, and the next key.
-public struct MessageDelta: Equatable, Sendable {
-    public var added: [Message]
-    public var changed: [Message]
-    public var removedServerIDs: [String]
-    public var syncKey: String
-    public var moreAvailable: Bool
-
-    public init(
-        added: [Message],
-        changed: [Message],
-        removedServerIDs: [String],
-        syncKey: String,
-        moreAvailable: Bool
-    ) {
-        self.added = added
-        self.changed = changed
-        self.removedServerIDs = removedServerIDs
-        self.syncKey = syncKey
-        self.moreAvailable = moreAvailable
     }
 }
 

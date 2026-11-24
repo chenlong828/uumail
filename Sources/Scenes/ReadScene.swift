@@ -2,7 +2,9 @@ import Foundation
 import MailDomain
 import HTMLSupport
 import MailStore
+import MeetingDomain
 import SyncEngine
+import SyncContract
 
 /// Identifies one message's body: its folder and the server-side id.
 public struct MessageRef: Hashable, Sendable {
@@ -83,6 +85,11 @@ public struct ReadScene: Sendable {
 
     public func search(_ query: String, limit: Int = 100) throws -> [Message] {
         try store.searchLocal(account: account, query: query, limit: limit)
+    }
+
+    /// The meeting request carried by this message, if it is an invite (R77).
+    public func meeting(for ref: MessageRef) throws -> MeetingInvite? {
+        try store.meeting(account: account, folder: ref.folderID, serverID: ref.serverID)
     }
 
     public func attachments(for ref: MessageRef) throws -> [Attachment] {

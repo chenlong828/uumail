@@ -1,6 +1,7 @@
 import Foundation
 import MailDomain
 import MailStore
+import SyncContract
 
 /// The sending side of the mailbox: a durable outbox plus one-at-a-time delivery.
 ///

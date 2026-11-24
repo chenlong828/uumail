@@ -3,6 +3,7 @@ import MailDomain
 import MailStore
 import Scenes
 import Testing
+import SyncContract
 
 @testable import Presentation
 

@@ -2,6 +2,7 @@ import Foundation
 import MailDomain
 import MailStore
 import Testing
+import SyncContract
 
 @testable import Composition
 

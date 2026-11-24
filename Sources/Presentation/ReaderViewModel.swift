@@ -1,5 +1,7 @@
 import Foundation
 import MailDomain
+import MeetingDomain
+import MailDomain
 import Scenes
 
 /// Reading state for the single floating reader window (SCN-0025).
@@ -78,7 +80,7 @@ public final class ReaderViewModel {
 
         isMissing = false
         header = MessageHeaderPresentation(message: message)
-        meetingCard = MeetingCardPresentation.make(from: message.meeting)
+        meetingCard = MeetingCardPresentation.make(from: try? read.meeting(for: ref))
         markReadOnOpen(message, ref: ref)
 
         body = .none

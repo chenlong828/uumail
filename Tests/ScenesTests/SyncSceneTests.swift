@@ -2,6 +2,7 @@ import Foundation
 import MailDomain
 import SyncEngine
 import Testing
+import SyncContract
 
 @testable import Scenes
 

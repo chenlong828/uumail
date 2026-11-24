@@ -1,6 +1,8 @@
 import EASClient
 import Foundation
 import MailDomain
+import MeetingDomain
+import SyncContract
 
 /// Adapts the EAS client to the domain gateway port. This is the anti-corruption
 /// point: EAS status codes become `MailError` here and nowhere else.
@@ -90,12 +92,17 @@ public struct EASAdapter: MailGateway, MailWriteGateway {
 
     /// Read and write responses share one shape; both keep every field the server sent.
     private static func delta(_ result: SyncResult) -> MessageDelta {
-        MessageDelta(
+        let meetings = (result.added + result.changed).compactMap { message -> MeetingDeltaEntry? in
+            guard let invite = meeting(message) else { return nil }
+            return MeetingDeltaEntry(serverID: message.serverID, subject: message.subject, invite: invite)
+        }
+        return MessageDelta(
             added: result.added.map(Self.message),
             changed: result.changed.map(Self.message),
             removedServerIDs: result.removedServerIDs,
             syncKey: result.syncKey,
-            moreAvailable: result.moreAvailable
+            moreAvailable: result.moreAvailable,
+            meetings: meetings
         )
     }
 
@@ -149,8 +156,7 @@ public struct EASAdapter: MailGateway, MailWriteGateway {
                     contentID: $0.contentID
                 )
             },
-            cc: message.cc,
-            meeting: meeting(message)
+            cc: message.cc
         )
     }
 

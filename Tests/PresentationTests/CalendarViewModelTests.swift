@@ -3,6 +3,8 @@ import MailDomain
 import MailStore
 import Scenes
 import Testing
+import MeetingDomain
+import SyncContract
 
 @testable import Presentation
 
@@ -151,11 +153,14 @@ struct CalendarViewModelTests {
             account: account,
             folder: "13",
             added: invites.enumerated().map { index, invite in
-                Message(serverID: "m-\(index)", subject: invite.subject, meeting: invite)
+                Message(serverID: "m-\(index)", subject: invite.subject)
             },
             changed: [],
             removedServerIDs: [],
-            syncKey: "2"
+            syncKey: "2",
+            meetings: invites.enumerated().map { index, invite in
+                MeetingDeltaEntry(serverID: "m-\(index)", subject: invite.subject, invite: invite)
+            }
         )
     }
 

@@ -2,6 +2,8 @@ import Foundation
 import MailDomain
 import MailStore
 import Testing
+import MeetingDomain
+import SyncContract
 
 @testable import Scenes
 
@@ -56,13 +58,15 @@ struct CalendarSceneTests {
                 Message(
                     serverID: "m-\(key)-\(index)",
                     subject: invite.subject,
-                    receivedRaw: "2026-11-13T09:54:55Z",
-                    meeting: invite
+                    receivedRaw: "2026-11-13T09:54:55Z"
                 )
             },
             changed: [],
             removedServerIDs: [],
-            syncKey: key
+            syncKey: key,
+            meetings: invites.enumerated().map { index, invite in
+                MeetingDeltaEntry(serverID: "m-\(key)-\(index)", subject: invite.subject, invite: invite)
+            }
         )
     }
 

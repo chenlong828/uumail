@@ -1,6 +1,7 @@
 import Foundation
 import GRDB
 import MailDomain
+import SyncContract
 
 /// The single writer for the local mail database (see `doc/design/components/CMP-STORE/spec.md`).
 /// This slice owns accounts, device profiles, folders and sync state; message tables arrive
@@ -202,14 +203,16 @@ public final class MailStore: @unchecked Sendable {
         added: [MailMessage],
         changed: [MailMessage],
         removedServerIDs: [String],
-        syncKey: String
+        syncKey: String,
+        meetings: [MeetingDeltaEntry] = []
     ) throws {
         let delta = MessageDelta(
             added: added,
             changed: changed,
             removedServerIDs: removedServerIDs,
             syncKey: syncKey,
-            moreAvailable: false
+            moreAvailable: false,
+            meetings: meetings
         )
         try validateMessageIDs(delta)
         try dbQueue.write { db in
@@ -325,7 +328,13 @@ public final class MailStore: @unchecked Sendable {
                 )
             }
             try Self.reindexMessage(db, account: id, folder: folderID, serverID: message.serverID)
-            try upsertMeeting(db, account: id, folder: folderID, message: message, now: now)
+        }
+
+        for entry in delta.meetings {
+            try upsertMeeting(
+                db, account: id, folder: folderID,
+                serverID: entry.serverID, subject: entry.subject, invite: entry.invite, now: now
+            )
         }
 
         for serverID in delta.removedServerIDs {
@@ -396,7 +405,7 @@ public final class MailStore: @unchecked Sendable {
                     cc: row["cc"]
                 )
             }
-            return try attachMeetings(db, account: id, messages: page)
+            return page
         }
     }
 
@@ -520,7 +529,7 @@ public final class MailStore: @unchecked Sendable {
                         bodyPreview: row["preview"], folderID: row["folder_id"], cc: row["cc"]
                     )
                 }
-                return try attachMeetings(db, account: id, messages: page)
+                return page
             }
         }
         return try dbQueue.read { db in
@@ -547,7 +556,7 @@ public final class MailStore: @unchecked Sendable {
                     bodyPreview: row["preview"], folderID: row["folder_id"], cc: row["cc"]
                 )
             }
-            return try attachMeetings(db, account: id, messages: page)
+            return page
         }
     }
 

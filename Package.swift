@@ -27,36 +27,38 @@ let package = Package(
             resources: [.process("Resources")]
         ),
         .target(name: "MailDomain"),
+        .target(name: "MeetingDomain"),
+        .target(name: "SyncContract", dependencies: ["MailDomain", "MeetingDomain"]),
         .target(name: "HTMLSupport", dependencies: ["MailDomain"]),
         .target(
             name: "EASAdapter",
-            dependencies: ["EASClient", "MailDomain"]
+            dependencies: ["EASClient", "MailDomain", "MeetingDomain", "SyncContract"]
         ),
         .target(
             name: "MailStore",
-            dependencies: ["MailDomain", .product(name: "GRDB", package: "GRDB.swift")]
+            dependencies: ["MailDomain", "MeetingDomain", "SyncContract", .product(name: "GRDB", package: "GRDB.swift")]
         ),
-        .target(name: "SyncEngine", dependencies: ["MailDomain"]),
-        .target(name: "Outbox", dependencies: ["MailDomain", "MailStore"]),
+        .target(name: "SyncEngine", dependencies: ["MailDomain", "SyncContract"]),
+        .target(name: "Outbox", dependencies: ["MailDomain", "MailStore", "SyncContract"]),
         .target(
             name: "Scenes",
-            dependencies: ["MailDomain", "MailStore", "SyncEngine", "Outbox", "HTMLSupport"]
+            dependencies: ["MailDomain", "MeetingDomain", "MailStore", "SyncEngine", "Outbox", "HTMLSupport", "SyncContract"]
         ),
         .target(
             name: "Presentation",
-            dependencies: ["MailDomain", "Scenes", "HTMLSupport"]
+            dependencies: ["MailDomain", "MeetingDomain", "Scenes", "HTMLSupport"]
         ),
         .target(
             name: "Composition",
             dependencies: [
                 "EASAdapter", "EASClient", "MailDomain", "MailStore", "Outbox",
-                "Presentation", "Scenes", "SyncEngine",
+                "Presentation", "Scenes", "SyncContract", "SyncEngine",
             ],
             swiftSettings: [.define("DEBUG", .when(configuration: .debug))]
         ),
         .executableTarget(
             name: "uumail",
-            dependencies: ["Composition", "Presentation"],
+            dependencies: ["Composition", "Presentation", "MeetingDomain"],
             swiftSettings: [.define("DEBUG", .when(configuration: .debug))]
         ),
         .executableTarget(
@@ -64,29 +66,30 @@ let package = Package(
             dependencies: ["Composition", "EASClient", "MailDomain", "Scenes"]
         ),
         .testTarget(name: "EASClientTests", dependencies: ["EASClient"]),
-        .testTarget(name: "MailDomainTests", dependencies: ["MailDomain"]),
+        .testTarget(name: "MailDomainTests", dependencies: ["MailDomain", "MeetingDomain"]),
+        .testTarget(name: "MeetingDomainTests", dependencies: ["MeetingDomain"]),
         .testTarget(name: "HTMLSupportTests", dependencies: ["HTMLSupport", "MailDomain"]),
-        .testTarget(name: "EASAdapterTests", dependencies: ["EASAdapter", "EASClient", "MailDomain"]),
+        .testTarget(name: "EASAdapterTests", dependencies: ["EASAdapter", "EASClient", "MailDomain", "MeetingDomain"]),
         .testTarget(
             name: "CompositionTests",
-            dependencies: ["Composition", "EASAdapter", "MailDomain", "MailStore", "Outbox", "Presentation"]
+            dependencies: ["Composition", "EASAdapter", "MailDomain", "MailStore", "Outbox", "Presentation", "SyncContract"]
         ),
         .testTarget(
             name: "MailStoreTests",
-            dependencies: ["MailStore", "MailDomain", .product(name: "GRDB", package: "GRDB.swift")]
+            dependencies: ["MailStore", "MailDomain", "MeetingDomain", "SyncContract", .product(name: "GRDB", package: "GRDB.swift")]
         ),
-        .testTarget(name: "OutboxTests", dependencies: ["Outbox", "MailStore", "MailDomain"]),
-        .testTarget(name: "SyncEngineTests", dependencies: ["SyncEngine"]),
+        .testTarget(name: "OutboxTests", dependencies: ["Outbox", "MailStore", "MailDomain", "SyncContract"]),
+        .testTarget(name: "SyncEngineTests", dependencies: ["SyncEngine", "SyncContract"]),
         .testTarget(
             name: "ScenesTests",
             dependencies: [
-                "Scenes", "MailDomain", "MailStore", "SyncEngine", "Outbox", "HTMLSupport",
+                "Scenes", "MailDomain", "MeetingDomain", "MailStore", "SyncEngine", "Outbox", "HTMLSupport", "SyncContract",
                 .product(name: "GRDB", package: "GRDB.swift"),
             ]
         ),
         .testTarget(
             name: "PresentationTests",
-            dependencies: ["Presentation", "Scenes", "MailDomain", "MailStore", "SyncEngine", "Outbox"]
+            dependencies: ["Presentation", "Scenes", "MailDomain", "MeetingDomain", "MailStore", "SyncEngine", "Outbox", "SyncContract"]
         ),
     ]
 )

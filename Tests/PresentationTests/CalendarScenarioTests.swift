@@ -3,6 +3,8 @@ import MailDomain
 import MailStore
 import Scenes
 import Testing
+import MeetingDomain
+import SyncContract
 
 @testable import Presentation
 
@@ -48,11 +50,14 @@ struct CalendarGridScenarioTests {
             account: account,
             folder: "13",
             added: invites.enumerated().map { index, invite in
-                Message(serverID: "m-\(key)-\(index)", subject: invite.subject, meeting: invite)
+                Message(serverID: "m-\(key)-\(index)", subject: invite.subject)
             },
             changed: [],
             removedServerIDs: [],
-            syncKey: key
+            syncKey: key,
+            meetings: invites.enumerated().map { index, invite in
+                MeetingDeltaEntry(serverID: "m-\(key)-\(index)", subject: invite.subject, invite: invite)
+            }
         )
     }
 
@@ -235,9 +240,8 @@ struct MeetingCardScenarioTests {
     @Test("T-SCN-0023-02: ordinary mail has no card")
     func noCard() {
         #expect(MeetingCardPresentation.make(from: nil, calendar: calendar) == nil)
-        var plain = Message(serverID: "m-1", subject: "普通邮件")
-        plain.meeting = nil
-        #expect(MeetingCardPresentation.make(from: plain.meeting, calendar: calendar) == nil)
+        // `Message` no longer carries a meeting, so "not an invite" is simply a nil lookup.
+        #expect(MeetingCardPresentation.make(from: .none, calendar: calendar) == nil)
     }
 
     @Test("T-SCN-0023-03: the exported ics carries the event and its series rule")

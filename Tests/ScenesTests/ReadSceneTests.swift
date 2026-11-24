@@ -7,6 +7,7 @@ import Testing
 
 @testable import Scenes
 import SyncEngine
+import SyncContract
 
 @Suite("ReadScene")
 struct ReadSceneTests {

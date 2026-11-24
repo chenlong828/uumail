@@ -1,5 +1,6 @@
 import Foundation
 import MailDomain
+import SyncContract
 
 /// `MailStore` is the `SyncStore` implementation. The port uses the domain shapes
 /// (`folder:` and `delta:`), while the store keeps the batch primitives it has always

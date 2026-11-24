@@ -1,12 +1,13 @@
 import Foundation
 import MailDomain
+import SyncContract
 
 // MARK: - Transitional value names
 
 public typealias FolderSummary = MailDomain.Folder
 public typealias MessageSummary = MailDomain.Message
 public typealias FolderListing = MailDomain.FolderListing
-public typealias MessageDelta = MailDomain.MessageDelta
+public typealias MessageDelta = SyncContract.MessageDelta
 public typealias SyncReport = MailDomain.SyncReport
 
 // MARK: - State

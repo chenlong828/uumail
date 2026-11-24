@@ -2,6 +2,8 @@ import Foundation
 import GRDB
 import MailDomain
 import Testing
+import MeetingDomain
+import SyncContract
 
 @testable import MailStore
 
@@ -159,16 +161,20 @@ struct MigrationTests {
             added: [MailMessage(
                 serverID: "m-new",
                 subject: "会议",
-                receivedRaw: "2026-11-24T00:00:00Z",
-                meeting: MeetingInvite(
+                receivedRaw: "2026-11-24T00:00:00Z"
+            )],
+            changed: [],
+            removedServerIDs: [],
+            syncKey: "1",
+            meetings: [MeetingDeltaEntry(
+                serverID: "m-new",
+                subject: "会议",
+                invite: MeetingInvite(
                     uid: "u-1",
                     start: Date(timeIntervalSince1970: 1_800_000_000),
                     end: Date(timeIntervalSince1970: 1_800_003_600)
                 )
-            )],
-            changed: [],
-            removedServerIDs: [],
-            syncKey: "1"
+            )]
         )
         #expect(try store.meetingInvite(account: account, uid: "u-1") != nil)
     }

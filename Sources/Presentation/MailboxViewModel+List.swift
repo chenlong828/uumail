@@ -49,6 +49,7 @@ extension MailboxViewModel {
     func select(_ message: Message, open: Bool) {
         selectedListKey = Self.listKey(for: message)
         selection.messageID = message.serverID
+        refreshSelectedMeeting()
         refreshDwell()
         if open {
             startBodyLoad()
@@ -58,6 +59,7 @@ extension MailboxViewModel {
     func clearSelection() {
         selection.messageID = nil
         selectedListKey = nil
+        meetingInvite = nil
         clearBody()
         dwell.cancel()
     }

@@ -1,5 +1,6 @@
 import Foundation
 import MailDomain
+import MeetingDomain
 
 // MARK: - Calendar projections (pure values; the view only binds to these)
 

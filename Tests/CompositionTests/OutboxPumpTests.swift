@@ -3,6 +3,7 @@ import MailDomain
 import MailStore
 import Outbox
 import Testing
+import SyncContract
 
 @testable import Composition
 

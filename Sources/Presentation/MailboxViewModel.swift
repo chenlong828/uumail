@@ -1,4 +1,5 @@
 import Foundation
+import MeetingDomain
 import MailDomain
 import Observation
 import Scenes
@@ -129,7 +130,19 @@ public final class MailboxViewModel {
     /// The reading pane card for a meeting request; nil for ordinary mail
     /// (REQ-0030 / SCN-0023). Derived on read, no scene call, no network.
     public var meetingCard: MeetingCardPresentation? {
-        MeetingCardPresentation.make(from: selectedMessage?.meeting)
+        MeetingCardPresentation.make(from: meetingInvite)
+    }
+
+    /// Meeting request for the selected message; loaded on selection because `Message`
+    /// no longer carries meeting values (R77).
+    public internal(set) var meetingInvite: MeetingInvite?
+
+    func refreshSelectedMeeting() {
+        guard let ref = selectedRef else {
+            meetingInvite = nil
+            return
+        }
+        meetingInvite = try? read.meeting(for: ref)
     }
 
     var selectedRef: MessageRef? {

@@ -1,6 +1,7 @@
 import Foundation
 import GRDB
 import MailDomain
+import MeetingDomain
 
 /// Meeting persistence (schema v12). Kept in its own file so the `MailStore` component
 /// stays inside its 1000-line budget; the table still has exactly one writer — this file,
@@ -17,10 +18,12 @@ extension MailStore {
         _ db: Database,
         account id: AccountID,
         folder folderID: String,
-        message: Message,
+        serverID: String,
+        subject: String?,
+        invite: MeetingInvite,
         now: Double
     ) throws {
-        guard let invite = message.meeting, !invite.uid.isEmpty else { return }
+        guard !invite.uid.isEmpty else { return }
 
         if let recurrenceID = invite.exceptionRecurrenceID {
             guard var existing = try meetingInvite(db, account: id, uid: invite.uid) else { return }
@@ -34,8 +37,8 @@ extension MailStore {
                 isDeleted: invite.isCancelled
             ))
             try writeMeetingRow(
-                db, account: id, folder: existing.exceptions.isEmpty ? folderID : folderID,
-                serverID: message.serverID, subject: invite.subject ?? message.subject,
+                db, account: id, folder: folderID,
+                serverID: serverID, subject: invite.subject ?? subject,
                 invite: existing, now: now
             )
             return
@@ -82,7 +85,7 @@ extension MailStore {
                 WHERE COALESCE(excluded.dtstamp, 9e18) >= COALESCE(meetings.dtstamp, -9e18)
                 """,
             arguments: [
-                id.raw, invite.uid, folderID, message.serverID, invite.subject ?? message.subject,
+                id.raw, invite.uid, folderID, serverID, invite.subject ?? subject,
                 invite.start.timeIntervalSince1970, invite.end.timeIntervalSince1970,
                 invite.isAllDay ? 1 : 0, invite.location, invite.organizer,
                 invite.reminderMinutes, invite.responseRequested ? 1 : 0, invite.busyStatus,

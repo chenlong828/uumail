@@ -1,7 +1,8 @@
 import Foundation
 import Testing
+import MeetingDomain
 
-@testable import MailDomain
+@testable import MeetingDomain
 
 @Suite("Meeting recurrence")
 struct MeetingRecurrenceTests {

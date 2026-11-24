@@ -7,6 +7,7 @@ import SyncEngine
 import Testing
 
 import Presentation
+import SyncContract
 
 // Test doubles for the presentation contracts. Real scenes sit behind them, so the view
 // model is exercised through the same ports the app uses; nothing touches the network,

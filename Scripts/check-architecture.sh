@@ -39,20 +39,22 @@ gate_imports() {
         target=${dir#Sources/}
         target=${target%/}
         case "$target" in
-            MailDomain) allowed="Foundation" ;;
+            MailDomain) allowed="Foundation MeetingDomain" ;;
+            MeetingDomain) allowed="Foundation" ;;
+            SyncContract) allowed="Foundation MailDomain MeetingDomain" ;;
             HTMLSupport) allowed="Foundation MailDomain" ;;
             EASClient) allowed="Foundation" ;;
-            EASAdapter) allowed="EASClient Foundation MailDomain" ;;
-            MailStore) allowed="Foundation GRDB MailDomain" ;;
-            SyncEngine) allowed="Foundation MailDomain" ;;
-            Outbox) allowed="Foundation MailDomain MailStore" ;;
-            Scenes) allowed="Foundation MailDomain MailStore Outbox SyncEngine HTMLSupport" ;;
-            Presentation) allowed="Foundation HTMLSupport MailDomain Observation Scenes" ;;
+            EASAdapter) allowed="EASClient Foundation MailDomain MeetingDomain SyncContract" ;;
+            MailStore) allowed="Foundation GRDB MailDomain MeetingDomain SyncContract" ;;
+            SyncEngine) allowed="Foundation MailDomain SyncContract" ;;
+            Outbox) allowed="Foundation MailDomain MailStore SyncContract" ;;
+            Scenes) allowed="Foundation HTMLSupport MailDomain MeetingDomain Outbox SyncContract SyncEngine MailStore" ;;
+            Presentation) allowed="Foundation HTMLSupport MailDomain MeetingDomain Observation Scenes" ;;
             Composition)
-                allowed="CryptoKit EASAdapter EASClient Foundation MailDomain MailStore Observation Outbox Presentation Scenes Security SyncEngine UserNotifications"
+                allowed="CryptoKit EASAdapter EASClient Foundation MailDomain MailStore Observation Outbox Presentation Scenes Security SyncContract SyncEngine UserNotifications"
                 ;;
             # The app target is the shell: Composition is file-level restricted below.
-            uumail) allowed="AppKit Composition Foundation MailDomain Presentation SwiftUI WebKit" ;;
+            uumail) allowed="AppKit Composition Foundation MailDomain MeetingDomain Presentation SwiftUI WebKit" ;;
             # EASClient is the registered diagnostics exception (§3).
             uumailctl) allowed="Composition Darwin EASClient Foundation MailDomain Scenes" ;;
             *)

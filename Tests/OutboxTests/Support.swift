@@ -2,6 +2,7 @@ import Foundation
 import MailDomain
 import MailStore
 import Outbox
+import SyncContract
 
 /// A gateway fake: per-send outcomes in order (`nil` = success), attempt counter and
 /// captured MIME/ClientId. One actor so concurrent deliveries are still observable.

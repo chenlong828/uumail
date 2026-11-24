@@ -1,6 +1,7 @@
 import Foundation
 import MailDomain
 import MailStore
+import SyncContract
 
 /// What the setup form collects (architecture spec §4.7). The gateway itself is already
 /// constructed for a configuration; the input exists so the scene can validate fields,

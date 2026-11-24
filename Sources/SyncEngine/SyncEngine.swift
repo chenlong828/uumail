@@ -1,5 +1,6 @@
 import Foundation
 import MailDomain
+import SyncContract
 
 /// Orchestrates one account: folder hierarchy first, then the inbox window.
 ///

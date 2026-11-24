@@ -28,7 +28,7 @@ extension MailStore {
             )
             guard let row else { return nil }
             let message = Self.storedMessage(from: row)
-            return try attachMeetings(db, account: id, messages: [message]).first
+            return message
         }
     }
 
@@ -53,7 +53,7 @@ extension MailStore {
                     """,
                 arguments: [id.raw, folderID, since.timeIntervalSince1970]
             )
-            return try attachMeetings(db, account: id, messages: rows.map(Self.storedMessage(from:)))
+            return rows.map(Self.storedMessage(from:))
         }
     }
 

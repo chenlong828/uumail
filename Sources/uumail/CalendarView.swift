@@ -1,6 +1,7 @@
 import MailDomain
 import Presentation
 import SwiftUI
+import MeetingDomain
 
 /// The calendar page (SCN-0024): month grid and week timeline over the meetings the user
 /// received by mail. Every interaction is local; nothing here touches the network.

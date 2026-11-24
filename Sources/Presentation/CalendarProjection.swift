@@ -1,5 +1,6 @@
 import Foundation
 import MailDomain
+import MeetingDomain
 
 /// Pure grid math, split out so it can be tested without a scene or a clock.
 public enum CalendarProjection {
