@@ -360,3 +360,27 @@ component: CMP-APP
 - 验证：L2 `TableLayoutProbe`（编译生产 `MessageBodyStyle.swift`）逐例断言 120% 下 816px 表保持 816、`scrollWidth == 978`；145/175/225% 下 `scrollWidth == 810/671/522`；无宽度 300px 表不被拉伸；900px 表 + 600px 图在 668px 下 `scrollWidth == 668`。证据 `doc/history/works/2026-11-23-table-adapt/evidence/`。
 - 残余：带 `align`/浮动的显式宽度表可能改变环绕版式；无显式宽度且内容超宽的畸形表仍可能溢出。发布前真实样本冒烟。
 - 实现进度（2026-11-23，`T-1123-04`）：规则已加入 `MessageBodyStyle.baseCSS`（50 行）；L2 `TableLayoutProbe` 6/6 PASS（120/145/175/225、窄表、图片表），真实样本 120% 979/978、145/175/225% 810/671/522、`overflowCount=0`；全量 384 tests/59 suites、架构 4/4、`make-app.sh` 通过。证据 `doc/history/works/2026-11-23-table-adapt/evidence/`。
+
+## 设计增量：日历页与会议卡（REQ-0029 / SCN-0024、REQ-0030 / SCN-0023，2026-11-24，未实现）
+
+- 来源：`REQ-0029`/`SCN-0024`、`REQ-0030`/`SCN-0023`；`CMP-PRES` 同批增量提供 `CalendarViewModel`、`MeetingCardPresentation` 与网格投影；`CMP-SCN-CALENDAR` 提供 `ics` 文本。
+- **导航**（`MailboxView.swift`，+约 70 行，≤300）：
+  - 侧栏顶部新增「日历」行（`Label("日历", systemImage: "calendar")`）+ `Divider` + 现有文件夹 `List`；点「日历」置 `@State private var calendarSelected = true` 并清空邮件列表选中；点任一文件夹置回 `false`。
+  - `body` 顶层二分支：`calendarSelected == true` → `NavigationSplitView { sidebar } detail: { CalendarView(model: calendarModel) }`（两栏，日历占满右区）；`false` → 现有三栏邮件布局（原样保留，不改列表/正文/工具栏/搜索）。
+  - 日历→邮件跳转：`CalendarView` 交出 `(folderID, serverID)`，`MailboxView` 置 `calendarSelected = false` 后调 `viewModel.select(folderID:)`（该调用会重载列表）再按 `serverID` 选中；目标邮件不在当前 200 封页面时只切到文件夹并给状态栏提示「该邀请不在当前列表页」，不伪造选中、不新增 VM 方法、不在场景间互调。
+- **新文件** `Sources/uumail/CalendarView.swift`（internal，≤300 行）：
+  - 工具栏：`Picker`（月/周，`.segmented`）+「上一周期 / 今天 / 下一周期」三个按钮（`chevron.left`/`calendar`/`chevron.right`），全部只调 `CalendarViewModel` 方法。
+  - 月视图：固定 6 行 × 7 列 `LazyVGrid`；列头「一…日」；每格显示日号（非当月灰、今天高亮）+ 最多 3 个事件 chip + 「+N」；chip 点击选中事件，日号点击切到周视图并把 `anchor` 置为该日。
+  - 周视图：左侧时间槽（整点标签）+ 7 列；事件块按 `startMinute/endMinute` 比例定位，重叠按 `lane` 并排；顶栏一行放全天事件。
+  - 事件详情：选中后用 `.popover` 展示主题/时间/地点/组织者/重复说明/来源邮件，按钮「打开邮件」「在日历中打开」。
+  - 空态与错误：无事件 → `EmptyState`（「本期没有收到会议邀请」+ 说明只覆盖升级后同步窗口）；`errorText` → 顶部 banner；`isTruncated` → 顶部「仅显示前 500 条」提示。
+- **新文件** `Sources/uumail/MeetingCardView.swift`（internal，≤120 行）：卡片只读 `MeetingCardPresentation`，三个字段行 + 「在日历中打开」按钮；按钮动作由 `MessageBodyView` 注入的闭包提供；卡片无网络、无文件访问。
+- **`MessageBodyView` 变更**（+约 20 行，仍 ≤300）：新增 `meetingCard: MeetingCardPresentation?` 与 `onOpenInCalendar: () -> Void`；渲染位置在 `MessageHeaderView` 与正文 `switch` 之间、且位于 `switch` 之外，保证 `.loading/.loaded/.failed` 都显示卡片。
+- **新文件** `Sources/uumail/CalendarExport.swift`（internal，≤120 行）：`CalendarFileWriting`（写临时目录）+ `CalendarOpening`（`open(URL) -> Bool`，生产实现 `NSWorkspace.shared.open`）+ `CalendarExport` 协调（写文件 → 打开 → 失败清理、成功延迟清理）。协议只为 L2 探针注入替身，不进入 public 面。**不引入 EventKit、不申请日历权限**：`.ics` 交给系统默认日历应用导入，本进程不读日历数据。
+- 尺寸：`uumail` 现约 2729 行 + 约 530 行 → 约 3259 行；单文件 `CalendarView` ≤300、`MailboxView` ≤300、`MessageBodyView` ≤300；不新增 target/依赖。
+- 测试（L2 探针，沿用 `NSHostingController` + `NSTextField.stringValue`/`NSToolbar` seam）：
+  - 月视图：6×7 网格文本、日格 chip 文本与「+N」；
+  - 周视图：事件块 frame 与 09:30 行对齐（几何断言，容差 ±2pt）；
+  - 卡片：邀请邮件出现卡片文本，非邀请无卡片节点；
+  - 导出：点击调 `CalendarOpening` 替身 1 次且 URL 存在，删除后临时文件被清理。
+  - 若某个 seam 不可行（R41），由 `SCN-0024`/`SCN-0023` 声明 L3 并写理由，不用 L1 投影冒充。

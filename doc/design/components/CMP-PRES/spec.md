@@ -517,3 +517,46 @@ component: CMP-PRES
 - 验证：`PresentationTests/MailboxViewModelInlineImageTests` 新增「隐藏命中项、保留真实附件」「按 `contentID` 命中」「无 `cid:` 保留全部」「歧义保留」；`SCN-0019` 既有 4 例回归。
 - 残余：内联图渲染失败时该附件已不在附件条，用户无保存入口；属用户 2026-11-23 确认的代价。
 - 实现进度（2026-11-23，`T-1123-03`）：`MailboxViewModel+Body.startInlineImageRender` 先算 `InlineImageReferences` 再 `removeAll` 命中项（`+Body.swift` 150 行）；`MailboxViewModelInlineImageTests` 新增 4 例（`hidesReferencedInlineAttachment`、`hidesInlineAttachmentByContentID`、`keepsAttachmentsWithoutCID`、`ambiguousInlineReferenceKeepsAttachments`），该 suite 8 例绿；全量 384 tests/59 suites、架构 4/4。
+
+## 设计增量：日历视图与会议卡（REQ-0029 / SCN-0024、REQ-0030 / SCN-0023，2026-11-24，P1 待确认，未实现）
+
+- 来源：`REQ-0029`/`SCN-0024`（月/周视图）与 `REQ-0030`/`SCN-0023`（阅读页会议卡）；结构决策与候选方案见 `doc/history/decisions/2026-11-24-calendar-view-scope.md`。
+- 新增 public `CalendarViewModel`（`@MainActor @Observable`，`Sources/Presentation/CalendarViewModel.swift`，预计 ≤260 行）：
+
+  ```swift
+  @MainActor @Observable public final class CalendarViewModel {
+      public enum Mode: Sendable { case month, week }
+      public private(set) var mode: Mode
+      public private(set) var anchor: Date
+      public private(set) var month: MonthGridPresentation
+      public private(set) var week: WeekGridPresentation
+      public private(set) var isLoading: Bool
+      public private(set) var errorText: String?
+      public private(set) var isTruncated: Bool
+      public private(set) var selectedOccurrence: MeetingOccurrence?
+      public init(calendar: CalendarScene, now: @escaping @Sendable () -> Date = Date.init)
+      public func activate() async
+      public func reload() async
+      public func setMode(_ mode: Mode) async
+      public func showPrevious() async
+      public func showNext() async
+      public func showToday() async
+      public func select(_ occurrence: MeetingOccurrence, in day: Date) async
+      public func icsText(for occurrence: MeetingOccurrence) -> String?   // 失败时置 errorText
+      public var selectedSource: (folderID: String, serverID: String)? { get }
+  }
+  ```
+
+- 新增 public 展示类型（`Sources/Presentation/CalendarPresentation.swift`，预计 ≤180 行）：`MonthGridPresentation{weeks: [MonthWeek], dayTitle, isCurrentMonth}`、`MonthWeek{days:[MonthDay]}`、`MonthDay{date, isInMonth, isToday, chips:[CalendarChip], hiddenCount}`、`WeekGridPresentation{days:[WeekColumn], hourRange}`、`WeekColumn{date, blocks:[WeekBlock]}`、`WeekBlock{startMinute, endMinute, lane, title, occurrence}`、`MeetingCardPresentation{time, location, organizer, recurrence, isRecurring}`。
+- `MailboxViewModel` 新增只读计算属性 `meetingCard: MeetingCardPresentation?`（由 `selectedMessage.meeting` 生成；非邀请返回 nil）。**不改** `select`/`openSelected`/正文状态机；`selectedSource` 由 `MailboxView` 从 `selectedMessage.folderID/serverID` 读取，不在 VM 新增公开面。
+- 网格投影规则（纯函数，L1 可测）：
+  - 周起始固定周一（`Calendar.firstWeekday = 2` 的本地副本，不读系统偏好，避免跨机差异）；月网格固定 6 行 × 7 列（不足的月用相邻月日期补灰格），保证翻月高度稳定；
+  - 每个日格最多 3 个事件 chip，其余折成「+N」；`hiddenCount` 参与 L1 断言；
+  - 周视图时间轴范围取「本周最早事件的整点向下取整 − 0」到「最晚事件整点向上取整 + 1」，最小 8:00–18:00；重叠事件按 `lane` 并排；
+  - 全天事件不出现在周时间轴，集中在周视图顶栏一行（与 Outlook 一致）。
+- 文案：时间范围/全天/重复摘要/时区未知提示统一进 `DisplayFormat`（新增 `meetingTimeRange(_:)`、`meetingDay(_:)`、`recurrenceSummary(_:)`、`meetingZoneNote(_:)`），`CalendarViewModel` 与 `MeetingCardPresentation` 共用，视图不拼字符串。
+- 错误与空态：`errorText = ErrorText.text(for:)` 只接收 `MailError`；`CalendarScene` 抛的非 `MailError` 在 VM 内归一为 `.storage(reason:)`（沿用 `performMarkRead` 的口径）。空态文案归 `CMP-APP`，VM 只给 `isLoading`/`errorText`/`isTruncated`。
+- 冷热与并发：`activate/reload` 在 `@MainActor` 上串行；同一时刻只允许一个刷新任务（新请求取消旧任务），迟到结果按 `anchor`/`mode` 代际丢弃（沿用 `MailboxViewModel+Body` 的代际写法人模式）。
+- 尺寸：`Presentation` 现 1669 行 + 约 440 行 → 约 2109 行；`MailboxViewModel.swift` 388 → 约 400（`meetingCard` 计算属性 ≤12 行），仍在 400 上限；不新增 target/依赖。
+- 测试（L1，`PresentationTests/CalendarViewModelTests` + `CalendarProjectionTests`）：月网格 6×7 与补灰格、周一为首列、3+1 折叠、周时间轴范围与 lane、翻月/翻周不触网（fake scene 计数）、错误文案映射、截断标记、`meetingCard` 的 nil/非 nil 与重复摘要。
+- 定级与确认：**P1**（新 public 视图模型 + 新 public 展示类型 + 依赖新场景组件）；实现前须过 `T-1124-02` 确认门。

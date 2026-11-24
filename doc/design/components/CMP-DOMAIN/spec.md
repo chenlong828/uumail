@@ -2,7 +2,7 @@
 layer: design
 module: domain
 status: active
-updated: 2026-11-18
+updated: 2026-11-24
 component: CMP-DOMAIN
 ---
 
@@ -14,7 +14,7 @@ component: CMP-DOMAIN
 - 单元：模块（值类型 + 端口 + 错误目录的组合组件）
 - 层 / 类型：L1 契约；领域
 - 业务价值：让场景、数据与协议都只认识一套稳定概念。没有它，每个 target 自带一份值类型，改一个字段要动四处。
-- 负责 X：值类型（`AccountID`、`OutboxID`、`Folder`、`Message`、`Attachment`、`Draft`、`OutboxItem`、`FolderListing`、`MessageDelta`、`SyncReport`、`FetchedBody`、`AttachmentRef`、`ServerCapabilities`，以及 2026-11-18 新增的 `ContactAddress`、`ContactEnvelope`、`ContactDirectory`、`RecipientText`）、端口（`MailGateway`、`MailWriteGateway`、`SyncStore`、`CredentialStore`、`Notifier`、`AttachmentFiles`、`MailClock`）、`MailError`、`ServerConfiguration`。
+- 负责 X：值类型（`AccountID`、`OutboxID`、`Folder`、`Message`、`Attachment`、`Draft`、`OutboxItem`、`FolderListing`、`MessageDelta`、`SyncReport`、`FetchedBody`、`AttachmentRef`、`ServerCapabilities`，2026-11-18 新增的 `ContactAddress`、`ContactEnvelope`、`ContactDirectory`、`RecipientText`，以及 2026-11-24 新增的 `MeetingInvite`、`RecurrenceRule`、`MeetingException`、`MeetingOccurrence`、`MeetingTimeZone`、`MeetingMessageType`、`Weekday`）、端口（`MailGateway`、`MailWriteGateway`、`SyncStore`、`CredentialStore`、`Notifier`、`AttachmentFiles`、`MailClock`）、`MailError`、`ServerConfiguration`。
 - 不负责 Y：任何 I/O、持久化、协议编解码、UI 文案。
 - 内部逻辑：无 I/O；只有纯值类型与纯函数——`AddressList` 的信封归一化、`ContactDirectory` 的解析/去重/名字回退/匹配排序、`RecipientText` 的尾片段与替换。`FetchedBody` 保留 `text/isHTML/isTruncated`（D10）。
 - 拥有的数据：无持久数据。
@@ -222,3 +222,94 @@ component: CMP-DOMAIN
 - 兼容性：纯增量 public 值类型；不改 `AddressList` 公开行为、不改 `MailGateway`/`SyncStore`/`Message`/`Draft`；不新增依赖/target；`MailDomain` 仍只 import Foundation、无 I/O。
 - 测试：`MailDomainTests/ContactDirectoryTests`（名字保留/回退、最近非空名字、去重、匹配排序、畸形/DN/RFC 2047、limit/排除、空片段、引号内逗号/未闭合 `<>`、`Team <a@x;b@y>`/`a@x,b@y` 不产生候选）与 `RecipientTextTests`（尾片段/前缀/替换、引号与 `<>`、空片段）；`AddressList` 既有用例必须全绿（尤其保留 `/O=…`、`CN=z`、`Team <team>` 等非 SMTP 形状，不得因共享解析器归位而收窄）。场景/视图模型测试见 `SCN-0017`。
 - 定级/确认：本增量属 P1（平台级扇入模块新增 public 契约）；默认确认（未经人工）见 `history/decisions/2026-11-18-recipient-autocomplete.md`，交评审判断；A1–A6 细化见 `history/decisions/2026-11-18-recipient-autocomplete-design-addendum.md`。
+
+## 设计增量：会议邀请值类型与 iCalendar（REQ-0029 / REQ-0030，2026-11-24，P1 待确认，未实现）
+
+- 来源：`REQ-0029`/`REQ-0030`；协议字段见 `CMP-EAS` 增量；存储见 `CMP-STORE` v12。
+- 新增 public 值类型（`Sources/MailDomain/Meeting.swift`，约 260 行）：
+
+  ```swift
+  public enum MeetingMessageType: Int, Sendable { case initial = 1, update = 2, informational = 3, outdated = 4, delegatorCopy = 5, delegated = 6 }
+  public enum Weekday: Int, Sendable, CaseIterable { case sunday = 1, monday = 2, tuesday = 4, wednesday = 8, thursday = 16, friday = 32, saturday = 64 }
+
+  public struct MeetingTimeZone: Equatable, Sendable {
+      public var name: String?
+      public var offsetSeconds: Int          // -bias(分钟) * 60
+  }
+
+  public struct RecurrenceRule: Equatable, Sendable {
+      public enum Frequency: Int, Sendable { case daily = 0, weekly = 1, monthlyDay = 2, monthlyWeekday = 3, yearlyDay = 5, yearlyWeekday = 6 }
+      public var frequency: Frequency
+      public var interval: Int               // >= 1
+      public var until: Date?                // UTC；与 occurrences 互斥
+      public var occurrences: Int?           // 1...999
+      public var weekdays: Set<Weekday>      // Type 0 带 DayOfWeek 视为 weekly
+      public var dayOfMonth: Int?            // 1...31
+      public var weekOfMonth: Int?           // 1...4，5 = 最后
+      public var monthOfYear: Int?           // 1...12
+      public var firstDayOfWeek: Weekday     // 默认 .monday
+      public var lastDayOfMonth: Bool        // DayOfWeek=127 的特殊语义（Type 3/6）
+  }
+
+  public struct MeetingException: Equatable, Sendable {
+      public var recurrenceId: Date          // 原始实例开始（UTC）
+      public var start: Date?
+      public var end: Date?
+      public var subject: String?
+      public var location: String?
+      public var isDeleted: Bool
+  }
+
+  public struct MeetingInvite: Equatable, Sendable {
+      public var uid: String
+      public var subject: String?
+      public var start: Date
+      public var end: Date
+      public var isAllDay: Bool
+      public var location: String?
+      public var organizer: String?
+      public var reminderMinutes: Int?
+      public var responseRequested: Bool
+      public var busyStatus: Int?
+      public var messageType: MeetingMessageType
+      public var isCancelled: Bool
+      public var dtstamp: Date?
+      public var timeZone: MeetingTimeZone?
+      public var recurrence: RecurrenceRule?
+      public var exceptions: [MeetingException]
+      // 来源（folderID/serverID）不在这里：适配器不知道所在文件夹，
+      // 由 MailStore 在读时填进 MeetingOccurrence。
+
+      /// 可见范围内的实例；有界：<= limit，且不早于系列起点。
+      public func occurrences(in range: ClosedRange<Date>, limit: Int = 200) -> [MeetingOccurrence]
+      /// iCalendar 文本（单次事件或整个系列）；METHOD:PUBLISH。
+      public func ics(now: Date = Date()) -> String
+  }
+
+  public struct MeetingOccurrence: Equatable, Sendable {
+      public var uid: String
+      public var start: Date
+      public var end: Date
+      public var isAllDay: Bool
+      public var subject: String?
+      public var location: String?
+      public var organizer: String?
+      public var isRecurringInstance: Bool
+      public var folderID: String
+      public var serverID: String
+  }
+  ```
+
+- `Message` 新增 `public var meeting: MeetingInvite?`（additive 默认 `nil`，不影响既有构造点；`init` 参数追加在末尾并给默认值，源兼容）。
+- **展开规则**（纯函数，`occurrences(in:limit:)`）：
+  - 起点 = `start`；按 `frequency`/`interval` 逐次推进；`Type 0 + weekdays 非空` 按每周处理（规范规定）；`monthlyWeekday` 取第 N 个或最后一个 `weekday`；`yearlyWeekday` 取 `monthOfYear` 的第 N 个或最后一个 `weekday`；
+  - 结束条件：超出 `range.upperBound`、或越过 `until`、或达到 `occurrences`、或达到 `limit`；
+  - 例外：先按规则生成，再用 `exceptions` 按 `recurrenceId` 替换/删除对应实例；
+  - 时间推进用固定 `timeZone.offsetSeconds`（默认本机时区偏移），不做 DST 过渡；跨 DST 的偏差登记为限制（Q5）。
+  - 复杂度保证：从系列起点线性推进，但以「首次进入 range」为目标做快进（按天/周/月步进累加，最多 `limit + 365` 步），避免 2010 年起的系列每次扫全量。
+- **iCalendar**（`ics(now:)`）：`BEGIN:VCALENDAR`/`VERSION:2.0`/`PRODID:-//uumail//uumail//CN`/`CALSCALE:GREGORIAN`/`METHOD:PUBLISH`/一个 `VEVENT`；`DTSTAMP`=now(UTC)；`DTSTART`/`DTEND` 用 UTC `Z` 形式（全天用 `VALUE=DATE`）；`SUMMARY`/`LOCATION`/`ORGANIZER`；`UID` 用会议 `UID`；重复系列带 `RRULE`（`FREQ`/`INTERVAL`/`BYDAY`/`BYMONTHDAY`/`BYSETPOS=1|-1`/`COUNT`/`UNTIL`/`WKST`）与 `EXDATE`（被删除的例外）；例外覆盖用第二个 `VEVENT` + `RECURRENCE-ID`；文本按 RFC 5545 转义（`\,` `\;` `\n`）并 75 字节折行、CRLF 行尾。
+- 不变量：无 I/O；`start <= end`；`occurrences` 只返回落在 range 内的实例；`ics` 输出可被 Calendar.app 导入（L1 断言关键行，L2 冒烟真实导入可选）。
+- 错误模式：构造由适配器完成，域内结构保证合法（`interval >= 1` 由适配器归一）；`occurrences` 不抛错，坏规则返回空数组。
+- 尺寸：`MailDomain` 现约 1100 行 + 约 260 行；`Meeting.swift` 单文件 ≤300 行。
+- 兼容性：纯 additive；`Message` 新字段默认 `nil`；`MailDomain` 扇入平台级（6+），本批属 P1 契约变更，需确认门。
+- 测试（`MailDomainTests/MeetingRecurrenceTests`、`MeetingICSTests`）：每日/每周（周一二三）/每月按日（31 号跳月）/每月第 2 个周四/最后一天/每年按日/每年第 N 个周一；`until`/`occurrences`/`limit` 边界；例外替换与删除；`.ics` 关键行与转义、折行、CRLF、`RRULE` 生成。

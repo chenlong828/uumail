@@ -189,3 +189,54 @@ component: CMP-EAS
 - 尺寸：实现后 `EASClient` 803 行、组件 1227 行（预算 1500）。
 
 **实现（2026-11-14）**：`EASClient.sync(change:)` 支持 `.read`（`Change/ApplicationData/Read=1`）与 `.delete`（`Delete/ServerId`），写请求只带 `SyncKey/CollectionId/Commands`；写 401 → `deviceNotRegistered`，读 401 仍 `authFailed`。`EASClientTests` 32 例绿，含两条 golden 请求体、写 key、写 401/3/4、`Collection` 内与顶层 `MoreAvailable`。**R16 已取证（2026-11-14 真机）**：两命令均被接受并返回新 key；`MoreAvailable` 在写响应中是正常分页；not-found 为成功 no-op；删除进入「已删除邮件」。证据见 `task-spaces/20261114-232232/evidence/r16-real-gateway.txt`。
+
+## 设计增量：会议邀请与重复规则解析（REQ-0029 / REQ-0030，2026-11-24，未实现）
+
+- 来源：2026-11-24 实测（`ItemOperations/Fetch`，临时探针，未入库）：本网关在邮件信封里返回 `MessageClass=IPM.Schedule.Meeting.Request`、`ContentClass=urn:content-classes:calendarmessage` 与完整 `MeetingRequest` 子树；同一响应里 `Body/Type=2`（HTML），**要 MIME（`BodyPreference Type=4`）也只回 HTML**，所以 ICS 原文拿不到，必须按结构化字段重建（与 `REQ-0030` 的 `.ics` 自生成口径一致）。
+- `EASMessage` 新增（additive，`public`）：
+
+  ```swift
+  public var messageClass: String?
+  public var meeting: EASMeeting?
+
+  public struct EASMeeting: Equatable, Sendable {
+      public var uid: String?
+      public var start: Date?
+      public var end: Date?
+      public var allDay: Bool
+      public var dtstamp: Date?
+      public var location: String?
+      public var organizer: String?
+      public var reminderMinutes: Int?
+      public var responseRequested: Bool
+      public var busyStatus: Int?
+      public var messageType: Int?          // 1 初始 / 2 更新 / 3 信息 / 4 过期 / 5/6 委派
+      public var instanceType: Int?         // 0 单次 / 1 主系列 / 2 单次实例 / 3 例外 / 4 孤儿
+      public var recurrenceId: Date?        // 例外实例的原始开始时间（UTC）
+      public var timeZone: EASMeetingTimeZone?
+      public var recurrence: EASRecurrence?
+  }
+
+  public struct EASMeetingTimeZone: Equatable, Sendable {
+      public var name: String?          // "China Standard Time"
+      public var biasMinutes: Int       // -480 = UTC+8
+  }
+
+  public struct EASRecurrence: Equatable, Sendable {
+      public var type: Int              // 0/1/2/3/5/6；4 不存在
+      public var interval: Int?
+      public var until: Date?           // Compact DateTime "YYYYMMDDTHHMMSSZ"，UTC
+      public var occurrences: Int?
+      public var daysOfWeek: Int?       // 位掩码 1=日 2=一 4=二 8=三 16=四 32=五 64=六
+      public var dayOfMonth: Int?
+      public var weekOfMonth: Int?      // 1-4，5 = 最后
+      public var monthOfYear: Int?
+      public var firstDayOfWeek: Int?   // 0=周日 … 6=周六
+  }
+  ```
+
+- `parseMessage` 增读：`MessageClass`；`MeetingRequest` 子树（`AllDayEvent/StartTime/EndTime/DtStamp/Location/DisplayName/Organizer/Reminder/ResponseRequested/BusyStatus/MeetingMessageType/InstanceType/RecurrenceId/TimeZone/UID`）；重复规则在邮件里是 **`Recurrences` 包装下的单个 `Recurrence`**（不是 `Recurrence` 直属），按 `Recurrences/Recurrence` 取；`Recurrence` 的 `Until` 用 Compact DateTime 解析（`YYYYMMDDTHHMMSSZ`），其它时间用 ISO-8601（`2026-11-19T01:30:00.000Z`）。
+- **`TimeZone` blob 只解析前两段**（2026-11-24 用真实样本 base64 解码确认）：前 4 字节 int32 小端 = `Bias`（分钟，`-480` 表示 UTC+8，即 `offset = -bias`），偏移 4 起 64 字节为标准时区名（32 个 UTF-16LE 字符，`"China Standard Time"`，NUL 截断；规范 `[MS-ASDTYPE] 2.7.6` 的 172 字节定长结构，**无版本头**）。其后的 `StandardBias/DaylightBias/StandardDate/DaylightDate` 不解析——本部署在 `Asia/Shanghai`（无夏令时），跨时区/夏令时的展开精度登记为限制（`plan/risks.md` R56 与 `plan/open-questions.md` Q5）。
+- 错误模式：`MeetingRequest` 缺 `StartTime`/`UID` 时 `meeting` 仍返回（字段可空），不抛；`Until`/时间解析失败置 `nil` 并保留原串于 `EASError.malformedResponse` 之外——本层不因单个坏字段让整批 Sync 失败（与 `parseMessage` 既有「坏附件只跳过该条」口径一致）。
+- 不改：`Sync` 请求体（`Options` 最小化，playbook §3）、`BodyPreference`、`fetchBody`/`fetchAttachment`、`send`；不新增 EAS 命令；不调 `MeetingResponse`（后续 B 方案）。
+- 测试（`EASClientTests`）：样本 XML（脱敏）覆盖：单次会议、每周重复（`Type=1`+`DayOfWeek=2`）、每月第 N 个周一（`Type=3`+`WeekOfMonth`+`DayOfWeek`）、`Until` compact 解析、`TimeZone` blob 解码（-480 / China Standard Time）、缺字段容错、非会议邮件（无 `MeetingRequest`）。

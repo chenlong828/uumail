@@ -157,3 +157,51 @@ component: CMP-STORE
 - **预算**：本批对 `MailStore` 目标新增 0 行；既有 1008/1000 的 8 行超出与本批无关，登记 R45。若后续要把联系人做成持久派生表（v11 `contacts` + 回填 + upsert），先按 P1 立项、拆分 `MailStore` 或调预算，再动本组件。
 - **数据所有权**：`messages` 仍是 `CMP-STORE` 唯一写入口；联系人目录是会话内只读投影，不持久、不是第二真相；旧邮件清理、未同步文件夹或超出 500/文件夹、5,000 总计上限后名字/联系人不出现，已在 `SCN-0017` 失败路径、R46 与决策记录中接受。
 - **验证**：本组件无新增测试；`MailStoreTests` 既有用例不回归即可。聚合行为由 `ScenesTests/ComposeSceneTests.recipientDirectory*` 覆盖。
+
+## 设计增量：schema v12 会议邀请（REQ-0029 / REQ-0030，2026-11-24，P1 待确认，未实现）
+
+- 来源：`REQ-0029`（日历视图）/`REQ-0030`（会议卡与导出）；数据来自 EAS `Sync` 信封里的 `MessageClass`+`MeetingRequest`（见 `CMP-EAS` 增量），由 `applySyncBatch` 在同一事务落库。
+- **新表**（`Migrations.swift` 注册 `v12_meetings`）：
+
+  ```sql
+  CREATE TABLE meetings (
+      account_id TEXT NOT NULL,
+      uid TEXT NOT NULL,
+      folder_id TEXT NOT NULL,          -- 来源邮件（用于跳回与导出）
+      server_id TEXT NOT NULL,
+      subject TEXT,
+      start_utc REAL NOT NULL,
+      end_utc REAL NOT NULL,
+      is_all_day INTEGER NOT NULL DEFAULT 0,
+      location TEXT,
+      organizer TEXT,
+      reminder_minutes INTEGER,
+      response_requested INTEGER NOT NULL DEFAULT 0,
+      busy_status INTEGER,
+      message_type INTEGER NOT NULL,    -- 1 初始 / 2 更新 / 3 信息 / 4 过期 / 5/6 委派
+      is_cancelled INTEGER NOT NULL DEFAULT 0,
+      dtstamp REAL,
+      timezone_name TEXT,
+      timezone_offset_minutes INTEGER,
+      recurrence TEXT,                  -- JSON 编码的 RecurrenceRule；NULL = 单次
+      updated_at REAL NOT NULL,
+      PRIMARY KEY (account_id, uid)
+  );
+  CREATE INDEX idx_meetings_range ON meetings(account_id, start_utc);
+  ```
+
+  以 `uid` 为键（不是 `(folder, server)`）：同一会议会有「新建 / 更新 / 取消」多封邀请，视图只能出现一条。
+- **写入**（`applyDelta` 内，与信封 upsert 同一事务）：
+  - `added/changed` 里 `message.meeting != nil` → `INSERT … ON CONFLICT(account_id, uid) DO UPDATE`，仅当 `excluded.dtstamp >= meetings.dtstamp`（`NULL` 视为最旧）才覆盖，避免迟到的旧邀请盖掉新时间；
+  - `message.meeting.isCancelled == true` 或 `messageType == .outdated` → `DELETE FROM meetings WHERE account_id = ? AND uid = ?`；该邮件信封仍然入库（用户还能在列表里看到「已取消」邮件）；
+  - `removedServerIDs` → 删除 `folder_id/server_id` 匹配的行（同一 `uid` 的另一封邀请保留）；
+  - 会议邮件被软删（`messages.deleted_at`）不删会议行：删除是本地软删，日历以「最新一封邀请」为准；若最新一封被删，下一次同步的更新/取消会修正。
+- **读**（`MailStore` 新方法，住 `Sources/MailStore/MailStore+Meetings.swift`，约 90 行）：
+  - `meetings(account:from:to:limit:) throws -> [MeetingOccurrence]`：`start_utc <= to AND (recurrence IS NOT NULL OR end_utc >= from)`，`is_cancelled = 0 AND message_type != 4`，`ORDER BY start_utc`，`LIMIT`；`subject` 从 `messages` 按 `(folder_id, server_id)` join，缺失时用会议行自带 `subject`；
+  - `meeting(account:uid:) throws -> MeetingInvite?`；
+  - `meeting(account:uid:) throws -> MeetingInvite?`（阅读页卡片按 `uid` 取）；
+  - **列表读**：`messages(folderID:limit:)` 与 `searchLocal` 的 SELECT 左连 `meetings`（按 `folder_id`+`server_id`）填 `Message.meeting`，卡片不再二次查库；连接走 `idx_meetings_range` 之外的 `(account_id, folder_id, server_id)` 主键等值，单页 ≤200 行。
+- **迁移**：`v12_meetings` 建表 + 索引；同时把非 `folders` 的 `sync_key` 置 `"0"`（沿用 v9/v11 机制），升级后首轮按窗口重拉最近 ≤125 封补齐会议行；正文/附件缓存不动。旧邮件不会被伪造会议。
+- **迁移测试**（`MailStoreTests/MigrationTests`）：pre-v12 fixture 打开后可建表、旧邮件可读、游标归零；新库直建；重复 `applySyncBatch` 幂等；迟到旧邀请不覆盖新时间；取消删除行但邮件保留。
+- **预算（P1 变更）**：本组件现 1024 行（`MailStore.swift` 768 + `Migrations.swift` 178 + `SyncStoreConformance.swift` 40 + `Values.swift` 38，2026-11-24 `wc -l`），已超 1000 上限 24 行（既有欠账 R45）。本批新增约 110 行 → 约 1134 行，**超出硬上限**，故随本批把预算调整为 **1250 行**（P1，需人工确认），并把会议读写放 `MailStore+Meetings.swift`（≤120 行）；`MailStore.swift` 主文件保持 ≤800 行。若再造第二张同规模表，先拆组件而不是继续上调。
+- **不变量**：`MailStore` 仍是唯一写入口；会议行只随同步事务写；不改 `messages`/`message_bodies`/FTS/附件 schema；不新增第二写入口。

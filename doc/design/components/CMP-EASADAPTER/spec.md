@@ -98,3 +98,14 @@ component: CMP-EASADAPTER
 - 尺寸：当前 134 行；预计 +30，仍低于 300。
 
 **实现（2026-11-14）**：`EASAdapter` 同时遵循 `MailGateway` 与 `MailWriteGateway`；读/写响应共用 `Self.delta` 全量透传。`EASAdapterTests` 9 例绿，含 markRead/delete delta、写 401、3/4、503、500 映射。
+
+## 设计增量：会议邀请映射（REQ-0029 / REQ-0030，2026-11-24，未实现）
+
+- 来源：`CMP-EAS` 的 `EASMeeting`/`EASRecurrence`/`EASMeetingTimeZone`（见其增量）→ `MailDomain.MeetingInvite`。
+- `map(message:)` 增补（`EASAdapter.swift` +约 60 行）：
+  - 只为 `messageClass == "IPM.Schedule.Meeting.Request"` 生成 `MeetingInvite`；`"IPM.Schedule.Meeting.Canceled"` 生成 `isCancelled = true` 的 `MeetingInvite`（保留 `uid`，由 `MailStore` 删除对应行）；`IPM.Schedule.Meeting.Resp.*` 与 `IPM.Note*` 不生成会议。
+  - `EASMeeting` → `MeetingInvite`：`messageType` 缺省按 `.initial`；`interval` 归一为 `max(1, …)`；`weekdays` 由位掩码展开（未知位忽略）；`DayOfWeek == 127` → `lastDayOfMonth = true`；`weekOfMonth` 限定 1…5；`until` 原样（UTC）；`timeZone` 由 `biasMinutes` 转 `offsetSeconds = -bias * 60`，名称保留。
+  - `instanceType == 1`（主系列）→ `recurrence` 来自 `Recurrences/Recurrence`；`instanceType == 3`（例外）→ 不带 `recurrence`，由 `MailStore` 合并进主系列的 `exceptions`（按 `recurrenceId`）；`instanceType` 为 2/4 与缺失按单次处理（无法归属时宁可按单次显示，不猜系列）。
+  - `start/end` 缺失 → 不生成 `MeetingInvite`（退化为普通邮件，不阻塞信封落库）。
+- 不变量：映射不改变信封字段；不触网；EAS 类型不外漏；纯函数（可单测）。
+- 测试（`EASAdapterTests`）：请求/取消/其它 Class 三条；位掩码 62/65/127；每月第 3 个周三；`bias -480` → `offsetSeconds 28800`；缺 `start` 退化为无会议。

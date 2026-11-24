@@ -102,3 +102,14 @@ component: CMP-ROOT
 - 兼容性：`GatewayFactory` 是 Composition 内部注入面，改类型只影响组合根与装配测试；`MailGateway` 读契约不变。`AppComposition` 行数预算 ≤200 不变（预计 +3～5）。
 
 **实现（2026-11-14）**：`GatewayEndpoints{read,write}` 与 `GatewayFactory` 端点化；`PlatformGateway.make` 返回同一个 `EASAdapter` 的 read/write；`AppComposition`/`CommandLineComposition` 把 `endpoints.write` 传给 `SyncEngine`，把同一个 `engine` 传给 `ReadScene`。`CompositionTests` 17 例绿，含 `write is EASAdapter` 断言；`AppComposition` 182 行（上限 200）。
+
+## 设计增量：日历场景与视图模型装配（REQ-0029 / REQ-0030，2026-11-24，未实现）
+
+- 来源：`CMP-SCN-CALENDAR`（新场景）与 `CMP-PRES#CalendarViewModel`；只做构造与注入，不做业务判断（D9）。
+- `AppComposition`（184 → 约 194 行，仍 ≤200）：
+  - 构造 `CalendarScene(store: store, account: account)`；
+  - 构造 `CalendarViewModel(calendar: calendarScene)`，与 `MailboxViewModel` 并列暴露给 `UumailApp`；
+  - 不判断「有没有会议」「该显示月还是周」，不读 `meetings` 表。
+- `UumailApp`：把 `CalendarViewModel` 传给 `MailboxView`（新增参数）；根视图仍只在配置页/邮箱之间路由。
+- `CommandLineComposition`：本批不新增 CLI 命令；如后续要诊断，另立 `CMP-CLI` 增量（`meetings` 探针），不混进本批。
+- 尺寸与门禁：`AppComposition` ≤200 行（门 3）；`Composition` 业务 switch 门（门 4）不新增 `switch`；不新增 target/依赖。

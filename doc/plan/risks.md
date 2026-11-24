@@ -2,7 +2,7 @@
 layer: plan
 module: global
 status: draft
-updated: 2026-11-20
+updated: 2026-11-24
 ---
 
 # 风险
@@ -66,6 +66,11 @@ updated: 2026-11-20
 | R53 | 载体契约没有 CI 回归守护 | `uumail` 是可执行 target，`Package.swift` 无对应测试 target；探针只在 task-space，不入库；ATS 键/`cp` 接线回归靠里程碑手动断言 | 后续重构 `make-app.sh` 或 plist 时可能静默回退，直到用户再次遇到空白才发现 | 不新增 target/依赖（设计边界）；在 `SCN-0018` 与 `CMP-APP` 增量保留 L1 静态断言命令；里程碑/发布前按 `SCN-0018` 复跑；若将来改 `ComposeEditor` 的 WebView 配置，另拆探针任务，不静默扩 | `SCN-0018`、`task-spaces/20261119-213812/review4.md` §7 N6、`plan/roadmap.md` §W-M3-11 |
 | R54 | 像素/解压炸弹 guard 未实现（设计 `design2.md` §6 R11；项目 R11 已被敏感内容占用，故落 R54） | `InlineImageHTML` 只按 20MB 字节 guard 截断，且在 `Data(contentsOf:)` 之后；超像素/畸形大图仍可能交给 WebView | 极端畸形图可能卡顿/渲染失败；不改变正文文字可读性 | `T-SCN-0019-04` 只断言「有文字时正文可读」；后续 P2/独立任务用纯 Foundation 头解析补像素上限，若引入 ImageIO 先过架构门；不写成验收契约 | `task-spaces/20261120-111818/design2.md` §2 N6/§6 R11、`SCN-0019`、`task-spaces/20261120-111818/review5.md` §4 |
 | R55 | 注释/其它属性值内嵌套 `<img src=…>` 仍会被识别（`review4.md` §6 N1） | `InlineImageHTML` 的标签扫描不区分 HTML 注释/其它标签属性值内的字面量；`sources` 会收集、`replacingSources` 会改写 | 不改变可见正文、不产生第三方请求；注释内 `cid:` 若匹配附件会多一次本地 `downloadAttachment` | 后续 P3 把 `imgTagPattern` 限制在标签上下文（跳过注释/其它标签属性值）或换最小 HTML 分词器，补对应 L1；当前不写成已修复 | `task-spaces/20261120-111818/evidence/review4/edge-probe.txt`、`review4.md` §6 N1、`review5.md` §4 |
+| R56 | 重复会议按时区固定偏移展开，跨夏令时偏一小时 | 会议 TimeZone 带 `DaylightDate/DaylightBias`；本机/会议时区有 DST；展开点与 Outlook 差 60 分钟 | 用户在夏令时地区看到错时会议，且与 `.ics` 导入结果不一致 | 只解析 `Bias` + 名称，展开用固定偏移；`Asia/Shanghai` 无 DST 的部署不受影响；事件详情标注「时区按固定偏移」；要求精确则升级 Q5（完整 TZ 规则） | `design/components/CMP-DOMAIN/spec.md` 增量、`plan/open-questions.md` Q5、`SCN-0024` |
+| R57 | 同一 `UID` 的多封邀请乱序到达，旧时间覆盖新时间 | 同步窗口内旧邀请晚于更新到达；`DtStamp` 缺失/相同；取消与会话更新交错 | 日历显示过期时间，用户按错时间赴会 | 写入端按 `dtstamp` 只升不降（`NULL` 视为最旧）；取消/过期删除整行；`T-SCN-0024-04` 用「先新后旧」负例钉住；`DtStamp` 缺失时以到达顺序为准并登记 | `design/components/CMP-STORE/spec.md` 增量、`SCN-0024` |
+| R58 | 日历只覆盖升级后首轮同步窗口，旧邀请缺失被误读为「没有会议」 | 升级后 `sync_key="0"` 只重拉 ≤125 封；更早邀请不在 `meetings`；用户翻到上个月空 | 用户以为客户端丢会议，实际是回填窗口 | 空态文案写明「只展示升级后同步窗口内收到的邀请」；风险登记到 `REQ-0029` 约束；若需全量回填另立工序（按文件夹分页回扫） | `requirements/REQ-0029-calendar-views.md`、`SCN-0024` 失败路径 |
+| R59 | 月/周网格与会议卡的 L2 探针读不到文本/几何，只能降级 L1 | 无头 `NSHostingView` 下 `LazyVGrid` 单元格文本不可读、`.popover` 不出现、`GeometryReader` 帧为 0 | `SCN-0024` 的周视图定位与 `SCN-0023` 的「点击→导出」无法按 L2 验收 | 设计阶段先证 seam（月格文本、周块 frame、popover 可驱动）；不可行时由场景卡声明 L3 并写理由，不用 L1 投影冒充 | `design/components/CMP-APP/spec.md` 增量、`SCN-0023`/`SCN-0024` |
+| R60 | 网关不返回 `MeetingRequest`（或返回空 UID/时间）时，日历页整页为空 | 其它 Exchange 版本/网关策略；`MessageClass` 为请求类但无 `MeetingRequest` 子树 | 用户以为功能没做，实际是服务端不下发 | `EASClientTests` 覆盖「请求类邮件但缺 `MeetingRequest`」→ 退化为普通邮件、不崩；日历页空态提示「未识别到会议邀请」；不伪造事件、不猜正文时间 | `design/components/CMP-EAS/spec.md` 增量、`SCN-0024` 失败路径 |
 
 2026-11-17 设计处置（run `20261117-071134`，`REQ-0020`/`SCN-0015`；**未关闭**，实现/验证时按场景卡复核；第 2 轮按评审 fail 修订）：
 
@@ -76,10 +81,11 @@ updated: 2026-11-20
 - **R43**：L2 seam 的设计阶段出口已达成，但**证据来源拆开**：100% 用未修改生产源；225% 用“生产源 + 设计 diff 补丁副本”（`round2/patched/`、`patches/`）；生产源 225% 复跑标为**实现期 L2**，不再写成“设计期已证生产”。设计期已测：菜单（真实 App+父菜单打开）、界面字体（`NSTextField.font`）、生产头部 100%（159.5pt）与设计 diff 副本 225%（312.5pt/44×2.25/不重叠）、完整 body 视口（100% 273、120% 242.5、145% 205、175/225% 259）、`EmptyState`/按钮/根错误页（100% 逐点相等、120/225 比例 1.2/2.25）、工具栏（`NSToolbar.visibleItems`）。限制与非 `textSelection` 文本的替代（源码覆盖审计）已写入 `SCN-0015` 与 `design.md` §9，不静默降级。
 - **R44**：`@State` 会话真源 + store 不抛/不回滚；首帧读取；独立 key `appearance.fontSize`；父菜单打开再读勾选（R26）；L1 覆盖缺失/损坏/持久化/幂等，L2 覆盖 seed 175 首帧与重复 no-op。证据 `MenuProbe.txt`/`MenuProbe.seed175.txt`，决策记录 `history/decisions/2026-11-17-font-size.md` 与第 2 轮 `history/decisions/2026-11-17-font-size-round2.md`（默认确认，未经人工）。
 
+
 ## 风险等级口径
 
 - 高：直接使项目不可用或造成合规事故（R1、R2、R11）。
-- 中：影响关键旅程但可降级（R3、R4、R5、R6、R8、R12、R13、R18、R19、R21、R22、R23、R24、R27、R28、R29、R31、R32、R33、R34、R35、R36、R37、R38、R39、R40、R41、R42、R43、R44、R45、R47、R48、R49、R50、R51、R52、R53、R54）。
+- 中：影响关键旅程但可降级（R3、R4、R5、R6、R8、R12、R13、R18、R19、R21、R22、R23、R24、R27、R28、R29、R31、R32、R33、R34、R35、R36、R37、R38、R39、R40、R41、R42、R43、R44、R45、R47、R48、R49、R50、R51、R52、R53、R54、R56、R57、R58、R59、R60）。
 - 低：局部体验或可回滚（R7、R9、R10、R15、R25、R26、R30、R46、R55）。
 
 R14 已于 2026-11-14 关闭（T-1114-02：网关 Sync 信封实测返回 `Cc`）。R16/R17/R20 已于 2026-11-14 关闭（真机写命令、预算拆分、写响应语义）。R27–R31 为 2026-11-16 阅读页信封头新增，**未关闭**；落点与缓解见各行。
