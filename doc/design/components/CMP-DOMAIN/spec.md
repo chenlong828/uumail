@@ -23,7 +23,7 @@ component: CMP-DOMAIN
 - 入口：`Sources/MailDomain/Values.swift#AccountID`、`Ports.swift#MailGateway`、`Errors.swift#MailError`、`Configuration.swift#ServerConfiguration`、`Contacts.swift#ContactAddress`、`#ContactEnvelope`、`#ContactDirectory`、`#RecipientText`（2026-11-18 新增）
 - 依赖：仅 Foundation。扇出 0。
 - 冷热：两侧共用；只做值传递。
-- 尺寸预算：目标 ≤800 行；当前 545 行（`wc -l` 2026-11-18，`AddressList` 等 5 个文件）；2026-11-18 设计新增 `Contacts.swift` 约 150 行 → 约 695 行，仍低于 800；上限 120k token。
+- 尺寸预算：目标 ≤800 行；**当前 1503 行已超**（2026-11-24 `wc -l`：`Meeting.swift` 682 + 其它 821；会议值类型 2026-11-24 P1 加入后未重新定预算）。是否拆出会议契约或上调预算需另行拍板（`plan/risks.md` R77），本批不静默调预算、不做拆分。
 - 单独运行：`./Scripts/swiftw test --filter MailDomainTests`
 - 删除测试：删掉后 `Scenes`、`MailStore`、`SyncEngine`、`Outbox` 各自定义同名类型并互相转换 → 复杂度集中，是真边界。
 

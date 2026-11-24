@@ -9,7 +9,7 @@ updated: 2026-11-24
 
 macOS 原生邮件客户端，只支持 EAS（Exchange ActiveSync），以「一台已登记的 iPhone」身份接入私有化 Exchange 2016/2019。首版覆盖账号接入、文件夹与收件箱同步、阅读、发送、附件、本地搜索、离线缓存与系统通知。
 
-本文是**现行架构真相**。2026-11-10 起的场景收口与分层重构（W-SCN-REFACTOR）已冻结并落地：9 个库 target + 2 个可执行 target，`AppServices` 退役，4 个场景类收口每条业务流。过程记忆与裁决见 `history/works/2026-11-10-scene-refactor/`，不作为设计依据。
+本文是**现行架构真相**。2026-11-10 起的场景收口与分层重构（W-SCN-REFACTOR）已冻结并落地：10 个库 target + 2 个可执行 target，`AppServices` 退役，4 个场景类收口每条业务流。过程记忆与裁决见 `history/works/2026-11-10-scene-refactor/`，不作为设计依据。
 
 ## 0. 结论先行
 
@@ -122,10 +122,11 @@ graph TD
 | Target | 层 | 依赖 | 入口 |
 |---|---|---|---|
 | `MailDomain` | L1 | Foundation | `Sources/MailDomain/{Values,Ports,Errors,Configuration}.swift` |
-| `MailStore` | L1a | `MailDomain`、GRDB | `Sources/MailStore/MailStore.swift#MailStore`、`OutboxStore.swift#OutboxStore`（2026-11-24 起 outbox 表读写） |
+| `HTMLSupport` | L1 工具 | `MailDomain` | `Sources/HTMLSupport/{HTMLText,InlineImageHTML}.swift`（2026-11-24 从 `Scenes` 析出，CMP-HTML） |
+| `MailStore` | L1a | `MailDomain`、GRDB | `Sources/MailStore/MailStore.swift#MailStore`、`OutboxStore.swift#OutboxStore`（outbox 表读写）、`MeetingStore+{Read,Write}.swift`（meetings 表读写，CMP-MEETING-STORE） |
 | `SyncEngine` | L1b | `MailDomain` | `Sources/SyncEngine/SyncEngine.swift#SyncEngine` |
 | `Outbox` | L1b | `MailDomain`、`MailStore` | `Sources/Outbox/Outbox.swift#Outbox`、`MimeBuilder.swift#MimeBuilder` |
-| `EASClient` | L0 | Foundation | `Sources/EASClient/EASClient.swift#EASClient`、`WBXML.swift#WBXML` |
+| `EASClient` | L0 | Foundation | `Sources/EASClient/EASClient.swift#EASClient`、`WBXML.swift#WBXML`（CMP-WBXML） |
 | `EASAdapter` | L0（防腐） | `MailDomain`、`EASClient` | `Sources/EASAdapter/EASAdapter.swift#EASAdapter` |
 | `Scenes` | L2 | `MailDomain`、`MailStore`、`SyncEngine`、`Outbox` | `Sources/Scenes/*Scene.swift` |
 | `Presentation` | L3 | `MailDomain`、`Scenes`、Observation | `Sources/Presentation/*ViewModel.swift` |
@@ -149,6 +150,8 @@ graph TD
 | 组件 | 规格 | 层 |
 |---|---|---|
 | `CMP-DOMAIN` | `design/components/CMP-DOMAIN/spec.md` | L1 契约 |
+| `CMP-HTML` | `design/components/CMP-HTML/spec.md` | L1 工具（纯函数） |
+| `CMP-WBXML` | `design/components/CMP-WBXML/spec.md` | L0 工具（编解码） |
 | `CMP-STORE` | `design/components/CMP-STORE/spec.md` | L1a 数据服务 |
 | `CMP-SYNC` | `design/components/CMP-SYNC/spec.md` | L1b 能力 |
 | `CMP-OUT` | `design/components/CMP-OUT/spec.md` | L1b 能力 |
@@ -159,6 +162,7 @@ graph TD
 | `CMP-SCN-READ` | `design/components/CMP-SCN-READ/spec.md` | L2 场景 |
 | `CMP-SCN-COMPOSE` | `design/components/CMP-SCN-COMPOSE/spec.md` | L2 场景 |
 | `CMP-OUTBOX-STORE` | `design/components/CMP-OUTBOX-STORE/spec.md` | L1a 数据（outbox 表） |
+| `CMP-MEETING-STORE` | `design/components/CMP-MEETING-STORE/spec.md` | L1a 数据（meetings 表） |
 | `CMP-SCN-CALENDAR` | `design/components/CMP-SCN-CALENDAR/spec.md` | L2 场景 |
 | `CMP-PRES` | `design/components/CMP-PRES/spec.md` | L3 表现 |
 | `CMP-APP` | `design/components/CMP-APP/spec.md` | L3 视图 |
@@ -189,7 +193,9 @@ graph TD
 | `Outbox` | 2 | ≤4 | `MailStore` + `MailGateway`（MIME 内部） |
 | `EASAdapter` | 2 | ≤5 | `MailDomain` + `EASClient` |
 | 每个场景 | 1–3 | ≤5 | 端口计入 `MailDomain`，不重复计；`ReadScene` 因写路径增 `SyncEngine`（T-1114-10 设计，2026-11-14 已实现）。原预算 1–2；上调至 1–3 是本次唯一新增的组件级依赖，已进 P1 确认清单与决策记录项，替代方案为窄 `SyncWriting` 端口（保持 2） |
-| `Presentation` | 1 | ≤3 | 只依赖 `Scenes`（与 `MailDomain` 值类型） |
+| `Scenes` | 5 | ≤8 | `MailDomain`、`MailStore`、`SyncEngine`、`Outbox`、`HTMLSupport`；单个场景仍 1–3（≤5） |
+| `Presentation` | 2 | ≤3 | `Scenes` + `HTMLSupport`（与 `MailDomain` 值类型） |
+| `HTMLSupport` | 1 | ≤5 | 只依赖 `MailDomain` 的 `Attachment` 值类型 |
 | `Composition` | 8 | 豁免 | 组合根（全部库 target） |
 
 扇入：`MailDomain` 被全部模块依赖（平台级 → 契约评审、兼容性测试）；`MailStore` 被 `Outbox`/`Scenes`/`Composition` 依赖（扇入 3；作为唯一数据写入口，写契约变更按 P1）；`Scenes` 被 `Presentation` 与 `uumailctl` 依赖。
@@ -403,8 +409,8 @@ CommandLineComposition（127 行）
 
 ### 7.1 当前验证面
 
-- `./Scripts/swiftw test` → **437 tests / 71 suites**（2026-11-24，W-M3-16 完成后复测）。
-- 测试 target：`MailDomainTests`、`MailStoreTests`、`SyncEngineTests`、`OutboxTests`、`EASClientTests`、`EASAdapterTests`、`ScenesTests`、`PresentationTests`、`CompositionTests`。
+- `./Scripts/swiftw test` → **460 tests / 77 suites**（2026-11-24，W-M3-17 完成后复测）。
+- 测试 target：`MailDomainTests`、`HTMLSupportTests`、`MailStoreTests`、`SyncEngineTests`、`OutboxTests`、`EASClientTests`、`EASAdapterTests`、`ScenesTests`、`PresentationTests`、`CompositionTests`。
 - `bash Scripts/check-architecture.sh` → 4 门：per-target import 白名单、场景互调、`AppComposition` ≤200 行、`Composition` 业务 switch。4 门全过。
 - schema 迁移：`MailStoreTests/MigrationTests` 的 pre-v8 与 pre-v9 fixture。
 - 性能：`MailStoreTests/PerformanceTests` 5k 基线；重构后未复测 P95。
@@ -494,7 +500,7 @@ D10 的决策记录：`history/decisions/2026-11-13-fetched-body-contract.md`。
 9. **`backup/pre-autosquash` 分支保留**，不删。
 10. **收件人联想为会话内投影**（REQ-0022/SCN-0017，2026-11-18 设计）：不持久、不改 schema；每文件夹最多 500 封、总计最多 5,000 封，超出部分的旧邮件联系人、已清理邮件或未同步文件夹中的联系人不出现，当前已接受；若产品要求持久联系人，另立 v11 `contacts` 需求并先解决 `MailStore` 1008/1000 的预算问题（R45）。
 11. **内联图片已持久化 `ContentId`**（REQ-0025/SCN-0019，2026-11-21，P1）：`attachments` v11 增加 `content_id` 可空列；`Attachment.contentID` 由 `EASClient` 从 `ContentId` 解析、`MailStore` 读回；`InlineImageHTML.matches` 以它优先，名字规则保留为回退。v11 迁移把消息游标置 `"0"`，升级后首轮按窗口重拉 ≤125 封补齐旧行；`IsInline` 仍不解析、不落库。决策 `history/decisions/2026-11-21-inline-image-content-id.md`。
-12. **`Scenes` 组件超过 800 行历史预算**（2026-11-20 实测 1006；本设计 +约 170）：属既有超出，本设计登记不静默调预算；task-split 须写上限（本批新增 ≤170 行）与拆分触发（再改 `Scenes` 使其 >1200 行，或出现第二个 HTML 纯工具时，另立 P1 任务拆 `HTMLText`/`InlineImageHTML` 到纯工具组件）。
+12. **`Scenes` 预算已按 2026-11-24 D1 处理**：`HTMLText`/`InlineImageHTML` 拆到 `CMP-HTML`（新 target `HTMLSupport`，391 行），`Scenes` 现 **923/1200**；`ReadScene` 的按引用读取与时间窗读取未增 target。
 13. **日历只展示「收到的邀请」**（REQ-0029/REQ-0030，2026-11-24 设计）：不同步 Exchange 日历集合（folder type 8），已接受后服务器日历里的预约、别人改期后的预约、自己新建的日程都不出现；不接受/拒绝、不调 `MeetingResponse`（B 方案另立）。
 14. **日历时区按固定偏移展开**（2026-11-24 设计）：只解析 EAS `TimeZone` blob 的 `Bias` 与名称，`StandardDate/DaylightDate` 不解析；重复系列跨夏令时会偏一小时。本部署在 `Asia/Shanghai`（无夏令时），登记为可接受限制（`plan/open-questions.md` Q5、`plan/risks.md` R56）。
 15. **不回填历史邀请**（2026-11-24 人工确认）：`meetings` v12 不重置游标、不回扫历史；升级后日历从空开始，只有升级后新到的邀请出现，升级前的邀请邮件也没有会议卡。用户已确认接受该代价（空态文案必须说明）。

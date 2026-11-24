@@ -27,7 +27,7 @@ component: CMP-PRES
 - 入口：`Sources/Presentation/MailboxViewModel.swift#MailboxViewModel`、`ComposeViewModel.swift#ComposeViewModel`（2026-11-18 新增收件人联想成员）、`AccountSetupViewModel.swift#AccountSetupViewModel`、`ErrorText.swift#ErrorText`、`PresentationTypes.swift#BodyPresentation`、`ThemePreference.swift#ThemePreference/#ThemePreferenceStore`、`FontSizePreference.swift#FontSizePreference/#FontSizePreferenceStore`（2026-11-17 设计新增）、`MessageHeaderPresentation.swift#MessageHeaderPresentation`（2026-11-16 新增）
 - 依赖：`Scenes`、`MailDomain`、`Observation`、`Foundation`（`UserDefaults`；不算新组件依赖）。扇出 1。
 - 冷热：热（主线程）；主题与字号偏好的读/写都是低频冷路径（启动一次 + 选择一次），不与 VM 热路径共享状态；收件人候选是撰写页主线程内存过滤，不查库、不触网。
-- 尺寸预算：单文件 ≤400 行；当前（2026-11-20 实测）`MailboxViewModel` **381**、`MailboxViewModel+Body` **109**、`ComposeViewModel` **263**、`AccountSetupViewModel` 100、`ThemePreference` 50、`MailboxDwell` 59、`FontSizePreference` 约 55；`Presentation` 共 **1669** 行。2026-11-20 设计新增 `MailboxViewModel` 约 +8、`MailboxViewModel+Body` 约 +30；不新增文件；单文件仍 ≤400。
+- 尺寸预算：单文件 ≤400 行；当前（2026-11-24 实测）`MailboxViewModel` **366**、`MailboxViewModel+List` 69、`CalendarViewModel` **172**、`CalendarProjection` **254**、`ReaderViewModel` 223、`ReaderRouter` 120、`ComposeViewModel` 284；`Presentation` 共 **2721** 行。2026-11-24 预算拆分后所有单文件 ≤400（此前 `MailboxViewModel` 424、`CalendarViewModel` 424）。
 - 单独运行：`./Scripts/swiftw test --filter PresentationTests`
 - 删除测试：删掉后视图直接持有场景并写展示逻辑，测试无法覆盖状态机 → 复杂度集中，是真边界。
 
@@ -619,3 +619,12 @@ component: CMP-PRES
   已登记 `plan/risks.md` R70；拆分不在本批夹带。
 - 测试 `Tests/PresentationTests/ReaderViewModelTests.swift` 10 例（3 套件）：路由尺寸/三态、缓存正文与即读写一次、
   缺失 ref、回复种子、预览不可引用、窗口边界与无 200 条截断、空文件夹。
+
+## 实现（2026-11-24，W-REFACTOR-03 预算拆分）
+
+- `MailboxViewModel.swift` 424 → **366**：列表加载与选中（`reloadFolders`/`reloadCurrentList`/`select(_:open:)`/`clearSelection`/`isHidden`）
+  移到 `MailboxViewModel+List.swift`（69 行）。
+- `CalendarViewModel.swift` 424 → **172**：纯网格数学 `CalendarProjection` 移到 `CalendarProjection.swift`（254 行）。
+- **公开面变更（P2）**：`MailboxViewModel.messages` 与 `.folders` 的 setter 由 `private(set)` 放宽为 `internal(set)`，供同模块扩展写；
+  公开读面与语义不变，app/组合根仍只读。`MailboxViewModel.selection` 仍是 `internal(set)`（既有）。
+- 验证：`PresentationTests` 全绿；`MailboxViewModel` 单文件 366/400。

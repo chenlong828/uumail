@@ -23,7 +23,7 @@ component: CMP-STORE
 - 入口：`Sources/MailStore/MailStore.swift#MailStore`、`SyncStoreConformance.swift`（`MailStore: SyncStore`）
 - 依赖：`MailDomain`、GRDB。扇出 2。
 - 冷热：读热、写冷热混合；`DatabaseQueue` 单写。
-- 尺寸预算：硬上限 1000 行；当前 **1024 行**（`MailStore.swift` 768 + `Migrations.swift` 178 + `SyncStoreConformance.swift` 40 + `Values.swift` 38，`wc -l` 2026-11-24），已超 24 行（既有欠账 R45）。2026-11-24 决定：不调预算，先把 outbox 表物理读写拆到 `CMP-OUTBOX-STORE`（约 −210 行 → 约 814），再加 `meetings` 约 110 行 → 约 924；见文末「outbox 物理读写拆出」增量。
+- 尺寸预算：硬上限 1000 行；当前 **952 行**（`MailStore.swift` 591 + `MailStore+Lookup.swift` 73 + `Migrations.swift` 210 + `SyncStoreConformance.swift` 40 + `Values.swift` 38，2026-11-24 `wc -l`）。2026-11-24 起 `meetings` 读写析出到 `CMP-MEETING-STORE`（287 行），outbox 早已独立到 `CMP-OUTBOX-STORE`；账号/文件夹拆分仍归 `W-REFACTOR-02`。
 - 单独运行：`./Scripts/swiftw test --filter MailStoreTests`
 - 删除测试：删掉后场景、同步、搜索各自拼 SQL 并各自维护 SyncKey → 复杂度分散，是真边界。
 
@@ -203,7 +203,7 @@ component: CMP-STORE
   - **列表读**：`messages(folderID:limit:)` 与 `searchLocal` 的 SELECT 左连 `meetings`（按 `folder_id`+`server_id`）填 `Message.meeting`，卡片不再二次查库；连接走 `idx_meetings_range` 之外的 `(account_id, folder_id, server_id)` 主键等值，单页 ≤200 行。
 - **迁移**：`v12_meetings` 建表 + 索引；同时把非 `folders` 的 `sync_key` 置 `"0"`（沿用 v9/v11 机制），升级后首轮按窗口重拉最近 ≤125 封补齐会议行；正文/附件缓存不动。旧邮件不会被伪造会议。
 - **迁移测试**（`MailStoreTests/MigrationTests`）：pre-v12 fixture 打开后可建表、旧邮件可读、游标归零；新库直建；重复 `applySyncBatch` 幂等；迟到旧邀请不覆盖新时间；取消删除行但邮件保留。
-- **预算（2026-11-24 人工确认「先拆」）**：本组件现 1024 行（`MailStore.swift` 768 + `Migrations.swift` 178 + `SyncStoreConformance.swift` 40 + `Values.swift` 38），已超 1000 上限 24 行（既有欠账 R45）。本批不调预算，改为**先把 outbox 表物理读写拆到 `CMP-OUTBOX-STORE`**（约 −210 行，见文末增量）：拆分后本组件约 **814 行**，加 `meetings` 约 110 行后约 **924 行**，回到 1000 行以内。会议读写放 `MailStore+Meetings.swift`（≤120 行），`MailStore.swift` 主文件保持 ≤800 行。账号/文件夹拆分另立 `W-REFACTOR-02`（`sync_state` 事务边界需另设计）。
+- **预算（2026-11-24 拆分后实测）**：`CMP-STORE` **952/1000**（`MailStore.swift` 591 + `MailStore+Lookup.swift` 73 + `Migrations.swift` 210 + `SyncStoreConformance.swift` 40 + `Values.swift` 38）；`MailStore+Meetings.swift`（273 行）已拆为 `MeetingStore+Read.swift` 140 + `MeetingStore+Write.swift` 147，并归 `CMP-MEETING-STORE`（≤400）。账号/文件夹拆分仍另立 `W-REFACTOR-02`，本批不夹带。
 - **不变量**：`MailStore` 仍是唯一写入口；会议行只随同步事务写；不改 `messages`/`message_bodies`/FTS/附件 schema；不新增第二写入口。
 
 ## 设计增量：启用 WAL（2026-11-24，人工确认）

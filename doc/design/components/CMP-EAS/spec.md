@@ -23,7 +23,7 @@ component: CMP-EAS
 - 入口：`Sources/EASClient/EASClient.swift#EASClient`、`WBXML.swift#WBXML`、`URLSessionTransport.swift#URLSessionTransport`
 - 依赖：Foundation（URLSession）、WBXML 编解码、传输层。扇出 0 本仓 target。
 - 冷热：冷；独立 URLSession、连接数受限。
-- 尺寸预算：≤1500 行；当前 **1297 行**（含 WBXML 与传输；2026-11-21 实测）。
+- 尺寸预算：≤1500 行；当前 **1150 行**（`EASClient.swift` 1065 + `URLSessionTransport.swift` 85，2026-11-24 `wc -l`）。`WBXML.swift`（363 行）已于 2026-11-24 析出到 `CMP-WBXML`（同 target、独立测试），本组件此前 1513 行超 1500。
 - 单独运行：`./Scripts/swiftw test --filter EASClientTests`；协议探活另有命令行入口，见 playbook §7。
 - 删除测试：删掉后 `EASAdapter` 要自己拼 HTTP 与 WBXML，版本降级复制两份 → 复杂度集中，是真边界。
 

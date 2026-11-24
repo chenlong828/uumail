@@ -49,3 +49,5 @@ macOS 原生邮件客户端，只走 Exchange ActiveSync（以「一台已登记
 | `history/` | 记忆 | 怎么走到这里的（冻结只读） |
 
 凭据与设备 ID 不入库：运行时值放 `.env` 或 Keychain，文档只描述形状。
+
+2026-11-24 完成预算拆分（W-REFACTOR-03，按 D1「不上调预算」）：`Scenes` 拆出 `HTMLText`/`InlineImageHTML` 到新组件 `CMP-HTML`（新 target `HTMLSupport`，391 行），`Scenes` 1306→923；`CMP-STORE` 的 meetings 读写拆为 `CMP-MEETING-STORE`（287 行），`CMP-STORE` 1225→952；`CMP-EAS` 的 `WBXML` 析出为 `CMP-WBXML`（363 行），`CMP-EAS` 1513→1150；`MailboxViewModel` 424→366、`CalendarViewModel` 424→172（新增 `MailboxViewModel+List` 与 `CalendarProjection`）；`CMP-APP` 各文件 ≤300。`MailDomain` 1503 行仍超 800 目标，登记 R77 待 P1 决定。验证：460 tests / 77 suites、架构 4/4、`make-app.sh` 成功。
