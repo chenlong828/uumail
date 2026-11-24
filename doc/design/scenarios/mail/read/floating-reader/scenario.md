@@ -1,7 +1,7 @@
 ---
 layer: design
 module: mail
-status: designed
+status: verified
 updated: 2026-11-24
 flow: mail/read
 scenario: SCN-0025

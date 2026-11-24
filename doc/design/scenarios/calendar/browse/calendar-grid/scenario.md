@@ -1,7 +1,7 @@
 ---
 layer: design
 module: calendar
-status: designed
+status: verified
 updated: 2026-11-24
 flow: calendar/browse
 scenario: SCN-0024
