@@ -9,8 +9,8 @@ import Scenes
 @MainActor
 @Observable
 public final class MailboxViewModel {
-    public private(set) var folders: [Folder] = []
-    public private(set) var messages: [Message] = []
+    public internal(set) var folders: [Folder] = []
+    public internal(set) var messages: [Message] = []
     public internal(set) var body: BodyPresentation = .none
     /// Current body with `cid:` image sources replaced by `data:` URLs. View state only:
     /// never persisted and never copied into `body`/`quotableHTML` (REQ-0025 / SCN-0019).
@@ -354,71 +354,13 @@ public final class MailboxViewModel {
 
     // MARK: - Local reads
 
-    private func reloadFolders() throws {
-        folders = try read.folders()
-        if let current = selection.folderID, folders.contains(where: { $0.serverID == current }) {
-            return
-        }
-        selection.folderID = folders.first(where: \.isInbox)?.serverID ?? folders.first?.serverID
-    }
-
     /// Surfaces a local list reload failure from extensions in other files (the setter of
     /// `sync` is private to this file).
     func presentLocalListFailure(_ error: Error) {
         sync.phase = .failed(ErrorText.text(for: error))
     }
 
-    func reloadCurrentList(autoSelect: Bool) throws {
-        let query = selection.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        if query.isEmpty {
-            guard let folder = selection.folderID else {
-                messages = []
-                clearSelection()
-                return
-            }
-            // REQ-0033: the folder's last 30 days, no row cap (the sync window is one
-            // month, so this is everything the local store holds for the folder).
-            messages = try read.messages(folderID: folder, since: Self.listWindowStart())
-        } else {
-            messages = try read.search(query, limit: 100)
-        }
 
-        if let key = selectedListKey,
-           let message = messages.first(where: { Self.listKey(for: $0) == key }),
-           !isHidden(message) {
-            return
-        }
-        if let id = selection.messageID,
-           let message = messages.first(where: { $0.serverID == id }),
-           !isHidden(message) {
-            selectedListKey = Self.listKey(for: message)
-            return
-        }
-        if autoSelect, let first = visibleMessages.first {
-            select(first, open: true)
-        } else {
-            clearSelection()
-        }
-    }
 
-    private func select(_ message: Message, open: Bool) {
-        selectedListKey = Self.listKey(for: message)
-        selection.messageID = message.serverID
-        refreshDwell()
-        if open {
-            startBodyLoad()
-        }
-    }
 
-    private func clearSelection() {
-        selection.messageID = nil
-        selectedListKey = nil
-        clearBody()
-        dwell.cancel()
-    }
-
-    func isHidden(_ message: Message) -> Bool {
-        guard let ref = ref(for: message) else { return false }
-        return deletion.hidden.contains(ref)
-    }
 }

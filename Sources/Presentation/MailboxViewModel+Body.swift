@@ -1,5 +1,6 @@
 import Foundation
 import MailDomain
+import HTMLSupport
 import Scenes
 
 /// Body loading lives in its own file so the mailbox state machine stays under the

@@ -1,5 +1,6 @@
 import Foundation
 import MailDomain
+import HTMLSupport
 
 extension ReadScene {
     /// The current body's referenced inline attachments as `data:`-rewritten HTML; `nil`

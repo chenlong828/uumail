@@ -1,6 +1,7 @@
 import Foundation
 import MailDomain
 import MailStore
+import HTMLSupport
 import SyncEngine
 import Testing
 

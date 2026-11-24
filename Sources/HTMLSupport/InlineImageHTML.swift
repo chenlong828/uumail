@@ -3,10 +3,15 @@ import MailDomain
 
 /// Turns `cid:` image references into `data:` URLs. Pure functions only: the caller matches
 /// attachments and fetches bytes; everything except the replaced `src` values stays untouched.
-enum InlineImageHTML {
-    struct Match {
-        let source: String
-        let attachment: Attachment
+public enum InlineImageHTML {
+    public struct Match {
+        public let source: String
+        public let attachment: Attachment
+
+        init(source: String, attachment: Attachment) {
+            self.source = source
+            self.attachment = attachment
+        }
     }
     private static let imageExtensions: Set<String> = [
         "png", "jpg", "jpeg", "gif", "webp", "bmp", "tif", "tiff", "heic",
@@ -23,7 +28,7 @@ enum InlineImageHTML {
         pattern: "(?i)(?<![\\w:-])src\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s\"'=<>`]+?))(?=\\s|/?>)"
     )
     /// Original spellings of the distinct `cid:` values in document order.
-    static func sources(inHTML html: String) -> [String] {
+    public static func sources(inHTML html: String) -> [String] {
         var seen = Set<String>()
         return sourceRanges(inHTML: html).compactMap { source in
             let value = source.value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -33,7 +38,7 @@ enum InlineImageHTML {
     }
     /// `cid:` prefix, brackets, percent escapes and case removed. The bracket pass runs
     /// again after decoding so `cid:%3Clogo%3E` normalizes like `cid:<logo>`.
-    static func normalizedCID(_ cid: String) -> String {
+    public static func normalizedCID(_ cid: String) -> String {
         var value = cid.trimmingCharacters(in: .whitespacesAndNewlines)
         if value.lowercased().hasPrefix("cid:") { value = String(value.dropFirst(4)) }
         return normalizedToken(value)
@@ -43,7 +48,7 @@ enum InlineImageHTML {
     /// The server-reported `ContentId` wins when present (Foxmail/Outlook style opaque
     /// `cid:` values carry no file name); the older display-name rules remain the fallback
     /// for gateways and mail synced before schema v11.
-    static func matches(inHTML html: String, attachments: [Attachment]) -> [Match] {
+    public static func matches(inHTML html: String, attachments: [Attachment]) -> [Match] {
         sources(inHTML: html).compactMap { source in
             let cid = normalizedCID(source)
             guard !cid.isEmpty else { return nil }
@@ -70,13 +75,13 @@ enum InlineImageHTML {
         }
     }
     /// A `data:` URL only for bytes that actually carry a supported image signature.
-    static func dataURL(for data: Data) -> String? {
+    public static func dataURL(for data: Data) -> String? {
         guard let mime = imageMIME(for: data) else { return nil }
         return "data:\(mime);base64,\(data.base64EncodedString())"
     }
     /// Replaces only the value ranges whose exact spelling is in `replacements`; absent keys
     /// and every other byte of the document stay untouched.
-    static func replacingSources(inHTML html: String, with replacements: [String: String]) -> String {
+    public static func replacingSources(inHTML html: String, with replacements: [String: String]) -> String {
         guard !replacements.isEmpty else { return html }
         let edits = sourceRanges(inHTML: html).compactMap { source -> (NSRange, String)? in
             guard let replacement = replacements[source.value.trimmingCharacters(in: .whitespacesAndNewlines)]

@@ -40,13 +40,14 @@ gate_imports() {
         target=${target%/}
         case "$target" in
             MailDomain) allowed="Foundation" ;;
+            HTMLSupport) allowed="Foundation MailDomain" ;;
             EASClient) allowed="Foundation" ;;
             EASAdapter) allowed="EASClient Foundation MailDomain" ;;
             MailStore) allowed="Foundation GRDB MailDomain" ;;
             SyncEngine) allowed="Foundation MailDomain" ;;
             Outbox) allowed="Foundation MailDomain MailStore" ;;
-            Scenes) allowed="Foundation MailDomain MailStore Outbox SyncEngine" ;;
-            Presentation) allowed="Foundation MailDomain Observation Scenes" ;;
+            Scenes) allowed="Foundation MailDomain MailStore Outbox SyncEngine HTMLSupport" ;;
+            Presentation) allowed="Foundation HTMLSupport MailDomain Observation Scenes" ;;
             Composition)
                 allowed="CryptoKit EASAdapter EASClient Foundation MailDomain MailStore Observation Outbox Presentation Scenes Security SyncEngine UserNotifications"
                 ;;

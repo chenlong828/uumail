@@ -1,4 +1,5 @@
 import Foundation
+import HTMLSupport
 import Scenes
 
 /// Turns a stored mail document into the editable page and back. The editor adds a CSP

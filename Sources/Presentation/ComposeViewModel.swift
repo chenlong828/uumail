@@ -1,5 +1,6 @@
 import Foundation
 import MailDomain
+import HTMLSupport
 import Observation
 import Scenes
 

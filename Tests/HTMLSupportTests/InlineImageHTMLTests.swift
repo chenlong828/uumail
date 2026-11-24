@@ -2,7 +2,7 @@ import Foundation
 import MailDomain
 import Testing
 
-@testable import Scenes
+@testable import HTMLSupport
 
 @Suite("InlineImageHTML")
 struct InlineImageHTMLTests {

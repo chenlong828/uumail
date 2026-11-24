@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .library(name: "EASClient", targets: ["EASClient"]),
         .library(name: "MailDomain", targets: ["MailDomain"]),
+        .library(name: "HTMLSupport", targets: ["HTMLSupport"]),
         .library(name: "EASAdapter", targets: ["EASAdapter"]),
         .library(name: "MailStore", targets: ["MailStore"]),
         .library(name: "SyncEngine", targets: ["SyncEngine"]),
@@ -26,6 +27,7 @@ let package = Package(
             resources: [.process("Resources")]
         ),
         .target(name: "MailDomain"),
+        .target(name: "HTMLSupport", dependencies: ["MailDomain"]),
         .target(
             name: "EASAdapter",
             dependencies: ["EASClient", "MailDomain"]
@@ -38,11 +40,11 @@ let package = Package(
         .target(name: "Outbox", dependencies: ["MailDomain", "MailStore"]),
         .target(
             name: "Scenes",
-            dependencies: ["MailDomain", "MailStore", "SyncEngine", "Outbox"]
+            dependencies: ["MailDomain", "MailStore", "SyncEngine", "Outbox", "HTMLSupport"]
         ),
         .target(
             name: "Presentation",
-            dependencies: ["MailDomain", "Scenes"]
+            dependencies: ["MailDomain", "Scenes", "HTMLSupport"]
         ),
         .target(
             name: "Composition",
@@ -63,6 +65,7 @@ let package = Package(
         ),
         .testTarget(name: "EASClientTests", dependencies: ["EASClient"]),
         .testTarget(name: "MailDomainTests", dependencies: ["MailDomain"]),
+        .testTarget(name: "HTMLSupportTests", dependencies: ["HTMLSupport", "MailDomain"]),
         .testTarget(name: "EASAdapterTests", dependencies: ["EASAdapter", "EASClient", "MailDomain"]),
         .testTarget(
             name: "CompositionTests",
@@ -77,7 +80,7 @@ let package = Package(
         .testTarget(
             name: "ScenesTests",
             dependencies: [
-                "Scenes", "MailDomain", "MailStore", "SyncEngine", "Outbox",
+                "Scenes", "MailDomain", "MailStore", "SyncEngine", "Outbox", "HTMLSupport",
                 .product(name: "GRDB", package: "GRDB.swift"),
             ]
         ),
