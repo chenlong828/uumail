@@ -72,7 +72,7 @@ struct MailboxToolbar: ToolbarContent {
             Button(action: actions.refresh) {
                 Label("刷新", systemImage: "arrow.clockwise")
             }
-            .help("刷新收件箱")
+            .help("刷新当前邮箱")
             .disabled(state.isSyncing)
         }
     }

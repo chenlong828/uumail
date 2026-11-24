@@ -204,6 +204,46 @@ struct SyncEngineTests {
         #expect(store.resets.isEmpty)
     }
 
+    @Test("syncSentOnce syncs only Sent Items and leaves the inbox key alone")
+    func sentItems() async throws {
+        let sent = Folder(serverID: "18", parentID: "0", displayName: "已发送邮件", type: 5)
+        let gateway = FakeGateway(
+            folderListing: FolderListing(folders: [inbox, sent], syncKey: "7"),
+            deltas: [
+                "0": makeDelta(key: "400", added: []),
+                "400": makeDelta(key: "401", added: ["s1", "s2"]),
+            ]
+        )
+        let store = FakeStore()
+        try store.applySyncBatch(AccountID("a"), folder: "13", delta: makeDelta(key: "101", added: []))
+        let engine = SyncEngine(gateway: gateway, store: store, account: AccountID("a"), writeGateway: UnsupportedWriteGateway())
+
+        let report = try #require(try await engine.syncSentOnce())
+
+        #expect(report.folders == 2)
+        #expect(report.added == 2)
+        #expect(report.syncKey == "401")
+        #expect(store.keys["18"] == "401")
+        #expect(store.keys["13"] == "101", "the inbox window must not move")
+        #expect(store.batches.last?.added.map(\.serverID) == ["s1", "s2"])
+        #expect(await engine.currentState() == .idle)
+    }
+
+    @Test("syncSentOnce is a no-op when the account has no Sent Items folder")
+    func noSentItems() async throws {
+        let gateway = FakeGateway(
+            folderListing: FolderListing(folders: [inbox], syncKey: "7"),
+            deltas: ["0": makeDelta(key: "100", added: [])]
+        )
+        let store = FakeStore()
+        let engine = SyncEngine(gateway: gateway, store: store, account: AccountID("a"), writeGateway: UnsupportedWriteGateway())
+
+        let report = try await engine.syncSentOnce()
+
+        #expect(report == nil)
+        #expect(store.batches.isEmpty)
+    }
+
     @Test("an invalid key resets the collection and rebuilds it")
     func rebuildOnInvalidKey() async throws {
         let gateway = FakeGateway(

@@ -27,6 +27,30 @@ struct MailboxSyncTests {
         #expect(fixture.viewModel.messages.first?.subject == "周报")
     }
 
+    @Test("selectSent syncs Sent Items and shows the sent copy")
+    func sentItems() async throws {
+        let sent = Folder(serverID: "18", parentID: "0", displayName: "已发送邮件", type: 5)
+        let gateway = PresentationFakeGateway(
+            folders: FolderListing(folders: [presentationInbox, sent], syncKey: "7"),
+            deltas: presentationDeltas(
+                added: [presentationMessage("s1", subject: "已发送", folderID: "18")],
+                folderID: "18"
+            )
+        )
+        let fixture = try makeMailboxFixture(
+            gateway: gateway,
+            folders: [presentationInbox, sent],
+            messages: ["13": [presentationMessage("i1", subject: "收件")]]
+        )
+
+        await fixture.viewModel.selectSent()
+
+        #expect(fixture.viewModel.selection.folderID == "18")
+        #expect(fixture.viewModel.messages.map(\.serverID) == ["s1"])
+        #expect(fixture.viewModel.sync.phase == .idle)
+        #expect(fixture.viewModel.sentFolderID == "18")
+    }
+
     @Test("a failed sync keeps the cached list and shows the Chinese error text")
     func failureKeepsCache() async throws {
         let gateway = PresentationFakeGateway(

@@ -14,7 +14,7 @@ component: CMP-APP
 - 单元：组件
 - 层 / 类型：L3；UI 外壳
 - 业务价值：让用户能看见并操作邮箱；没有它，同步能力只存在于命令行。
-- 负责 X：窗口与导航、窗口主工具栏（`MailboxToolbar`）、文件夹选择、邮件列表渲染、正文 WebView、附件条取用交互（单击选中/双击/右键/另存为，2026-11-20 设计新增）、撰写/配置表单、空态与失败态展示；T-1114-10 设计新增列表焦点 Delete/Backspace、前台状态转发（实测后改用 `NSApplication` 通知）、状态栏删除错误（2026-11-14 已实现，T-1114-18）；2026-11-18 设计新增撰写页收件人/抄送字段控件与候选浮层（`RecipientTextField`/`RecipientSuggestionList`/`RecipientForm.swift` 的 `ComposeRecipientForm`）。
+- 负责 X：窗口与导航、顶部三段邮箱切换（收件箱/发件箱/日历；2026-11-24 起替代文件夹侧栏）、窗口主工具栏（`MailboxToolbar`）、邮件列表渲染、正文 WebView、附件条取用交互（单击选中/双击/右键/另存为，2026-11-20 设计新增）、撰写/配置表单、空态与失败态展示；T-1114-10 设计新增列表焦点 Delete/Backspace、前台状态转发（实测后改用 `NSApplication` 通知）、状态栏删除错误（2026-11-14 已实现，T-1114-18）；2026-11-18 设计新增撰写页收件人/抄送字段控件与候选浮层（`RecipientTextField`/`RecipientSuggestionList`/`RecipientForm.swift` 的 `ComposeRecipientForm`）。
 - 不负责 Y：业务编排、状态机、格式化规则、服务装配、网络与持久化。
 - 内部逻辑：
   - `UumailApp` 构造 `AppComposition`，按 `route` 显示 `MailboxView` 或 `AccountSetupView`；生命周期交给组合根。
@@ -26,7 +26,7 @@ component: CMP-APP
 - 入口：`Sources/uumail/UumailApp.swift#UumailApp`、`MailboxView.swift#MailboxView`、`AttachmentStripView.swift#AttachmentStripView`（2026-11-20 设计新增，internal；双击/右键/选中/键盘/错误 banner）、`AttachmentExport.swift#SystemSavePanel`/`#AttachmentFileCopy`/`#AttachmentSaveFlow`/`#AttachmentActionGate`/`#AttachmentActionModel`（2026-11-20 设计新增，internal；`AttachmentActionModel` 为第 3 轮 APP 动作代际协调者）、`MailboxToolbar.swift#MailboxToolbar`（2026-11-16 设计新增）、`MessageBodyView.swift#MessageBodyView`、`ComposeView.swift#ComposeView`、`RecipientForm.swift#ComposeRecipientForm`（2026-11-18 设计新增，internal；方案设计复核从 `ComposeView.swift` 拆出，供 L2 探针单独编译）、`RecipientTextField.swift#RecipientTextField`/`#RecipientSuggestionList`（2026-11-18 设计新增，internal）、`AccountSetupView.swift#AccountSetupView`、`FontSizeStyle.swift#EnvironmentValues.fontSizePreference`/`#View.scaledFont(_:)`/`#View.scaledInheritedFont(_:)`/`#FontSizePreference.font(for:)`、`FontSizeCommands.swift#FontSizeCommands`、`EmptyState.swift#EmptyState`（2026-11-17 设计新增，internal；第 2 轮修正入口符号）
 - 依赖：`Presentation`、`Composition`（仅 `UumailApp.swift`）、SwiftUI/AppKit/WebKit。扇出 2。
 - 冷热：热（读本地库）；收件人候选只读 VM 内存状态，不触网、不查库。
-- 尺寸预算：单文件 ≤300 行；当前 `uumail` 共约 **1770 行**（2026-11-18 收件人联想落地后；2026-11-20 附件取用设计（第 3 轮）预计 +约 360–480 行 → 约 2130–2250 行；`MessageBodyView` 259、`MailboxView` 219（2026-11-20 实测）、其余见文末增量）。2026-11-20 内联图片设计预计 `MessageBodyView` +3（引用渲染串）、`MailboxView` +1（透传）→ 单文件仍 ≤300，不新增 target/依赖。
+- 尺寸预算：单文件 ≤300 行；当前 `Sources/uumail` 共 **3813 行**（2026-11-24 `wc -l`；`MailboxView` **293**、`CalendarView` 293、`MessageBodyView` 267，其余见文末增量）；单文件均 ≤300，不新增 target/依赖。
 - 单独运行：`./Scripts/make-app.sh && open dist/uumail.app`（release 构建，产物不入库）；`swift run` 为无 bundle `Info.plist` 的可执行，**没有 ATS 域策略**，明文 http 图片本来即可加载（REQ-0024 L2 实测，见文末 2026-11-19 增量）
 - 删除测试：删掉则只能命令行看信，对终端用户等于没有产品。
 
@@ -49,10 +49,11 @@ component: CMP-APP
 
 - 无 pending/failed outbox 角标：列表/状态栏看不到待发与失败数（`plan/risks.md` R13）。
 - 回复未带真实 `Message-ID`（本地只存 ServerId），会话归并依赖服务器。
-- 撰写暂不支持加附件；发送成功后无本地 Sent 镜像（依赖服务器 `SaveInSentItems`）。
+- 撰写暂不支持加附件；发送成功不做本地 Sent 镜像——副本由服务器 `SaveInSentItems` 保存，打开「发件箱」时按需同步（2026-11-24）。
 - 附件 25MB 上限、断点续传、`AttachmentName` 回退未实现；真机下载/打开未验。
 - 已读回写/列表键盘删除已实现（T-1114-11…18，2026-11-14）；正文 sanitizer 仍是 CSP + 关脚本的轻量实现。
 - 视图层已无 `service` 参数与模型构造（门 1 与 grep 验证），但这是构造性约束，不是行为测试。
+- 其他文件夹（草稿/已删除/垃圾邮件等）不渲染、不同步、无入口；2026-11-24 按用户选择定案（`REQ-0038` 非目标），不是缺陷。
 
 ## 设计增量：全部回复按钮（T-1114-08，已实现 2026-11-14）
 
@@ -474,7 +475,7 @@ component: CMP-APP
   双击入口按 `REQ-0031` 的修复处理。本增量只动 `CMP-APP`，不改 `CMP-PRES`、场景卡与需求口径。
 - 列宽：消息列表列 `.navigationSplitViewColumnWidth(min: 320, ideal: 480)`（原 `280/380`）；侧栏仍 `180/220`（未改）。
   L2 探针实测（`task-spaces/20261124-233500-feedback5/probe/column-width.txt`）：
-  - 窗口 1440 宽：侧栏 220 / 列表 480 / 正文 731；
+  - 窗口 1440 宽：侧栏 220 / 列表 480 / 正文 731（W-M3-19 去掉侧栏后为 480 / 952，见下文两栏增量）；
   - 1000：220 / 480 / 291；900：220 / 480 / 191；760：220 / 480 / 51（低于窗口下限 900，仅探针）。
   - 列表优先保 480，窗口变窄时正文列先让位；不再回到 280 的窄列。
 - 双击根因：SwiftUI `.onTapGesture(count: 2)` 挂在 `List(selection:)` 的行上在 macOS 不触发（列表消费点击；
@@ -530,3 +531,26 @@ component: CMP-APP
   `CalendarHourGrid` 23 行，均 ≤300。
 - 证据：`task-spaces/20261124-233500-feedback5/probe/hour-grid.png`（1024×1824 预览，17 条虚线）；
   探针源 `HourGridPreview.swift`。真实拖动/缩放/多屏行为仍属发布前人工冒烟项。
+
+## 设计增量：顶部三段切换与去掉文件夹栏（REQ-0037 / REQ-0038，2026-11-24，P2，已实现）
+
+- 来源：`REQ-0037`（顶部三段切换、去掉文件夹侧栏）/ `REQ-0038`（发件箱），场景 `SCN-0028` / `SCN-0029`。`CMP-PRES` 同批提供 `inboxFolderID`/`sentFolderID`/`selectSent`/`refreshSent`，`CMP-SYNC` 提供 `syncSentOnce`。不改 schema/target/依赖/EAS 协议，不改 `MessageBodyView`/`MessageWebView`/`MessageBodyStyle`/`CalendarView`/`UumailApp`。
+- 顶部切换（根视图，始终可见）：
+  - `MailboxView.body` 为 `Group`：`section == .calendar` 时整块渲染日历，否则渲染邮件两栏；`private enum MailboxSection { case inbox, sent, calendar }`，默认 `.inbox`。
+  - 根 `.toolbar` 的 `ToolbarItem(placement: .navigation)` 放 `Picker("邮箱", selection: $section)`：`.pickerStyle(.segmented)`、`.labelsHidden()`、`.frame(width: 260)`，三段「收件箱 / 发件箱 / 日历」。位置是窗口 leading（交通灯之后），挂在根 `Group` 上而非某个分栏，所以邮件页与日历页都保留；另加 `.toolbar(removing: .sidebarToggle)` 去掉侧栏开关。
+  - 邮件页两栏 `NavigationSplitView`：第一列 = 消息列表（`VStack`：列表 + `Divider` + 状态栏；`.navigationSplitViewColumnWidth(min: 320, ideal: 480)`、`.searchable(placement: .toolbar)`、工具栏 `MailboxToolbar`），详情 = 阅读区（信封头 + 会议卡 + 正文 + 附件条）。不再渲染 `viewModel.folders`（`reloadFolders` 保留，用于解析收件箱/发件箱的 serverID）；其他文件夹不提供入口、也不同步。
+  - 日历页 `CalendarView(model:)` 独占内容区（不嵌 split），顶部切换仍在。
+- 切换动作（`onChange(of: section)`）：
+  - `.inbox` → `select(folderID: viewModel.inboxFolderID)`；
+  - `.sent` → `Task { await viewModel.selectSent() }`，**任务完成后若 `section` 已不是 `.sent` 则 `select(folderID: inboxFolderID)`**（防 Sent 同步迟到把导航抢回发件箱）；
+  - `.calendar` → 无动作（`CalendarView` 自己加载）。
+- 刷新分派：`MailboxToolbar.Actions.refresh` 按 section 分派 `viewModel.refresh()` / `viewModel.refreshSent()`；其余动作、顺序与禁用条件不变（仍 7 项）。
+- 空态与标题：列表为空时 `EmptyState`，发件箱段显示「没有发件邮件」、收件箱段沿用「没有邮件」；`navigationTitle` 为「发件箱」/「收件箱」。
+- **否决 `HSplitView`**：探针（`probe/HSplitProbe.swift`，列表 `.frame(minWidth: 320, idealWidth: 480, maxWidth: 760)`）在 1440 窗口把列表拉到 **760**，不遵守 `idealWidth`；改用两栏 `NavigationSplitView`，同一宽度语义下列表稳定 480、阅读区先让位。
+- 尺寸：`MailboxView` **293 行**（≤300，余 7）；`Sources/uumail` 共 3813 行；不新增文件/target/依赖。
+- L2 证据（`task-spaces/20261125-000000-sent-nav/probe/`，重建命令见同目录 `run.sh`）：
+  - `toolbar-nav.png`：顶部三段 Picker、无文件夹栏；
+  - `two-column.txt`：1440 窗口 list 480 / reading 952；900 窗口 list 480 / reading 412；
+  - `HSplitProbe.swift`：否决 `HSplitView` 的依据。
+- 人工项（发布前）：真实点击顶部切换、列表/阅读分隔条拖拽、深色主题整窗视觉；真实发一封测试信后确认服务器 Sent Items 出现副本并能在「发件箱」拉到（外发需用户确认）。
+- 定级：**P2**（跨 `CMP-APP`/`CMP-PRES`/`CMP-SYNC`；无 schema/协议/target/依赖变更；APP 层无新增 public 契约）。

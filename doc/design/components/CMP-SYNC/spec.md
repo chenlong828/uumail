@@ -2,7 +2,7 @@
 layer: design
 module: sync
 status: active
-updated: 2026-11-14
+updated: 2026-11-24
 component: CMP-SYNC
 ---
 
@@ -10,20 +10,20 @@ component: CMP-SYNC
 
 ## 模块卡
 
-- 状态：`active`（`syncOnce` 已落地；`start/stop/stateStream` 未实现）
+- 状态：`active`（`syncOnce`/`syncSentOnce` 已落地；`start/stop/stateStream` 未实现）
 - 单元：组件（actor）
 - 层 / 类型：**L1b 能力**（原 L2，W-SCN-REFACTOR D3 下调）
 - 业务价值：把「服务器状态」变成「本地可见的新状态」，并保证每个集合的 SyncKey 不丢不重。没有它，场景会自己直连协议层，SyncKey 逻辑散落。
-- 负责 X：Provision 前置、FolderSync 全量、集合 Sync 分页、SyncKey 推进、status 3/4 重建、`throttled` 等待一次后重试一次、内存状态 `SyncState`；T-1114-10 设计新增已读/删除写命令的显式串行门与成功提交（2026-11-14 已实现，T-1114-15）。
+- 负责 X：Provision 前置、FolderSync 全量、集合 Sync 分页、SyncKey 推进、status 3/4 重建、`throttled` 等待一次后重试一次、内存状态 `SyncState`；T-1114-10 设计新增已读/删除写命令的显式串行门与成功提交（2026-11-14 已实现，T-1114-15）；2026-11-24 新增 Sent Items 按需同步（`syncSentOnce`，REQ-0038，见文末增量）。
 - 不负责 Y：刷新节奏、通知、UI 状态、MIME、数据库 schema、持久化实现。
-- 内部逻辑：`syncOnce` = `provisionIfNeeded` → `fetchFolders(syncKey:"0")` → 定位收件箱 → 分页 Sync（首轮 key `0` 两请求；每轮新增 < window 即停，最多 `maxRounds` 轮）→ `applySyncBatch`；每轮批次与 key 同事务（由 `SyncStore` 实现保证）。
+- 内部逻辑：`syncOnce` = `provisionIfNeeded` → `fetchFolders(syncKey:"0")` → 定位收件箱 → 分页 Sync（首轮 key `0` 两请求；每轮新增 < window 即停，最多 `maxRounds` 轮）→ `applySyncBatch`；每轮批次与 key 同事务（由 `SyncStore` 实现保证）。`syncSentOnce` 走同一序列，但定位 `isSentItems` 集合且不碰收件箱的 key 与窗口。
 - 拥有的数据：无持久业务数据；只持有内存状态机与失败计数。
 - 变化轴：服务器分页/限流行为（沉在 gateway 之下）；触发方式由 `SyncScene` 决定。
-- 公开契约：`CMP-SYNC#syncOnce`、`#currentState`；T-1114-10 设计新增 `#markRead`、`#deleteMessage`（2026-11-14 已实现，T-1114-15）。
+- 公开契约：`CMP-SYNC#syncOnce`、`#currentState`；T-1114-10 设计新增 `#markRead`、`#deleteMessage`（2026-11-14 已实现，T-1114-15）；2026-11-24 新增 `#syncSentOnce`（REQ-0038）。
 - 入口：`Sources/SyncEngine/SyncEngine.swift#SyncEngine`、`Values.swift#SyncState`
 - 依赖：`MailDomain`（`MailGateway`、`SyncStore`）。扇出 1（端口计入 Domain）。
 - 冷热：冷；每账号一个 actor。
-- 尺寸预算：目标 ≤400 行；当前 **286 行**（`wc -l` 2026-11-14，含 FIFO 门与写命令 + reset 内重建）。
+- 尺寸预算：目标 ≤400 行；当前 **315 行**（`wc -l` 2026-11-24，含 FIFO 门、写命令、reset 内重建与 Sent 入口）。
 - 单独运行：`./Scripts/swiftw test --filter SyncEngineTests`
 - 删除测试：删掉后 `SyncScene` 直接编排网关并各自维护 SyncKey → 复杂度集中，是真边界。
 
@@ -38,6 +38,7 @@ component: CMP-SYNC
                   window: Int = 25, maxRounds: Int = 5, filterType: Int = 5,
                   sleeper: @escaping @Sendable (Duration) async -> Void = { ... })
       public func syncOnce() async throws -> SyncReport
+      public func syncSentOnce() async throws -> SyncReport?   // 2026-11-24 新增（REQ-0038）
       public func currentState() -> SyncState
       // T-1114-10 设计新增（已实现）
       public func markRead(collectionID: String, serverID: String) async throws
@@ -51,7 +52,7 @@ component: CMP-SYNC
 - 超时 / 取消：单命令超时由 gateway 层；本组件无额外超时。
 - 一致性 / 可见性：批次提交后读库即可见；失败保留旧数据。
 - 兼容性：`store` 参数为 `any SyncStore`（无 `StoreAdapter`）；`MailGatewayError` 已并入 `MailError`；`SyncState` 仍在 `SyncEngine` target，`FolderSummary` 等过渡 `typealias` 未删。
-- 契约测试：`SyncEngineTests` 7 例。
+- 契约测试：`SyncEngineTests` 19 例（2026-11-24 实测；含 Sent 入口 2 例）。
 
 ## 运行序（与场景对应）
 
@@ -111,3 +112,34 @@ component: CMP-SYNC
 - 测试：`SyncEngineTests` 补「写命令与 `syncOnce` 门串行」「写成功后 key 恰好推进一次」「网关失败不推进 key/不落本地」「两个写命令串行且不重复推进 key（同目标去重由 `MailboxDeletion`/VM 保证，不在引擎层断言）」「`Status=3/4` 的 reset 与写命令互斥：排队写等整个 reset+rebuild，之后从重建后的 key 发；重建期间 fetch 顺序为 stale key → 0 → 新 key」「写响应携带整页 delta 与 `MoreAvailable` 时照常提交」「等待中的写被取消后不发网络」；只读用例用测试 target 的 `UnsupportedWriteGateway` 构造引擎；既有用例不回归。
 
 **实现（2026-11-14）**：`SyncEngine` 增非可选 `writeGateway`、FIFO 门、`markRead`/`deleteMessage`；`syncRound` 在门内重读 key，`Status=3/4` 的 reset+bootstrap+重建页同一次门持有内完成；写响应 `MoreAvailable` 不再拒绝提交。`SyncEngineTests` 17 例绿，含写/同步双向串行、key 只推进一次、失败不提交、写响应整页 delta 提交、reset 与排队写互斥（fetch 顺序 `5 → 0 → 200`、写使用重建后的 key）、取消不发网络。
+
+## 设计增量：发件箱 Sent Items 按需同步（REQ-0038，2026-11-24，P2，已实现）
+
+- 来源：`REQ-0038` / `SCN-0029`。发送侧早已带 `<SaveInSentItems/>`（`CMP-EAS`），副本由服务器写入 Sent Items；本增量只把该集合按需拉进本地，**不做本地 Sent 镜像**。
+- 泛化：原 `syncInbox` 改名/泛化为 `syncFolder(_ folder: FolderSummary, folderCount: Int)`，只改名字与入参——窗口、分页停止条件（本轮新增 < window）、`Status=3/4` 重建、FIFO 门与「批次与 key 同事务」全部不变。`runSync` 仍只取 `isInbox` 的集合，`syncOnce()` 的语义与 `throttled` 等待一次后重试一次不变。
+- 新增 public 入口：
+
+  ```swift
+  public func syncSentOnce() async throws -> SyncReport?
+  ```
+
+  - 序列：`provisionIfNeeded` → `refreshFolders()`（`FolderSync(syncKey:"0")` + `applyFolderSnapshot`）→ `folders.first(where: \.isSentItems)`（type `5`，见 `CMP-DOMAIN` 同日增量）→ 只对该 collection 走 `syncFolder`。
+  - 返回：`report.folders` 是文件夹总数；`added/changed/removed/rounds/syncKey` 只反映 Sent 这一轮；状态依次 `.syncingFolders → .syncingMessages(folder: sent) → .idle`。
+  - 不变量：收件箱的 SyncKey 与窗口不动（Sent 的 key 独立存在 `sync_state`）；一次只同步一个集合，不与写命令交错；重复调用从已存的 Sent key 继续。
+  - 无 Sent：返回 `nil`，状态回 `.idle`，不进入 `.syncingMessages`、不计失败、不写消息批次（`refreshFolders` 仍按既有逻辑刷新文件夹树）。
+  - 失败：与 `syncOnce` 共用 `recordFailure(_:)`（同一 `MailError` 分类、连续失败计数、`.failed(SyncFailure)`），抛出归一后的错误；`throttled` 的等待重试只在 `syncOnce` 外层，本入口不额外重试。
+- `SyncScene` 新增：
+
+  ```swift
+  public func refreshSent() async -> RefreshOutcome
+  ```
+
+  - 只调 `engine.syncSentOnce()`；返回 `nil` 时给「无 report、无 error」的 `RefreshOutcome`（调用方据此静默保持列表）。
+  - **不发新邮件通知**：发件副本不是来信；`Notifier.postNewMail` 仍只在 `refresh` 的新增判定里调用，本入口不申请通知授权、不改 `autoRefreshPaused`。
+  - 错误：`MailError` 原样放进 `outcome.error`，非 `MailError` 归一为 `.offline`（与 `refresh` 同一兜底），不抛给视图。
+  - 单飞：不加入 `refresh` 的 scene 级单飞（`isRefreshing`/waiters）；与收件箱刷新之间只由引擎的 FIFO 门串行。
+- 测试（`Tests/SyncEngineTests/SyncEngineTests.swift` 新增 2 例；该 suite 共 19 例）：
+  - `syncSentOnce syncs only Sent Items and leaves the inbox key alone`：`report.added == 2`、`report.folders == 2`、Sent key 推进到 `401`、inbox key 仍 `101`、批次只含 Sent 的两条 serverID、`currentState == .idle`。
+  - `syncSentOnce is a no-op when the account has no Sent Items folder`：返回 `nil`、零批次。
+  - `refreshSent` 的「不发通知」本轮无独立断言（VM 用例只断言列表与 `phase`），登记为残余。
+- 尺寸：`SyncEngine.swift` **315 行**（预算 ≤400）；无 schema/依赖/target 变化；`CMP-EAS` 零改动。

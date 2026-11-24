@@ -38,6 +38,9 @@ public struct Folder: Equatable, Sendable {
 
     /// Exchange folder type `2` is the inbox.
     public var isInbox: Bool { type == 2 }
+
+    /// Exchange folder type `5` is Sent Items (REQ-0038).
+    public var isSentItems: Bool { type == 5 }
 }
 
 /// An attachment as listed on a message. `messageID` is absent until the store has

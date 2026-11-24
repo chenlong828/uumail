@@ -1,0 +1,5 @@
+split0 frame=1121 cols=[760, 360, 5]
+window=1200
+  split0 frame=900 cols=[539, 360, 5]
+window=900
+  split0 frame=900 cols=[539, 360, 5]

@@ -19,11 +19,11 @@ component: CMP-DOMAIN
 - 内部逻辑：无 I/O；只有纯值类型与纯函数——`AddressList` 的信封归一化、`ContactDirectory` 的解析/去重/名字回退/匹配排序、`RecipientText` 的尾片段与替换。`FetchedBody` 保留 `text/isHTML/isTruncated`（D10）。
 - 拥有的数据：无持久数据。
 - 变化轴：领域概念本身的字段与语义（邮件、文件夹、发送意图）。
-- 公开契约：`CMP-DOMAIN#MailGateway`、`#MailWriteGateway`（T-1114-10 设计，2026-11-14 已实现；作为非可选生产能力注入）、`#SyncStore`、`#CredentialStore`、`#Notifier`、`#AttachmentFiles`、`#MailClock`、`#ContactAddress`、`#ContactEnvelope`、`#ContactDirectory`、`#RecipientText`（2026-11-18 新增，REQ-0022/SCN-0017）；能力 ID 由各操作名引用（如 `CMP-DOMAIN#fetchBody`、`#ContactDirectory.suggestions`）。
+- 公开契约：`CMP-DOMAIN#MailGateway`、`#MailWriteGateway`（T-1114-10 设计，2026-11-14 已实现；作为非可选生产能力注入）、`#SyncStore`、`#CredentialStore`、`#Notifier`、`#AttachmentFiles`、`#MailClock`、`#ContactAddress`、`#ContactEnvelope`、`#ContactDirectory`、`#RecipientText`（2026-11-18 新增，REQ-0022/SCN-0017）、`#Folder.isSentItems`（2026-11-24 新增，REQ-0038）；能力 ID 由各操作名引用（如 `CMP-DOMAIN#fetchBody`、`#ContactDirectory.suggestions`）。
 - 入口：`Sources/MailDomain/Values.swift#AccountID`、`Ports.swift#MailGateway`、`Errors.swift#MailError`、`Configuration.swift#ServerConfiguration`、`Contacts.swift#ContactAddress`、`#ContactEnvelope`、`#ContactDirectory`、`#RecipientText`（2026-11-18 新增）
 - 依赖：仅 Foundation。扇出 0。
 - 冷热：两侧共用；只做值传递。
-- 尺寸预算：目标 ≤800 行；当前 **756 行**（2026-11-24 `wc -l`：`Values` 272 + `Contacts` 209 + `EnvelopeParser` 118 + `Ports` 21 + `Configuration` 52 + `Errors` 24 + `AddressList` 57 ≈ 756）。会议值类型已迁 `CMP-MEETING-DOMAIN`（682），同步契约（`MessageDelta`/`MailGateway`/`MailWriteGateway`/`SyncStore`）已迁 `CMP-SYNC-CONTRACT`（87）；本组件不再依赖会议子域（2026-11-24 R77 关闭）。
+- 尺寸预算：目标 ≤800 行；当前 **759 行**（2026-11-24 `wc -l`：`Values` 273 + `Contacts` 209 + `EnvelopeParser` 118 + `Ports` 26 + `Configuration` 52 + `Errors` 24 + `AddressList` 57 = 759）。会议值类型已迁 `CMP-MEETING-DOMAIN`（682），同步契约（`MessageDelta`/`MailGateway`/`MailWriteGateway`/`SyncStore`）已迁 `CMP-SYNC-CONTRACT`（87）；本组件不再依赖会议子域（2026-11-24 R77 关闭）。
 - 单独运行：`./Scripts/swiftw test --filter MailDomainTests`
 - 删除测试：删掉后 `Scenes`、`MailStore`、`SyncEngine`、`Outbox` 各自定义同名类型并互相转换 → 复杂度集中，是真边界。
 
@@ -325,3 +325,18 @@ component: CMP-DOMAIN
   与 `ics(now:)`；`Message.meeting` additive。
 - 测试：`Tests/MailDomainTests/MeetingTests.swift` 12 例（单次/每日/每周/每月按日与第 N 个/最后/每年/边界/
   例外/全天/ICS 三例）。
+
+## 设计增量：发件箱文件夹判定（REQ-0038，2026-11-24，P2，已实现）
+
+- 来源：`REQ-0038` / `SCN-0029`。`Folder` 新增 additive 只读属性，与既有 `isInbox`（Exchange folder type `2`）并列：
+
+  ```swift
+  /// Exchange folder type `5` is Sent Items (REQ-0038).
+  public var isSentItems: Bool { type == 5 }
+  ```
+
+- 纯计算、无存储、无 I/O：不改 `Folder` 的 `init`/`Equatable`/字段，不新增端口或错误类型；`MailDomain` 仍只依赖 Foundation。
+- `type` 仍是服务器原样值（不解释其它类型码）；只有 `2`/`5` 有语义入口，其余文件夹在 `CMP-APP` 不提供入口（同日增量）。
+- **无迁移**：不涉 schema、协议或持久数据；库里已有的 `type=5` 行立即具备该语义，无需重同步。
+- 消费方：`SyncEngine.syncSentOnce` 用它定位 Sent 集合；`MailboxViewModel.inboxFolderID`/`sentFolderID` 用它派生只读 ID（见 `CMP-SYNC`/`CMP-PRES` 同日增量）。
+- 验证：行为由 `SyncEngineTests`（type 5 / serverID `18` 只同步该 collection）与 `PresentationTests`（`selectSent` 落在 folder `18`）覆盖；`MailDomainTests` 既有值类型用例不回归。

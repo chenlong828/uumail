@@ -61,6 +61,21 @@ public actor SyncScene {
         return outcome
     }
 
+    /// Refreshes only Sent Items (REQ-0038). No new-mail notification: a sent copy is not
+    /// incoming mail. Shares the engine's FIFO gate, so it never interleaves with a write.
+    public func refreshSent() async -> RefreshOutcome {
+        let startedAt = clock.now
+        do {
+            guard let report = try await engine.syncSentOnce() else {
+                return RefreshOutcome(at: startedAt)
+            }
+            return RefreshOutcome(report: report, error: nil, at: startedAt)
+        } catch {
+            let failure = (error as? MailError) ?? .offline
+            return RefreshOutcome(report: nil, error: failure, at: startedAt)
+        }
+    }
+
     // MARK: - Automatic refresh
 
     /// Emits one outcome immediately, then one per interval. The stream finishes when the

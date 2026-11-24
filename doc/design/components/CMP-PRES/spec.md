@@ -23,11 +23,11 @@ component: CMP-PRES
   - `ComposeViewModel.send` 调 `ComposeScene.send`，成功即 `status = .queued` 并触发组合根的投递信号；失败保留编辑文本。
 - 拥有的数据：视图状态（选择、搜索词、加载态、编辑器文本、当前邮件远程放行、置读错误提示），不持久化；另持有**两个本地 UI 偏好镜像**——**主题偏好**（`UserDefaults["appearance.theme"]`，`ThemePreferenceStore`）与**字号偏好**（`UserDefaults["appearance.fontSize"]`，`FontSizePreferenceStore`，2026-11-17 设计新增；两个 key 独立、互不读写；不是业务数据，真源仍是 App 的 `@State`，见文末增量）。
 - 变化轴：窗口形态与交互；主题外观（2026-11-16 新增一档三态主题）；**字号档位**（2026-11-17 新增五档 100/120/145/175/225%，界面与阅读正文共用同一档位）。
-- 公开契约：`CMP-PRES#MailboxViewModel`（T-1114-10 设计新增 `#visibleMessages`、`#deleteErrorText`、`#setApplicationActive`、`#deleteSelected`（2026-11-14 已实现）；2026-11-16 新增 `#headerPresentation`；2026-11-16 设计新增 `#allowsRemoteContent`、`#canAllowRemoteContent`、`#setAllowsRemoteContent(_:)`、`#canMarkSelectedRead`、`#markSelectedRead()`、`#markReadErrorText`（P2 待确认，见文末增量）、`#attachmentErrorText`（2026-11-20 新增，只读；P2 人工确认 A，见文末增量））、`#ComposeViewModel`（2026-11-18 设计新增 `#RecipientField`、`#recipientSuggestions`、`#highlightedSuggestion`、`#recipientFocusChanged(in:)`、`#recipientFocusLost()`、`#recipientTextChanged(in:caretAtEnd:)`、`#recipientCaretChanged(atEnd:)`、`#moveRecipientHighlight(by:)`、`#selectRecipientSuggestion(at:)`、`#selectHighlightedRecipientSuggestion()`、`#dismissRecipientSuggestions()`）、`#AccountSetupViewModel`、`#ErrorText`、`#DisplayFormat`、`#ThemePreference`、`#ThemePreferenceStore`（2026-11-16 新增 public，P2 已确认并实现）、`#FontSizePreference`、`#FontSizePreferenceStore`（2026-11-17 设计新增 public，P2 默认确认未经人工）、`#MessageHeaderPresentation`（2026-11-16 新增 public，P2 已确认，实现见文末增量）；`MailboxDwell`/`MailboxDeletion` 仍是模块内文件。
+- 公开契约：`CMP-PRES#MailboxViewModel`（T-1114-10 设计新增 `#visibleMessages`、`#deleteErrorText`、`#setApplicationActive`、`#deleteSelected`（2026-11-14 已实现）；2026-11-16 新增 `#headerPresentation`；2026-11-16 设计新增 `#allowsRemoteContent`、`#canAllowRemoteContent`、`#setAllowsRemoteContent(_:)`、`#canMarkSelectedRead`、`#markSelectedRead()`、`#markReadErrorText`（P2 待确认，见文末增量）、`#attachmentErrorText`（2026-11-20 新增，只读；P2 人工确认 A，见文末增量）、`#inboxFolderID`、`#sentFolderID`、`#selectSent`、`#refreshSent`（2026-11-24 新增，REQ-0037/REQ-0038，见文末增量））、`#ComposeViewModel`（2026-11-18 设计新增 `#RecipientField`、`#recipientSuggestions`、`#highlightedSuggestion`、`#recipientFocusChanged(in:)`、`#recipientFocusLost()`、`#recipientTextChanged(in:caretAtEnd:)`、`#recipientCaretChanged(atEnd:)`、`#moveRecipientHighlight(by:)`、`#selectRecipientSuggestion(at:)`、`#selectHighlightedRecipientSuggestion()`、`#dismissRecipientSuggestions()`）、`#AccountSetupViewModel`、`#ErrorText`、`#DisplayFormat`、`#ThemePreference`、`#ThemePreferenceStore`（2026-11-16 新增 public，P2 已确认并实现）、`#FontSizePreference`、`#FontSizePreferenceStore`（2026-11-17 设计新增 public，P2 默认确认未经人工）、`#MessageHeaderPresentation`（2026-11-16 新增 public，P2 已确认，实现见文末增量）；`MailboxDwell`/`MailboxDeletion` 仍是模块内文件。
 - 入口：`Sources/Presentation/MailboxViewModel.swift#MailboxViewModel`、`ComposeViewModel.swift#ComposeViewModel`（2026-11-18 新增收件人联想成员）、`AccountSetupViewModel.swift#AccountSetupViewModel`、`ErrorText.swift#ErrorText`、`PresentationTypes.swift#BodyPresentation`、`ThemePreference.swift#ThemePreference/#ThemePreferenceStore`、`FontSizePreference.swift#FontSizePreference/#FontSizePreferenceStore`（2026-11-17 设计新增）、`MessageHeaderPresentation.swift#MessageHeaderPresentation`（2026-11-16 新增）
 - 依赖：`Scenes`、`MailDomain`、`Observation`、`Foundation`（`UserDefaults`；不算新组件依赖）。扇出 1。
 - 冷热：热（主线程）；主题与字号偏好的读/写都是低频冷路径（启动一次 + 选择一次），不与 VM 热路径共享状态；收件人候选是撰写页主线程内存过滤，不查库、不触网。
-- 尺寸预算：单文件 ≤400 行；当前（2026-11-24 实测）`MailboxViewModel` **366**、`MailboxViewModel+List` 69、`CalendarViewModel` **172**、`CalendarProjection` **254**、`ReaderViewModel` 223、`ReaderRouter` 120、`ComposeViewModel` 284；`Presentation` 共 **2721** 行。2026-11-24 预算拆分后所有单文件 ≤400（此前 `MailboxViewModel` 424、`CalendarViewModel` 424）。
+- 尺寸预算：单文件 ≤400 行；当前（2026-11-24 实测）`MailboxViewModel` **391**、`MailboxViewModel+List` **89**、`CalendarViewModel` **172**、`CalendarProjection` **254**、`ReaderViewModel` 225、`ReaderRouter` 139、`ComposeViewModel` 284；`Presentation` 共 **2788** 行。2026-11-24 预算拆分后所有单文件 ≤400（此前 `MailboxViewModel` 424、`CalendarViewModel` 424）。
 - 单独运行：`./Scripts/swiftw test --filter PresentationTests`
 - 删除测试：删掉后视图直接持有场景并写展示逻辑，测试无法覆盖状态机 → 复杂度集中，是真边界。
 
@@ -667,4 +667,25 @@ component: CMP-PRES
   贴边夹取与完整落在 `visible` 内；`CalendarViewModelTests` 与 `CalendarScenarioTests` 断言
   `week.startHour == 8 && week.endHour == 24`。全量 461 tests / 77 suites、架构 4/4。
 - 定级：**P3**（单模块内部定位/投影规则；additive public 纯函数；无 schema/依赖/公开契约语义变化）。
+
+## 设计增量：顶部邮箱切换与发件箱选择（REQ-0037 / REQ-0038，2026-11-24，P2，已实现）
+
+- 来源：`REQ-0037`（顶部三段切换）/ `REQ-0038`（发件箱 Sent Items），场景 `SCN-0028` / `SCN-0029`。本增量为视图模型侧；视图见 `CMP-APP`、同步入口见 `CMP-SYNC`、文件夹判定见 `CMP-DOMAIN` 同日增量。不改 schema/协议/`MailDomain`/`Scenes` 契约、依赖或 target。
+- 新增 public 成员（additive，既有成员不变）：
+
+  ```swift
+  public var inboxFolderID: String? { get }   // folders.first(where: \.isInbox)?.serverID
+  public var sentFolderID: String? { get }    // folders.first(where: \.isSentItems)?.serverID
+  public func selectSent() async
+  public func refreshSent() async
+  ```
+
+  - `inboxFolderID`/`sentFolderID` 是纯派生只读属性：从已加载的 `folders` 按 `type` 取 `serverID`，无该文件夹为 `nil`；不触网、不写状态、不新增缓存。
+  - `selectSent()`：先 `select(folderID: sentFolderID)`（有则立即显示本地缓存；已选中时不重复重载）→ `await refreshSent()` → 若 Sent 在刷新后才出现（`sentFolderID` 由 `nil` 变有值且当前不是它）再补选一次；无 Sent 时只刷新、保持当前选择，不报错。
+  - `refreshSent()`：`sync.phase = .syncing` → `await syncScene.refreshSent()` → `apply(outcome)` → 若 `sentFolderID` 存在且当前选择不是它则补 `select(folderID:)`。
+  - **`apply` 复用**：成功置 `sync.lastSyncedAt`/`.idle` 并清掉删除/置读旧错误文案；失败置 `.failed(中文文案)`；两条分支都重载文件夹与当前列表、刷新停留计时。不新增第二套状态机，不复制错误映射（仍只经 `ErrorText`）。
+  - **防迟到抢占**：视图模型不感知顶部段；`selectSent()` 是普通 `async`，用户中途切走后的纠正由 `CMP-APP` 在任务完成时比较 section 并 `select(folderID: inboxFolderID)` 完成（见其同日增量）。VM 不做 section 判定。
+- 不变量：两个入口只经场景（`SyncScene.refreshSent`），不 import `SyncEngine`/`MailStore`；不新增通知路径；`refresh()`/`startAutoRefresh` 的语义与 5 分钟节奏不变；`select(folderID:)` 仍清空搜索词。
+- L1（`Tests/PresentationTests/MailboxViewModelTests.swift` 新增 1 例）：`selectSent syncs Sent Items and shows the sent copy`——`selectSent()` 后 `selection.folderID == "18"`、`messages` 只含 Sent 副本 `s1`、`sync.phase == .idle`、`sentFolderID == "18"`。
+- 尺寸：`MailboxViewModel.swift` **391 行**（≤400，余 9）、`MailboxViewModel+List.swift` **89 行**（≤400）；`Presentation` 共 2788 行；不新增文件/target/依赖。
 

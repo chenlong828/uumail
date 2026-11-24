@@ -73,20 +73,48 @@ public actor SyncEngine {
             }
 
             state = .syncingMessages(folder: inbox.serverID)
-            let report = try await syncInbox(inbox, folderCount: folders.count)
+            let report = try await syncFolder(inbox, folderCount: folders.count)
             consecutiveFailures = 0
             state = .idle
             return report
         } catch {
-            let failure = SyncState.SyncFailure(
-                error: map(error),
-                folder: nil,
-                consecutiveFailures: consecutiveFailures + 1
-            )
-            consecutiveFailures += 1
-            state = .failed(failure)
-            throw failure.error
+            throw recordFailure(error)
         }
+    }
+
+    /// Syncs the Sent Items collection only (REQ-0038). `SendMail` already carries
+    /// `SaveInSentItems`, so the server holds the copy; this pulls it into the local store
+    /// without touching the inbox window or its notification rule. Returns nil when the
+    /// account has no Sent Items folder.
+    public func syncSentOnce() async throws -> SyncReport? {
+        do {
+            try await gateway.provisionIfNeeded()
+            let folders = try await refreshFolders()
+            guard let sent = folders.first(where: \.isSentItems) else {
+                state = .idle
+                return nil
+            }
+            state = .syncingMessages(folder: sent.serverID)
+            let report = try await syncFolder(sent, folderCount: folders.count)
+            consecutiveFailures = 0
+            state = .idle
+            return report
+        } catch {
+            throw recordFailure(error)
+        }
+    }
+
+    /// One failure shape for both entry points: classify, count, publish the state, and
+    /// hand the normalized error back to the throw site.
+    private func recordFailure(_ error: Error) -> MailError {
+        let failure = SyncState.SyncFailure(
+            error: map(error),
+            folder: nil,
+            consecutiveFailures: consecutiveFailures + 1
+        )
+        consecutiveFailures += 1
+        state = .failed(failure)
+        return failure.error
     }
 
     // MARK: - Folders
@@ -111,12 +139,12 @@ public actor SyncEngine {
         var reset = false
     }
 
-    private func syncInbox(_ inbox: FolderSummary, folderCount: Int) async throws -> SyncReport {
+    private func syncFolder(_ folder: FolderSummary, folderCount: Int) async throws -> SyncReport {
         var added = 0
         var changed = 0
         var removed = 0
         var rounds = 0
-        var key = try store.syncKey(account, collection: inbox.serverID) ?? "0"
+        var key = try store.syncKey(account, collection: folder.serverID) ?? "0"
         var rebuilt = false
 
         // The gateway pages through the collection in `window`-sized batches and does not
@@ -125,7 +153,7 @@ public actor SyncEngine {
         // MoreAvailable absent while ~150 messages still queued up.
         while rounds < maxRounds {
             let result = try await syncRound(
-                inbox, allowReset: !rebuilt, currentKey: key
+                folder, allowReset: !rebuilt, currentKey: key
             )
             if result.reset {
                 // The reset round already rebuilt and committed a window under the same
@@ -136,7 +164,7 @@ public actor SyncEngine {
             changed += result.changed
             removed += result.removed
             rounds += result.rounds
-            key = try store.syncKey(account, collection: inbox.serverID) ?? key
+            key = try store.syncKey(account, collection: folder.serverID) ?? key
 
             if result.added < window && !result.moreAvailable {
                 break
@@ -154,7 +182,7 @@ public actor SyncEngine {
     /// critical section**, so a queued write can never observe the empty key between the
     /// reset and the next round.
     private func syncRound(
-        _ inbox: FolderSummary, allowReset: Bool, currentKey: String
+        _ folder: FolderSummary, allowReset: Bool, currentKey: String
     ) async throws -> RoundResult {
         try await acquire()
         defer { release() }
@@ -164,12 +192,12 @@ public actor SyncEngine {
         var key = currentKey
         var didReset = false
         while true {
-            key = try store.syncKey(account, collection: inbox.serverID) ?? key
+            key = try store.syncKey(account, collection: folder.serverID) ?? key
             if key == "0" {
                 // SyncKey=0 answers with a key and no items. Ask for the window immediately
                 // in the same critical section so a write cannot slip in between the calls.
                 let bootstrap = try await gateway.fetchMessages(
-                    collectionID: inbox.serverID, syncKey: "0", window: window, filterType: filterType
+                    collectionID: folder.serverID, syncKey: "0", window: window, filterType: filterType
                 )
                 key = bootstrap.syncKey
                 guard key != "0" else { throw MailError.unsupported }
@@ -177,9 +205,9 @@ public actor SyncEngine {
 
             do {
                 let delta = try await gateway.fetchMessages(
-                    collectionID: inbox.serverID, syncKey: key, window: window, filterType: filterType
+                    collectionID: folder.serverID, syncKey: key, window: window, filterType: filterType
                 )
-                try store.applySyncBatch(account, folder: inbox.serverID, delta: delta)
+                try store.applySyncBatch(account, folder: folder.serverID, delta: delta)
                 return RoundResult(
                     added: delta.added.count,
                     changed: delta.changed.count,
@@ -189,7 +217,7 @@ public actor SyncEngine {
                     reset: didReset
                 )
             } catch MailError.syncKeyInvalid where mayReset {
-                try store.resetCollection(account, folder: inbox.serverID)
+                try store.resetCollection(account, folder: folder.serverID)
                 mayReset = false
                 didReset = true
                 key = "0"

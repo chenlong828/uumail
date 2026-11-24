@@ -245,6 +245,18 @@ public final class MailboxViewModel {
         apply(outcome)
     }
 
+    /// Refreshes the Sent Items collection only (REQ-0038). `apply` re-reads folders and
+    /// the visible list; switching to Sent after a first folder sync is handled by the
+    /// caller (`selectSent`).
+    public func refreshSent() async {
+        sync.phase = .syncing
+        let outcome = await syncScene.refreshSent()
+        apply(outcome)
+        if let id = sentFolderID, selection.folderID != id {
+            select(folderID: id)
+        }
+    }
+
     /// Paints cached folders and messages without touching the network.
     public func loadCached() {
         try? reloadFolders()

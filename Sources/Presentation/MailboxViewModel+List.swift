@@ -69,3 +69,21 @@ extension MailboxViewModel {
         return deletion.hidden.contains(ref)
     }
 }
+
+extension MailboxViewModel {
+    /// Exchange folder type 2; the always-visible "收件箱" section.
+    public var inboxFolderID: String? { folders.first(where: \.isInbox)?.serverID }
+
+    /// Exchange folder type 5; the "发件箱" section (REQ-0038).
+    public var sentFolderID: String? { folders.first(where: \.isSentItems)?.serverID }
+
+    /// Top-section entry: select Sent, sync it, then select it again if the folder only
+    /// appeared during that first folder refresh.
+    public func selectSent() async {
+        if let id = sentFolderID { select(folderID: id) }
+        await refreshSent()
+        if let id = sentFolderID, selection.folderID != id {
+            select(folderID: id)
+        }
+    }
+}

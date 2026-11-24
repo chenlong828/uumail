@@ -8,7 +8,7 @@ struct MailboxView: View {
     @Bindable var viewModel: MailboxViewModel
     /// Present in the running app; nil in probes that only host the mail side.
     var calendarModel: CalendarViewModel?
-    @State private var showingCalendar = false
+    @State private var section: MailboxSection = .inbox
     @State private var attachmentActions: AttachmentActionModel
     @State private var compose: ComposeViewModel?
     @State private var searchText = ""
@@ -29,62 +29,71 @@ struct MailboxView: View {
     }
 
     var body: some View {
-        if showingCalendar, let calendarModel {
-            calendarSplit(calendarModel)
-        } else {
-            mailSplit
-        }
-    }
-
-    private func calendarSplit(_ model: CalendarViewModel) -> some View {
-        NavigationSplitView {
-            sidebar
-        } detail: {
-            CalendarView(model: model)
-                .navigationSplitViewColumnWidth(min: 520, ideal: 760)
-        }
-    }
-
-    private static let calendarTag = "__calendar__"
-
-    /// One selection drives both the calendar row and the folder rows; a single `List`
-    /// selection is more reliable than a button above a second list (2026-11-24 fix for
-    /// "calendar row stops responding after jumping to mail").
-    private var sidebarSelection: Binding<String?> {
-        Binding(
-            get: { showingCalendar ? Self.calendarTag : viewModel.selection.folderID },
-            set: { value in
-                if value == Self.calendarTag {
-                    showingCalendar = true
-                } else if let value {
-                    showingCalendar = false
-                    viewModel.select(folderID: value)
-                }
-            }
-        )
-    }
-
-    private var sidebar: some View {
-        List(selection: sidebarSelection) {
-            Label("日历", systemImage: "calendar")
-                .scaledInheritedFont(.body)
-                .tag(Self.calendarTag)
-            Section {
-                ForEach(viewModel.folders, id: \.serverID) { folder in
-                    Label(folder.displayName, systemImage: icon(for: folder.type))
-                        .scaledInheritedFont(.body)
-                        .tag(folder.serverID)
-                }
+        Group {
+            if section == .calendar, let calendarModel {
+                CalendarView(model: calendarModel)
+            } else {
+                mailSplit
             }
         }
-        .navigationSplitViewColumnWidth(min: 180, ideal: 220)
-        .navigationTitle("文件夹")
+        .toolbar(removing: .sidebarToggle)
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Picker("邮箱", selection: $section) {
+                    Text("收件箱").tag(MailboxSection.inbox)
+                    Text("发件箱").tag(MailboxSection.sent)
+                    Text("日历").tag(MailboxSection.calendar)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 260)
+            }
+        }
+        .onChange(of: section) { _, value in switchSection(to: value) }
+        // A SwiftUI window's scenePhase stays `.active` when the app is deactivated on
+        // macOS (measured 2026-11-14), so foreground state comes from NSApplication:
+        // the view only forwards, the view model owns the timer rule.
+        .onAppear {
+            viewModel.setApplicationActive(NSApp.isActive)
+            ReaderCoordinator.shared.attach(viewModel: viewModel)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            viewModel.setApplicationActive(true)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.willResignActiveNotification)) { _ in
+            viewModel.setApplicationActive(false)
+        }
+    }
+
+    /// Top switch (REQ-0037): the server's default folder list is not rendered; only the
+    /// inbox, Sent Items and the calendar are user-reachable.
+    private enum MailboxSection: Hashable {
+        case inbox
+        case sent
+        case calendar
+    }
+
+    private func switchSection(to value: MailboxSection) {
+        switch value {
+        case .inbox:
+            if let id = viewModel.inboxFolderID {
+                viewModel.select(folderID: id)
+            }
+        case .sent:
+            Task {
+                await viewModel.selectSent()
+                // A quick switch away while the Sent sync is in flight must win.
+                if section != .sent, let id = viewModel.inboxFolderID {
+                    viewModel.select(folderID: id)
+                }
+            }
+        case .calendar:
+            break
+        }
     }
 
     private var mailSplit: some View {
         NavigationSplitView {
-            sidebar
-        } content: {
             VStack(spacing: 0) {
                 messageList
                 Divider()
@@ -98,19 +107,6 @@ struct MailboxView: View {
             }
             .onChange(of: viewModel.selection.searchQuery) { _, query in
                 if searchText != query { searchText = query }
-            }
-            // A SwiftUI window's scenePhase stays `.active` when the app is deactivated on
-            // macOS (measured 2026-11-14), so foreground state comes from NSApplication:
-            // the view only forwards, the view model owns the timer rule.
-            .onAppear {
-                viewModel.setApplicationActive(NSApp.isActive)
-                ReaderCoordinator.shared.attach(viewModel: viewModel)
-            }
-            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-                viewModel.setApplicationActive(true)
-            }
-            .onReceive(NotificationCenter.default.publisher(for: NSApplication.willResignActiveNotification)) { _ in
-                viewModel.setApplicationActive(false)
             }
             .background(ToolbarTooltipInstaller().frame(width: 0, height: 0))
             .toolbar {
@@ -129,7 +125,15 @@ struct MailboxView: View {
                         forward: { compose = viewModel.composeForward() },
                         setAllowRemoteContent: { viewModel.setAllowsRemoteContent($0) },
                         markSelectedRead: { viewModel.markSelectedRead() },
-                        refresh: { Task { await viewModel.refresh() } }
+                        refresh: {
+                            Task {
+                                if section == .sent {
+                                    await viewModel.refreshSent()
+                                } else {
+                                    await viewModel.refresh()
+                                }
+                            }
+                        }
                     )
                 )
             }
@@ -182,7 +186,7 @@ struct MailboxView: View {
     }
 
     private var currentFolderName: String {
-        viewModel.folders.first { $0.serverID == viewModel.selection.folderID }?.displayName ?? "收件箱"
+        section == .sent ? "发件箱" : "收件箱"
     }
 
     private var messageSelection: Binding<String?> {
@@ -241,7 +245,9 @@ struct MailboxView: View {
         .overlay {
             if viewModel.visibleMessages.isEmpty {
                 EmptyState(
-                    title: viewModel.sync.phase == .syncing ? "正在同步…" : "没有邮件",
+                    title: viewModel.sync.phase == .syncing
+                        ? "正在同步…"
+                        : (section == .sent ? "没有发件邮件" : "没有邮件"),
                     systemImage: "tray"
                 )
             }
@@ -284,16 +290,4 @@ struct MailboxView: View {
         .padding(.vertical, 6)
     }
 
-    private func icon(for type: Int) -> String {
-        switch type {
-        case 2: "tray.full"
-        case 3: "doc.text"
-        case 4: "trash"
-        case 5: "paperplane"
-        case 6: "tray.and.arrow.up"
-        case 8: "person.crop.circle"
-        case 11: "calendar"
-        default: "folder"
-        }
-    }
 }
