@@ -102,6 +102,111 @@ public struct EASAttachment: Equatable, Sendable {
     }
 }
 
+/// One meeting request carried by an e-mail (`MeetingRequest`, MS-ASEMAIL 2.2.2.48).
+/// Dates are already UTC in the wire format; the time zone blob only supplies the
+/// organizer's display name and fixed bias (DST rules are not parsed, see CMP-EAS spec).
+public struct EASMeetingTimeZone: Equatable, Sendable {
+    public var name: String?
+    /// Minutes between UTC and local time with the opposite sign (`-480` = UTC+8).
+    public var biasMinutes: Int
+
+    public init(name: String? = nil, biasMinutes: Int) {
+        self.name = name
+        self.biasMinutes = biasMinutes
+    }
+}
+
+/// The `Recurrences/Recurrence` pattern of a meeting request (MS-ASCAL 2.2.2.37).
+/// `type` is 0/1/2/3/5/6 — value 4 does not exist.
+public struct EASRecurrence: Equatable, Sendable {
+    public var type: Int
+    public var interval: Int?
+    public var until: Date?
+    public var occurrences: Int?
+    public var daysOfWeek: Int?
+    public var dayOfMonth: Int?
+    public var weekOfMonth: Int?
+    public var monthOfYear: Int?
+    public var firstDayOfWeek: Int?
+
+    public init(
+        type: Int,
+        interval: Int? = nil,
+        until: Date? = nil,
+        occurrences: Int? = nil,
+        daysOfWeek: Int? = nil,
+        dayOfMonth: Int? = nil,
+        weekOfMonth: Int? = nil,
+        monthOfYear: Int? = nil,
+        firstDayOfWeek: Int? = nil
+    ) {
+        self.type = type
+        self.interval = interval
+        self.until = until
+        self.occurrences = occurrences
+        self.daysOfWeek = daysOfWeek
+        self.dayOfMonth = dayOfMonth
+        self.weekOfMonth = weekOfMonth
+        self.monthOfYear = monthOfYear
+        self.firstDayOfWeek = firstDayOfWeek
+    }
+}
+
+public struct EASMeeting: Equatable, Sendable {
+    public var uid: String?
+    public var start: Date?
+    public var end: Date?
+    public var allDay: Bool
+    public var dtstamp: Date?
+    public var location: String?
+    public var organizer: String?
+    public var reminderMinutes: Int?
+    public var responseRequested: Bool
+    public var busyStatus: Int?
+    /// 1 initial / 2 full update / 3 informational / 4 outdated / 5 delegator copy / 6 delegated.
+    public var messageType: Int?
+    /// 0 single / 1 recurring master / 2 single instance / 3 exception / 4 orphan instance.
+    public var instanceType: Int?
+    /// Original start (UTC) of the instance an exception replaces.
+    public var recurrenceId: Date?
+    public var timeZone: EASMeetingTimeZone?
+    public var recurrence: EASRecurrence?
+
+    public init(
+        uid: String? = nil,
+        start: Date? = nil,
+        end: Date? = nil,
+        allDay: Bool = false,
+        dtstamp: Date? = nil,
+        location: String? = nil,
+        organizer: String? = nil,
+        reminderMinutes: Int? = nil,
+        responseRequested: Bool = false,
+        busyStatus: Int? = nil,
+        messageType: Int? = nil,
+        instanceType: Int? = nil,
+        recurrenceId: Date? = nil,
+        timeZone: EASMeetingTimeZone? = nil,
+        recurrence: EASRecurrence? = nil
+    ) {
+        self.uid = uid
+        self.start = start
+        self.end = end
+        self.allDay = allDay
+        self.dtstamp = dtstamp
+        self.location = location
+        self.organizer = organizer
+        self.reminderMinutes = reminderMinutes
+        self.responseRequested = responseRequested
+        self.busyStatus = busyStatus
+        self.messageType = messageType
+        self.instanceType = instanceType
+        self.recurrenceId = recurrenceId
+        self.timeZone = timeZone
+        self.recurrence = recurrence
+    }
+}
+
 public struct EASMessage: Equatable, Sendable {
     public var serverID: String
     public var subject: String?
@@ -113,6 +218,10 @@ public struct EASMessage: Equatable, Sendable {
     public var importance: Int?
     public var bodyPreview: String?
     public var attachments: [EASAttachment] = []
+    /// `IPM.Schedule.Meeting.Request`, `…Canceled`, `IPM.Note`, …; nil when absent.
+    public var messageClass: String?
+    /// Present only when the message is a meeting request (MS-ASEMAIL 2.2.2.48).
+    public var meeting: EASMeeting?
 
     public init(
         serverID: String,
@@ -124,7 +233,9 @@ public struct EASMessage: Equatable, Sendable {
         importance: Int? = nil,
         bodyPreview: String? = nil,
         attachments: [EASAttachment] = [],
-        cc: String? = nil
+        cc: String? = nil,
+        messageClass: String? = nil,
+        meeting: EASMeeting? = nil
     ) {
         self.serverID = serverID
         self.subject = subject
@@ -136,6 +247,8 @@ public struct EASMessage: Equatable, Sendable {
         self.importance = importance
         self.bodyPreview = bodyPreview
         self.attachments = attachments
+        self.messageClass = messageClass
+        self.meeting = meeting
     }
 }
 
@@ -511,8 +624,100 @@ public actor EASClient {
                     contentID: node.child("ContentId")?.stringValue()
                 )
             },
-            cc: nonBlank("Cc")
+            cc: nonBlank("Cc"),
+            messageClass: nonBlank("MessageClass"),
+            meeting: Self.parseMeeting(application)
         )
+    }
+
+    // MARK: Meeting requests
+
+    /// Parses `MeetingRequest` into the plain wire model. A malformed child only drops that
+    /// child (dates stay nil); it never fails the whole sync batch.
+    static func parseMeeting(_ application: WBXMLNode?) -> EASMeeting? {
+        guard let meeting = application?.child("MeetingRequest") else { return nil }
+        func text(_ name: String) -> String? {
+            guard let raw = meeting.child(name)?.stringValue()?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !raw.isEmpty
+            else { return nil }
+            return raw
+        }
+        let location = meeting.path("Location", "DisplayName")?.stringValue()
+            ?? text("Location")
+        return EASMeeting(
+            uid: text("UID"),
+            start: Self.parseISO8601(text("StartTime")),
+            end: Self.parseISO8601(text("EndTime")),
+            allDay: text("AllDayEvent") == "1",
+            dtstamp: Self.parseISO8601(text("DtStamp")),
+            location: location?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfBlank,
+            organizer: text("Organizer"),
+            reminderMinutes: text("Reminder").flatMap(Int.init),
+            responseRequested: text("ResponseRequested") == "1",
+            busyStatus: text("BusyStatus").flatMap(Int.init),
+            messageType: text("MeetingMessageType").flatMap(Int.init),
+            instanceType: text("InstanceType").flatMap(Int.init),
+            recurrenceId: Self.parseISO8601(text("RecurrenceId")),
+            timeZone: text("TimeZone").flatMap(Self.parseMeetingTimeZone),
+            recurrence: Self.parseRecurrence(meeting)
+        )
+    }
+
+    /// `Recurrences` wraps exactly one `Recurrence` in e-mail meeting requests; accept a
+    /// direct child too so fixtures and calendar-shaped responses keep working.
+    static func parseRecurrence(_ meeting: WBXMLNode) -> EASRecurrence? {
+        guard let node = meeting.path("Recurrences", "Recurrence") ?? meeting.child("Recurrence"),
+              let type = node.child("Type")?.stringValue().flatMap(Int.init)
+        else { return nil }
+        func number(_ name: String) -> Int? {
+            node.child(name)?.stringValue().flatMap(Int.init)
+        }
+        return EASRecurrence(
+            type: type,
+            interval: number("Interval"),
+            until: Self.parseCompactDateTime(node.child("Until")?.stringValue()),
+            occurrences: number("Occurrences"),
+            daysOfWeek: number("DayOfWeek"),
+            dayOfMonth: number("DayOfMonth"),
+            weekOfMonth: number("WeekOfMonth"),
+            monthOfYear: number("MonthOfYear"),
+            firstDayOfWeek: number("FirstDayOfWeek")
+        )
+    }
+
+    /// The EAS `TimeZone` blob is a 172-byte TIME_ZONE_INFORMATION: int32 little-endian
+    /// bias, then the 64-byte UTF-16LE standard name. DST rules are deliberately ignored.
+    static func parseMeetingTimeZone(_ base64: String) -> EASMeetingTimeZone? {
+        guard let data = Data(base64Encoded: base64.trimmingCharacters(in: .whitespacesAndNewlines)),
+              data.count >= 4
+        else { return nil }
+        let bias = data.prefix(4).withUnsafeBytes { $0.load(as: Int32.self) }
+        var name: String?
+        if data.count >= 68 {
+            let nameBytes = data.subdata(in: 4..<68)
+            let raw = String(data: nameBytes, encoding: .utf16LittleEndian) ?? ""
+            name = raw.trimmingCharacters(in: CharacterSet(charactersIn: "\0")).nilIfBlank
+        }
+        return EASMeetingTimeZone(name: name, biasMinutes: Int(bias))
+    }
+
+    static func parseISO8601(_ value: String?) -> Date? {
+        guard let value, !value.isEmpty else { return nil }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: value) { return date }
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: value)
+    }
+
+    /// `Until` uses the Compact DateTime form: `yyyyMMddTHHmmssZ` (UTC).
+    static func parseCompactDateTime(_ value: String?) -> Date? {
+        guard let value, !value.isEmpty else { return nil }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyyMMdd'T'HHmmss'Z'"
+        return formatter.date(from: value)
     }
 
     // MARK: Body fetch
@@ -849,5 +1054,12 @@ public actor EASClient {
         default:
             throw EASError.permanent(status: response.status, detail: response.header("x-ms-aserror"))
         }
+    }
+}
+
+private extension String {
+    var nilIfBlank: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }

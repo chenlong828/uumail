@@ -752,3 +752,162 @@ struct EASSendTests {
         }
     }
 }
+
+@Suite("EASClient meeting requests")
+struct EASMeetingTests {
+    private func date(_ value: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: value)
+    }
+
+    private func timeZoneBlob(biasMinutes: Int32, name: String) -> String {
+        var data = Data()
+        withUnsafeBytes(of: biasMinutes.littleEndian) { data.append(contentsOf: $0) }
+        var encoded = name.data(using: .utf16LittleEndian) ?? Data()
+        encoded += Data(repeating: 0, count: max(0, 64 - encoded.count))
+        data.append(encoded.prefix(64))
+        return data.base64EncodedString()
+    }
+
+    private func meetingResponse(meetingClass: String = "IPM.Schedule.Meeting.Request") -> Data {
+        let meeting: [WBXMLElement] = [
+            .text("AllDayEvent", "0"),
+            .text("StartTime", "2026-11-19T01:30:00.000Z"),
+            .text("EndTime", "2026-11-19T04:00:00.000Z"),
+            .text("DtStamp", "2026-11-13T09:54:53.579Z"),
+            .children("Location", [.text("DisplayName", "C4519")]),
+            .text("Organizer", "\"王权英\" <wangqy@hundsun.com>"),
+            .text("Reminder", "900"),
+            .text("ResponseRequested", "1"),
+            .text("BusyStatus", "2"),
+            .text("MeetingMessageType", "2"),
+            .text("InstanceType", "1"),
+            .text("UID", "040000008200E00074C5B7101A82E008"),
+            .text("TimeZone", timeZoneBlob(biasMinutes: -480, name: "China Standard Time")),
+            .children("Recurrences", [
+                .children("Recurrence", [
+                    .text("Type", "1"),
+                    .text("Interval", "1"),
+                    .text("Until", "20261231T000000Z"),
+                    .text("DayOfWeek", "2"),
+                    .text("FirstDayOfWeek", "1"),
+                ]),
+            ]),
+        ]
+        let application: [WBXMLElement] = [
+            .text("Subject", "【会议预告】"),
+            .text("MessageClass", meetingClass),
+            .children("MeetingRequest", meeting),
+        ]
+        let body = try! WBXMLCodec.standard().encode(.children("Sync", [
+            .children("Collections", [
+                .children("Collection", [
+                    .text("SyncKey", "9"),
+                    .text("CollectionId", "13"),
+                    .text("Status", "1"),
+                    .children("Commands", [
+                        .children("Add", [
+                            .text("ServerId", "m-1"),
+                            .children("ApplicationData", application),
+                        ]),
+                    ]),
+                ]),
+            ]),
+        ]))
+        return body
+    }
+
+    @Test("a meeting request is parsed into EASMessage.meeting")
+    func parsesMeetingRequest() async throws {
+        let stub = StubTransport(responses: [
+            EASHTTPResponse(status: 200, headers: [:], body: meetingResponse()),
+        ])
+        let client = EASClient(configuration: makeConfiguration(), transport: stub, policyKey: "1")
+        let result = try await client.sync(collectionID: "13", syncKey: "0")
+
+        let message = try #require(result.added.first)
+        #expect(message.messageClass == "IPM.Schedule.Meeting.Request")
+        let meeting = try #require(message.meeting)
+        #expect(meeting.uid == "040000008200E00074C5B7101A82E008")
+        #expect(meeting.allDay == false)
+        #expect(meeting.start == date( "2026-11-19T01:30:00Z"))
+        #expect(meeting.end == date( "2026-11-19T04:00:00Z"))
+        #expect(meeting.location == "C4519")
+        #expect(meeting.organizer == "\"王权英\" <wangqy@hundsun.com>")
+        #expect(meeting.reminderMinutes == 900)
+        #expect(meeting.responseRequested)
+        #expect(meeting.messageType == 2)
+        #expect(meeting.instanceType == 1)
+        #expect(meeting.timeZone?.biasMinutes == -480)
+        #expect(meeting.timeZone?.name == "China Standard Time")
+
+        let recurrence = try #require(meeting.recurrence)
+        #expect(recurrence.type == 1)
+        #expect(recurrence.interval == 1)
+        #expect(recurrence.daysOfWeek == 2)
+        #expect(recurrence.firstDayOfWeek == 1)
+        #expect(recurrence.until == date( "2026-12-31T00:00:00Z"))
+    }
+
+    @Test("a plain e-mail has no meeting and keeps its message class")
+    func plainMessageHasNoMeeting() async throws {
+        let body = try! WBXMLCodec.standard().encode(.children("Sync", [
+            .children("Collections", [
+                .children("Collection", [
+                    .text("SyncKey", "9"),
+                    .text("CollectionId", "13"),
+                    .text("Status", "1"),
+                    .children("Commands", [
+                        .children("Add", [
+                            .text("ServerId", "m-2"),
+                            .children("ApplicationData", [
+                                .text("Subject", "普通邮件"),
+                                .text("MessageClass", "IPM.Note"),
+                            ]),
+                        ]),
+                    ]),
+                ]),
+            ]),
+        ]))
+        let stub = StubTransport(responses: [EASHTTPResponse(status: 200, headers: [:], body: body)])
+        let client = EASClient(configuration: makeConfiguration(), transport: stub, policyKey: "1")
+        let result = try await client.sync(collectionID: "13", syncKey: "0")
+        #expect(result.added.first?.meeting == nil)
+        #expect(result.added.first?.messageClass == "IPM.Note")
+    }
+
+    @Test("a request with a broken time zone blob drops only the blob")
+    func brokenTimeZoneIsDropped() async throws {
+        let meeting: [WBXMLElement] = [
+            .text("StartTime", "2026-11-19T01:30:00.000Z"),
+            .text("EndTime", "2026-11-19T04:00:00.000Z"),
+            .text("UID", "u-1"),
+            .text("TimeZone", "not-base64!!"),
+        ]
+        let body = try! WBXMLCodec.standard().encode(.children("Sync", [
+            .children("Collections", [
+                .children("Collection", [
+                    .text("SyncKey", "9"),
+                    .text("CollectionId", "13"),
+                    .text("Status", "1"),
+                    .children("Commands", [
+                        .children("Add", [
+                            .text("ServerId", "m-3"),
+                            .children("ApplicationData", [
+                                .text("MessageClass", "IPM.Schedule.Meeting.Request"),
+                                .children("MeetingRequest", meeting),
+                            ]),
+                        ]),
+                    ]),
+                ]),
+            ]),
+        ]))
+        let stub = StubTransport(responses: [EASHTTPResponse(status: 200, headers: [:], body: body)])
+        let client = EASClient(configuration: makeConfiguration(), transport: stub, policyKey: "1")
+        let result = try await client.sync(collectionID: "13", syncKey: "0")
+        let parsed = try #require(result.added.first?.meeting)
+        #expect(parsed.start != nil)
+        #expect(parsed.timeZone == nil)
+    }
+}
