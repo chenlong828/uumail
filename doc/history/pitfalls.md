@@ -26,3 +26,14 @@ updated: 2026-11-24
   - 消息列表加 `ScrollViewReader`，选中变化时 `scrollTo(anchor: .center)`。
 - **回归**：`Tests/PresentationTests/MailboxViewModelTests.swift` 的 `MailboxRevealTests` 3 例（跨文件夹、清搜索、未找到）。
 - **落点**：`Sources/uumail/MailboxView.swift`、`Sources/Presentation/MailboxViewModel.swift`、`design/components/CMP-APP/spec.md` 增量。
+
+## P2 邮件工具栏图标没有 tooltip（2026-11-24，已修复）
+
+- **现象**：主窗口右侧一组图标按钮（新建/回复/全部回复/转发/加载远程图片/标记为已读/刷新）悬停无提示。
+- **根因**：SwiftUI 把 `.help` 放在 `ToolbarItemGroup` 的 `Button` 上时，不会桥接到 `NSToolbarItem.toolTip`；
+  2026-11-24 用离屏 `NSWindow` + 生产 `MailboxToolbar` 探针实测，7 个条目的 `toolTip` 全为 `nil`（即使代码里已有三处 `.help`）。
+  另有 4 个按钮（回复/全部回复/转发/刷新）本身也没写 `.help`。
+- **对策**：`Sources/uumail/ToolbarTooltips.swift#ToolbarTooltipInstaller` 作为零尺寸 `NSViewRepresentable` 挂在邮件列上，
+  在窗口 toolbar 就绪后按 `item.label` 补 `toolTip`（已有值不覆盖），并在视图更新时重试；`MailboxToolbar` 补全 7 个 `.help` 作为可读兜底。
+- **证据**：`task-spaces/20261124-toolbar-tooltip/evidence/tooltip-probe.txt`（7/7 条目 toolTip 非空）。
+- **落点**：`Sources/uumail/MailboxToolbar.swift`、`Sources/uumail/ToolbarTooltips.swift`、`design/components/CMP-APP/spec.md` 增量。

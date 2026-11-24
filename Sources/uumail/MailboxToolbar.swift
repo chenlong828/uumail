@@ -34,14 +34,17 @@ struct MailboxToolbar: ToolbarContent {
             Button(action: actions.reply) {
                 Label("回复", systemImage: "arrowshape.turn.up.left")
             }
+            .help("回复发件人")
             .disabled(!state.hasSelection)
             Button(action: actions.replyAll) {
                 Label("全部回复", systemImage: "arrowshape.turn.up.left.2")
             }
+            .help("回复全部收件人")
             .disabled(!state.hasSelection)
             Button(action: actions.forward) {
                 Label("转发", systemImage: "arrowshape.turn.up.right")
             }
+            .help("转发邮件")
             .disabled(!state.hasSelection)
             // Remote images are a per-message, session-only permission: a stateful icon
             // button (not a toggle or menu) keeps the on/off state visible in the toolbar.
@@ -69,6 +72,7 @@ struct MailboxToolbar: ToolbarContent {
             Button(action: actions.refresh) {
                 Label("刷新", systemImage: "arrow.clockwise")
             }
+            .help("刷新收件箱")
             .disabled(state.isSyncing)
         }
     }

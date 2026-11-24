@@ -1,0 +1,8 @@
+ITEM label=新建 toolTip=新建邮件 viewToolTip=<nil>
+ITEM label=回复 toolTip=回复发件人 viewToolTip=<nil>
+ITEM label=全部回复 toolTip=回复全部收件人 viewToolTip=<nil>
+ITEM label=转发 toolTip=转发邮件 viewToolTip=<nil>
+ITEM label=加载远程图片 toolTip=仅对当前邮件放行远程图片 viewToolTip=<nil>
+ITEM label=标记为已读 toolTip=将当前邮件标记为已读 viewToolTip=<nil>
+ITEM label=刷新 toolTip=刷新收件箱 viewToolTip=<nil>
+VISIBLE=["新建", "回复", "全部回复", "转发", "加载远程图片", "标记为已读", "刷新"]

@@ -400,3 +400,11 @@ component: CMP-APP
   跳转改用 `MailboxViewModel.reveal(folderID:serverID:)`（清搜索 → 切文件夹 → 重载 → 选中，找不到返回 false）；
   `MailboxView` 给消息列表加 `ScrollViewReader`，选中变化滚动到可视区；状态栏提示未加载的邀请。
 - 证据：`MailboxRevealTests` 3 例 + 全量 440 tests / 72 suites 绿、架构 4/4、`make-app.sh` 成功。
+
+## 修复：邮件工具栏 tooltip（2026-11-24）
+
+- 现象与根因见 `history/pitfalls.md` P2：SwiftUI 的 `.help` 不会桥接到 `NSToolbarItem.toolTip`，且 4 个按钮原本没有 `.help`。
+- 修复：`ToolbarTooltipInstaller`（零尺寸 `NSViewRepresentable`，挂在邮件列 `.background`）在窗口 toolbar 出现后按
+  `item.label` 补 `toolTip`，已有值不覆盖；`MailboxToolbar` 的 7 个按钮补齐 `.help` 文案。
+- 证据：离屏探针 7/7 条目 `toolTip` 非空（`task-spaces/20261124-toolbar-tooltip/evidence/tooltip-probe.txt`）；
+  全量 440 tests / 72 suites、架构 4/4、`make-app.sh` 成功。

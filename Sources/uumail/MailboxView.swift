@@ -112,6 +112,7 @@ struct MailboxView: View {
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.willResignActiveNotification)) { _ in
                 viewModel.setApplicationActive(false)
             }
+            .background(ToolbarTooltipInstaller().frame(width: 0, height: 0))
             .toolbar {
                 MailboxToolbar(
                     state: MailboxToolbar.State(
