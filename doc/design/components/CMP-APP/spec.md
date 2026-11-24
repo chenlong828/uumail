@@ -2,7 +2,7 @@
 layer: design
 module: app
 status: active
-updated: 2026-11-24
+updated: 2026-11-25
 component: CMP-APP
 ---
 
@@ -554,3 +554,13 @@ component: CMP-APP
   - `HSplitProbe.swift`：否决 `HSplitView` 的依据。
 - 人工项（发布前）：真实点击顶部切换、列表/阅读分隔条拖拽、深色主题整窗视觉；真实发一封测试信后确认服务器 Sent Items 出现副本并能在「发件箱」拉到（外发需用户确认）。
 - 定级：**P2**（跨 `CMP-APP`/`CMP-PRES`/`CMP-SYNC`；无 schema/协议/target/依赖变更；APP 层无新增 public 契约）。
+
+## 设计增量：设置页邮箱地址输入（REQ-0039，2026-11-25，P2，已实现）
+
+- 来源：`REQ-0039` / `SCN-0030`。表单在「账号（不带域）」之后新增一行「邮箱地址」，让用户填写与实际邮箱域一致的 `From` 地址；留空时沿用 `账号@服务器地址`。
+- `AccountSetupView` 的账号 Section 字段顺序：显示名 → 服务器地址 → 账号（不带域）→ 邮箱地址 → 密码 → 域。
+- `TextField("邮箱地址", text: $viewModel.email, prompt: Text("name@company.com；留空则用 账号@服务器地址"))`：
+  - 不设 `SecureField`、不做格式校验、不禁用连接按钮；空值与非法值的取舍交给服务器和场景。
+  - 文案同时给出示例与留空回退，避免用户把 Exchange 主机地址误填成邮箱地址。
+- 视图只绑定 `AccountSetupViewModel.email`，不读配置、不比较已存地址、不直接调 `updateAccountAddress`；提交仍走既有 `onConnect` → `connect()`。
+- 尺寸：`AccountSetupView.swift` **71 行**；不新增文件/target/依赖，不改 schema 或其他表单字段。本增量未新增 APP 层测试；连接与迁移行为由 `AccountSetupSceneTests` 覆盖。

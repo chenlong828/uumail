@@ -36,7 +36,9 @@ updated: 2026-11-24
 | `T-1124-30` | change | CMP-PRES | 完成 | `MailboxViewModel.swift`/`+List.swift` + `MailboxViewModelTests` |
 | `T-1124-31` | change | CMP-APP | 完成 | `MailboxView.swift`/`MailboxToolbar.swift` + L2 探针 |
 | `T-1124-32` | verify | — | 完成 | 全量测试、架构 4 门、`make-app.sh`、L2 探针 |
-| `T-1124-33` | doc | — | 进行中 | REQ/SCN/CMP/roadmap/README/open-questions |
+| `T-1124-33` | doc | — | 完成 | REQ/SCN/CMP/roadmap/README/open-questions |
+| `T-1124-34` | change | CMP-DOMAIN / CMP-SCN-ACCOUNT / CMP-APP / CMP-PRES / CMP-ROOT / CMP-STORE / CMP-CLI | 完成 | 邮箱地址配置、账号地址迁移、`sync-sent` CLI |
+| `T-1124-35` | verify | — | 完成 | 真实发信（修正地址后成功）+ 服务器 Sent Items 拉取 12 封 |
 
 ## 验收标准
 
@@ -46,9 +48,10 @@ updated: 2026-11-24
 4. 发件箱选中时同步服务器 Sent Items（type 5），列表出现已发送副本；收件箱的 sync key 不被 Sent 同步移动。
 5. `SendMail` 继续携带 `SaveInSentItems`；发件箱同步失败时保留缓存并给中文错误，不把收件箱判为失败。
 6. 全量测试、架构 4 门、`make-app.sh` 通过。
+7. 邮箱地址可配置并迁移已存账号；真实发信能落到服务器 Sent Items（`REQ-0039` / `SCN-0030`）。
 
 ## 未决 / 人工项
 
-- 真实发一封测试信后，确认服务器 Sent Items 出现副本、App 发件箱能拉到；这需要一次真实外发，待用户确认后执行。
+- 真实发信已执行：第一次用 `account@host` 地址被网关 502；改用 `EAS_EMAIL` 后成功，`uumailctl sync-sent` 拉到服务器 Sent Items 12 封（含测试信）。由此补 `REQ-0039` 邮箱地址配置与账号地址迁移。
 - 真实点击顶部切换、列表/阅读分隔条拖拽、深色主题视觉验收。
 - 其他文件夹（草稿/已删除等）仍不同步；用户已选择隐藏，不再提供入口。

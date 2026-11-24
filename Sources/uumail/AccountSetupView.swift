@@ -12,6 +12,11 @@ struct AccountSetupView: View {
                 TextField("显示名", text: $viewModel.displayName)
                 TextField("服务器地址", text: $viewModel.host, prompt: Text("mail.example.com"))
                 TextField("账号（不带域）", text: $viewModel.account)
+                TextField(
+                    "邮箱地址",
+                    text: $viewModel.email,
+                    prompt: Text("name@company.com；留空则用 账号@服务器地址")
+                )
                 SecureField("密码", text: $viewModel.password)
                 TextField("域", text: $viewModel.domain, prompt: Text("留空则不带域"))
             }

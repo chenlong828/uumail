@@ -37,7 +37,8 @@ public struct DotEnvCredentialStore: Sendable {
             password: password,
             domain: values["EAS_DOMAIN"] ?? "",
             deviceID: deviceID,
-            displayName: values["EAS_DISPLAY_NAME"].flatMap { $0.isEmpty ? nil : $0 } ?? account
+            displayName: values["EAS_DISPLAY_NAME"].flatMap { $0.isEmpty ? nil : $0 } ?? account,
+            email: values["EAS_EMAIL"] ?? ""
         )
     }
 
@@ -53,6 +54,7 @@ public struct DotEnvCredentialStore: Sendable {
             "EAS_DOMAIN=\(Self.quote(configuration.domain))",
             "EAS_DEVICE_ID=\(Self.quote(configuration.deviceID))",
             "EAS_DISPLAY_NAME=\(Self.quote(configuration.displayName))",
+            "EAS_EMAIL=\(Self.quote(configuration.email))",
             "",
         ]
         let manager = FileManager.default

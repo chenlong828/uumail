@@ -34,6 +34,6 @@ updated: 2026-11-24
   - 2026-11-24 **人工确认**：发件箱**显示服务器 Sent Items（folder type 5）**，不建本地 Sent 镜像。
   - 2026-11-24 **人工确认**：把 Sent Items **纳入同步**；打开「发件箱」时按 type 5 拉取该集合。
   - 2026-11-24 **人工确认**：草稿、已删除、垃圾邮件等其他文件夹仍隐藏、不提供入口，本次不同步。
-  - 2026-11-24 **待人工**：真实发一封信，确认服务器 Sent Items 出现副本、App「发件箱」能拉到；未执行前不写成已通过。
-- **状态**：`delivered`（2026-11-24 实现并验证：`SCN-0029` verified；L1 `SyncEngineTests` 2 例 + `MailboxViewModelTests` 1 例 + 既有 `EASClientTests` 的 `SaveInSentItems` 断言；464 tests / 77 suites、架构 4/4；`make-app.sh` 成功（release，2026-11-24 23:57 CST）。**真实发信冒烟未执行**，仍是发布前人工项）
+  - 2026-11-25 **已验证**：真实发信第一次因 `From` 为 `账号@mail.hundsun.com` 被网关 502；按 `REQ-0039` 改用 `EAS_EMAIL` 后发送成功，`uumailctl sync-sent` 从服务器 Sent Items 拉到 12 封（含测试信）。App 的「发件箱」走同一条 `syncSentOnce` 路径；真实 App 点击仍列为发布前人工项。
+- **状态**：`delivered`（2026-11-24 实现并验证：`SCN-0029` verified；L1 `SyncEngineTests` 2 例 + `MailboxViewModelTests` 1 例 + 既有 `EASClientTests` 的 `SaveInSentItems` 断言；465 tests / 77 suites、架构 4/4；`make-app.sh` 成功（release）。真实发信在修正地址后成功、服务器 Sent Items 可拉取；App 内点击发件箱的整窗冒烟仍待人工）
 - **验收归属**：`SCN-0029` 的 3 正 1 反通过 + 上述约束逐条无违反 + 回归场景不退化；需求不另立测试。

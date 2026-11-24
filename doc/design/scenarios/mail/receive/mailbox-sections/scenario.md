@@ -58,5 +58,5 @@ scenario: SCN-0028
 
 - 实现：`MailboxView` 去掉侧栏，根视图 toolbar 的 `.navigation` 位放三段 `Picker(.segmented)`，默认收件箱；邮件页改两栏 `NavigationSplitView`，列表 `min 320 / ideal 480`、阅读区取剩余；日历页占满内容区，顶部切换保留；工具栏刷新按 section 分派；`MailboxView` 293 行（≤300）。
 - 证据（L2）：`task-spaces/20261125-000000-sent-nav/probe/toolbar-nav.png`——顶部 Picker 在 leading、交通灯之后，三段可见，无文件夹栏；`task-spaces/20261125-000000-sent-nav/probe/two-column.txt`——1440 list=480 reading=952，900 list=480 reading=412；`HSplitView` 在 1440 把 list 拉到 760、不遵守 `idealWidth`，因此否决（`task-spaces/20261125-000000-sent-nav/probe/HSplitProbe.swift`）。
-- 证据（L1）：`Tests/PresentationTests/MailboxViewModelTests.swift` 的 `selectSent` 例（folder 18、列表出现已发送副本、phase idle）；全量 464 tests / 77 suites、架构 4/4、`make-app.sh` 成功（release，2026-11-24 23:57 CST）。
+- 证据（L1）：`Tests/PresentationTests/MailboxViewModelTests.swift` 的 `selectSent` 例（folder 18、列表出现已发送副本、phase idle）；全量 465 tests / 77 suites、架构 4/4、`make-app.sh` 成功（release，2026-11-24 23:57 CST）。
 - 未覆盖（发布前人工项）：真实点击顶部三段切换、真实列表/阅读分隔条拖拽、深色主题整窗视觉；真实快速切换的竞态未做无头探针。

@@ -2,7 +2,7 @@
 layer: design
 module: scenes
 status: active
-updated: 2026-11-14
+updated: 2026-11-25
 component: CMP-SCN-ACCOUNT
 ---
 
@@ -79,3 +79,18 @@ component: CMP-SCN-ACCOUNT
 
 - 只经 `MailGateway` 端口访问网络；只经 `MailStore` 公开契约写库。
 - 不 import `EASClient`/`EASAdapter`/`Composition`；不决定 UI 文案。
+
+## 设计增量：邮箱地址解析与已存账号迁移（REQ-0039，2026-11-25，P2，已实现）
+
+- 来源：`REQ-0039` / `SCN-0030`。设置页可填实际邮箱地址；场景负责把它变成账号行地址，并在已有账号上做一次性迁移。
+- `AccountInput` 新增 `public var email: String`，`init` 参数 `email: String = ""`（尾部默认值，既有调用不破）；`configuration(from:)` 把它 trim 后透传到 `ServerConfiguration.email`。
+- `connect` 地址规则：
+  - 先取 `let address = configuration.resolvedEmail`（显式邮箱，或 `account@host` 回退）。
+  - 新建账号：`createAccount` 的 `address` 用 `resolvedEmail`；空邮箱时与旧行为完全一致。
+  - 复用已有账号：**仅当 `input.email` trim 后非空**且与 `store.account(existing).address` 不同，才调 `store.updateAccountAddress`；空邮箱不调用更新，保留用户之前自定义的旧地址。
+  - `ConnectedAccount.address`：显式邮箱时返回新地址；空邮箱时返回已存地址（读不到时回退 `resolvedEmail`）。
+- 失败语义：
+  - 更新失败（账号行不存在、SQLite 错误等）由 `classify` 归为 `MailError.storage`，`connect` 失败；迁移发生在文件夹快照与 `credentials.save` 之前，失败不会写入新凭据。
+  - 迁移只改 `accounts.address`，不删账号、不动消息与文件夹；复用账号在后续步骤失败时保留原账号与数据，但已写入的地址不回滚（迁移与凭据保存不在同一事务）。
+  - 空字段不是「清除地址」：它表示沿用 `账号@服务器地址`/已存地址，永远不触发把自定义地址重置为回退值。
+- 测试：`AccountSetupSceneTests.explicitEmail`（已有账号 + 显式 `email` → `accounts.address` 与 `ConnectedAccount.address` 均为新地址）、「a repeat connect reuses the existing account row」（留空 + 已存 `old@corp.test` → 返回并保留旧地址）；`legacyConfigurationDecoding` 覆盖旧配置回退（见 `CMP-DOMAIN`）。`SCN-0030` 3 正 1 反通过；全量 465 tests / 77 suites、架构 4/4。

@@ -50,6 +50,24 @@ struct AccountSetupSceneTests {
         #expect(probe.folderCount == 2)
     }
 
+    @Test("an explicit email replaces the account@host From address")
+    func explicitEmail() async throws {
+        let store = try MailStore.inMemory()
+        let existing = try store.createAccount(
+            NewAccount(displayName: "J Doe", address: "jdoe@mail.corp.test", host: "mail.corp.test")
+        )
+        let scene = AccountSetupScene(
+            gateway: FakeGateway(folders: folderListing),
+            store: store,
+            credentials: FakeCredentialStore()
+        )
+
+        let connected = try await scene.connect(makeAccountInput(email: "jdoe@corp.test"))
+
+        #expect(connected.address == "jdoe@corp.test")
+        #expect(try store.account(existing)?.address == "jdoe@corp.test")
+    }
+
     @Test("validate probes and provisions without writing the database or credentials")
     func validateDoesNotWrite() async throws {
         let store = try MailStore.inMemory()

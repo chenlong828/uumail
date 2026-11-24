@@ -78,7 +78,8 @@ enum ConfigurationSource {
             password: password,
             domain: environment["EAS_DOMAIN"] ?? "",
             deviceID: deviceID,
-            displayName: account
+            displayName: account,
+            email: environment["EAS_EMAIL"] ?? ""
         )
     }
     #endif
@@ -92,7 +93,8 @@ enum ConfigurationSource {
             password: input.password,
             domain: input.domain,
             deviceID: input.deviceID,
-            displayName: input.displayName.isEmpty ? input.account : input.displayName
+            displayName: input.displayName.isEmpty ? input.account : input.displayName,
+            email: input.email
         )
     }
 

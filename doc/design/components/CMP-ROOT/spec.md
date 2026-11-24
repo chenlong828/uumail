@@ -2,7 +2,7 @@
 layer: design
 module: composition
 status: active
-updated: 2026-11-14
+updated: 2026-11-25
 component: CMP-ROOT
 ---
 
@@ -34,7 +34,7 @@ component: CMP-ROOT
 - 入口：`Sources/Composition/AppComposition.swift#AppComposition`、`CommandLineComposition.swift#CommandLineComposition`、`OutboxPump.swift#OutboxPump`、`GatewayFactory.swift#GatewayFactory`
 - 依赖：其余 8 个库 target（`MailDomain`、`MailStore`、`SyncEngine`、`Outbox`、`EASClient`、`EASAdapter`、`Scenes`、`Presentation`）。组合根豁免扇出。
 - 冷热：启动一次；运行期只做路由，不进热路径。
-- 尺寸预算：`AppComposition` ≤200 行（当前 **180**）；`CommandLineComposition` 127；`OutboxPump` 66；平台适配器各自 ≤120 行。
+- 尺寸预算：`AppComposition` ≤200 行（当前 **194**）；`CommandLineComposition` 134；`OutboxPump` 66；平台适配器各自 ≤120 行。
 - 单独运行：`./Scripts/swiftw test --filter CompositionTests`
 - 删除测试：删掉后各入口各自装配、环境分支散落 → 真边界。
 
@@ -130,3 +130,14 @@ component: CMP-ROOT
 ## 实现（2026-11-24，T-1124-20/21）
 
 - 零改动：`AppComposition` 仍 188/200 行；`ReaderCoordinator.shared` 在 App 层创建，读窗口不经组合根。
+
+## 设计增量：启动时账号地址迁移与 CLI 邮箱配置（REQ-0039，2026-11-25，P2，已实现）
+
+- 来源：`REQ-0039` / `SCN-0030`。设置页/`.env` 的显式邮箱要在启动时覆盖旧的 `accounts.address`，CLI 与 App 走同一规则；否则真实发信仍用 `账号@mail.hundsun.com` 作为 `From`，网关返回 502。
+- `AppComposition.attachMailbox`（`AppComposition.swift` **194 行**，≤200）：装配邮箱前判断配置 `email` trim 后非空且与 `store.account(account).address` 不同，`try? store.updateAccountAddress(account, address: configuration.resolvedEmail)`。`try?` 是有意的：迁移失败不阻塞启动，邮箱仍用旧地址工作；不 `switch` 错误、不重试、不提示。
+- `CommandLineComposition.make`：已有账号走同一比较与迁移，但用 `try` 让数据库错误冒泡为命令失败；新建空库仍经 `AccountSetupScene.connect`（`AccountInput(configuration:)` 带 `email`）。
+- `CommandLineComposition.configuration`：从环境读 `EAS_EMAIL`（缺省 `""`）填入 `ServerConfiguration.email`。
+- `ConfigurationSource`：`debugConfiguration` 与 `serverConfiguration(from:)` 都透传 `email`（DEBUG 环境与设置页同形）。
+- `DotEnvCredentialStore`：`load` 读 `EAS_EMAIL`（缺省 `""`），`save` 写 `EAS_EMAIL=\(quote(configuration.email))`；空值也写，保证「读 → 写」往返不丢显式/空状态，且不改变 `0600` 与原子替换路径。
+- 真实发信证据（2026-11-25）：错误 `From`（`账号@mail.hundsun.com`）时网关返回 **502**，发送失败；同一封测试信改用正确邮箱地址后发送成功，`uumailctl sync-sent` 从服务器 Sent Items 拉到 **12 封**（含测试信）。开发机 `~/.uumail.env` 已补 `EAS_EMAIL`（用户授权，值不记录在文档）。失败可见性沿用既有中文错误文案；App 的 `try?` 只作用于地址迁移，不影响发信错误路径（仍由 `Outbox`/场景呈现）。
+- 边界：组合根仍只做「读配置 → 选实现 → 注入」；地址比较与更新是 `REQ-0039` 的数据迁移例外，不引入业务重试或 UI 文案。App 启动时会把现有 `accounts.address` 迁移为显式地址。

@@ -75,7 +75,7 @@ updated: 2026-11-24
 
 - L1：
   - `SyncEngineTests` 新增 `syncSentOnce` 2 例（只同步 Sent、不动 inbox key；无 Sent 返回 nil）；
-  - `MailboxViewModelTests` 新增 `selectSent` 1 例（选中/刷新/列表出现已发送副本）；全量 464 tests / 77 suites。
+  - `MailboxViewModelTests` 新增 `selectSent` 1 例（选中/刷新/列表出现已发送副本）；全量 465 tests / 77 suites。
 - L2：
   - `probe/toolbar-nav.png`：顶部 Picker 位于 leading，三段「收件箱/发件箱/日历」，无文件夹栏；
   - `probe/two-column.txt`：1440 list 480 / reading 952；900 list 480 / reading 412。
@@ -89,3 +89,4 @@ updated: 2026-11-24
 - 不用 `HSplitView`（不遵守 idealWidth）；用两栏 `NavigationSplitView`，列表 480 的既有口径不变。
 - Sent 同步用独立入口 `syncSentOnce`，不并进 `syncOnce`：避免 Sent 失败把收件箱刷新判失败，也不改 `SyncReport.syncKey` 的既有含义。
 - 无本地 Sent 镜像：服务器已有 `SaveInSentItems`，本地镜像会引入第二真相与重复风险；先按用户选择验证服务器路径。
+- 真实发信暴露的地址问题（REQ-0039）：`AccountSetupScene` 固定用 `account@host` 作为 From，Exchange 主机是 `mail.hundsun.com` 而邮箱域是 `hundsun.com`，网关对错误 From 返回 502。方案：`ServerConfiguration.email` + `resolvedEmail`（空则回退 `account@host`），设置页加「邮箱地址」，`.env` 读 `EAS_EMAIL`，启动/重连时把显式地址写回 `accounts.address`；不传/留空时保留自定义旧地址，避免把用户手动改过的地址重置。

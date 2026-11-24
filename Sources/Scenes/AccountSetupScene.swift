@@ -13,6 +13,8 @@ public struct AccountInput: Sendable {
     public var domain: String
     public var deviceID: String
     public var displayName: String
+    /// From address; empty keeps the historical `account@host`.
+    public var email: String
 
     public init(
         host: String,
@@ -20,7 +22,8 @@ public struct AccountInput: Sendable {
         password: String,
         domain: String,
         deviceID: String,
-        displayName: String
+        displayName: String,
+        email: String = ""
     ) {
         self.host = host
         self.account = account
@@ -28,6 +31,7 @@ public struct AccountInput: Sendable {
         self.domain = domain
         self.deviceID = deviceID
         self.displayName = displayName
+        self.email = email
     }
 }
 
@@ -77,7 +81,7 @@ public struct AccountSetupScene: Sendable {
     /// Runs the full setup and returns the ready account.
     public func connect(_ input: AccountInput) async throws -> ConnectedAccount {
         let configuration = try Self.configuration(from: input)
-        let address = "\(configuration.account)@\(configuration.host)"
+        let address = configuration.resolvedEmail
 
         do {
             _ = try await gateway.probe()
@@ -94,6 +98,13 @@ public struct AccountSetupScene: Sendable {
             if let existing = try store.accounts().first {
                 accountID = existing
                 created = false
+                // Adopt an explicit address (REQ-0039) so the From header and Sent mirror
+                // use the real mailbox. An empty field must not overwrite a custom stored
+                // address with the account@host fallback.
+                if !input.email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                   let stored = try store.account(existing), stored.address != address {
+                    try store.updateAccountAddress(existing, address: address)
+                }
             } else {
                 accountID = try store.createAccount(
                     NewAccount(
@@ -122,9 +133,10 @@ public struct AccountSetupScene: Sendable {
             let stored = try store.account(accountID)
             try credentials.save(configuration)
 
+            let explicitEmail = !input.email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             return ConnectedAccount(
                 accountID: accountID,
-                address: stored?.address ?? address,
+                address: explicitEmail ? address : (stored?.address ?? address),
                 displayName: stored?.displayName ?? configuration.displayName,
                 folders: folders
             )
@@ -167,7 +179,8 @@ public struct AccountSetupScene: Sendable {
             password: password,
             domain: domain,
             deviceID: deviceID,
-            displayName: displayName.isEmpty ? account : displayName
+            displayName: displayName.isEmpty ? account : displayName,
+            email: input.email.trimmingCharacters(in: .whitespacesAndNewlines)
         )
     }
 

@@ -72,6 +72,21 @@ public final class MailStore: @unchecked Sendable {
         }
     }
 
+    /// Changes the From address of an existing account (REQ-0039). Setup and app startup
+    /// call this when the stored `account@host` derivation is replaced by an explicit
+    /// mailbox address; it is a data migration, not a schema change.
+    public func updateAccountAddress(_ id: AccountID, address: String) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: "UPDATE accounts SET address = ? WHERE id = ?",
+                arguments: [address, id.raw]
+            )
+            guard db.changesCount == 1 else {
+                throw MailStoreError.accountNotFound(id)
+            }
+        }
+    }
+
     /// Marks a provisioned account usable. Account setup calls this after folders land.
     public func markAccountReady(_ id: AccountID) throws {
         try dbQueue.write { db in

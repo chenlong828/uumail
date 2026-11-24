@@ -57,5 +57,6 @@ scenario: SCN-0029
 
 - 实现：`SyncEngine.syncFolder`（原 `syncInbox` 泛化）+ 新 `syncSentOnce()`；`SyncScene.refreshSent()`；`MailboxViewModel.sentFolderID`/`selectSent()`/`refreshSent()`；`SendMail` 的 `SaveInSentItems` 未改。
 - 证据（L1）：`Tests/SyncEngineTests/SyncEngineTests.swift` 2 例（sentItems 只同步 Sent 且 inbox key 不变；noSentItems 返回 nil）；`Tests/PresentationTests/MailboxViewModelTests.swift` 1 例（selectSent → folder 18、列表出现已发送副本、phase idle）；`Tests/EASClientTests/EASClientTests.swift` 既有 `SaveInSentItems` 断言。
-- 全量 464 tests / 77 suites、架构 4/4、`make-app.sh` 成功（release，2026-11-24 23:57 CST）。
-- 未覆盖（发布前人工项）：**真实发一封信 → 服务器 Sent Items 出现副本 → App「发件箱」拉到**（未执行，不写成已通过）；真实点击发件箱与切换中的竞态；`refreshSent` 不发新邮件通知本轮无独立断言（组件规格已登记为残余）；发送成功不触发即时同步、无本地 Sent 镜像均为本卡已确认口径，不是缺陷。
+- 全量 465 tests / 77 suites、架构 4/4、`make-app.sh` 成功（release，2026-11-24 23:57 CST）。
+- 真实发信（2026-11-25）：第一次因本机账号地址是 `账号@mail.hundsun.com` 被网关 502；按 `REQ-0039` 改用 `EAS_EMAIL` 后发送成功，`uumailctl sync-sent` 从服务器 Sent Items 拉到 12 封（含测试信）。
+- 未覆盖（发布前人工项）：真实 App 内点击「发件箱」的整窗视觉与点击；真实点击发件箱与切换中的竞态；`refreshSent` 不发新邮件通知本轮无独立断言（组件规格已登记为残余）；发送成功不触发即时同步、无本地 Sent 镜像均为本卡已确认口径，不是缺陷。

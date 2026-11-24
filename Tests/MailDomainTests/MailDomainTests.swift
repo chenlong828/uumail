@@ -110,6 +110,8 @@ struct MailDomainValueTests {
         #expect(configuration.deviceType == "iPhone")
         #expect(configuration.protocolVersion == "16.1")
         #expect(configuration.allowInsecureTLS == false)
+        #expect(configuration.email == "", "old payloads have no explicit From address")
+        #expect(configuration.resolvedEmail == "u@mail.example.com")
 
         let encoded = try JSONEncoder().encode(configuration)
         let roundTrip = try JSONDecoder().decode(ServerConfiguration.self, from: encoded)

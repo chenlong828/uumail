@@ -2,7 +2,7 @@
 layer: design
 module: domain
 status: active
-updated: 2026-11-24
+updated: 2026-11-25
 component: CMP-DOMAIN
 ---
 
@@ -340,3 +340,21 @@ component: CMP-DOMAIN
 - **无迁移**：不涉 schema、协议或持久数据；库里已有的 `type=5` 行立即具备该语义，无需重同步。
 - 消费方：`SyncEngine.syncSentOnce` 用它定位 Sent 集合；`MailboxViewModel.inboxFolderID`/`sentFolderID` 用它派生只读 ID（见 `CMP-SYNC`/`CMP-PRES` 同日增量）。
 - 验证：行为由 `SyncEngineTests`（type 5 / serverID `18` 只同步该 collection）与 `PresentationTests`（`selectSent` 落在 folder `18`）覆盖；`MailDomainTests` 既有值类型用例不回归。
+
+## 设计增量：账号邮箱地址与 resolvedEmail（REQ-0039，2026-11-25，P2，已实现）
+
+- 来源：`REQ-0039` / `SCN-0030`。Exchange 主机常为 `mail.company.com`，实际邮箱域却是 `company.com`；旧实现固定用 `account@host` 拼 `From`，网关对错误发件人返回 502。本增量把「实际邮箱地址」纳入配置，并保留旧配置的回退。
+- `ServerConfiguration` 新增 `public var email: String`（additive）：
+  - `init` 参数 `email: String = ""`，位置在 `displayName` 之后、`deviceType` 之前；既有构造点不传即保持旧行为。
+  - `init(from:)` 用 `decodeIfPresent(String.self, forKey: .email) ?? ""`；旧 Keychain/JSON 载荷没有该键时解码为空串，不抛错。
+  - 新增 `public var resolvedEmail: String { get }`：对 `email` 去首尾空白，非空则返回该值，空则回退 `"\(account)@\(host)"`。
+- 不变量：
+  - `email` 保留调用方原值（含空串），trim 与回退只发生在 `resolvedEmail`，两者不互相写回。
+  - `resolvedEmail` 的回退结果形如 `account@host`；本组件不做格式、域名或归属校验，空 `account`/`host` 由场景在更早的 `invalidInput` 拒绝。
+  - 纯值类型改动：无 I/O、无新端口/错误 case；`Codable` 往返保留 `email`，旧载荷解码为 `""`；`MailDomain` 仍只依赖 Foundation。
+  - 不涉及 schema、EAS 协议或 `MailGateway`/`SyncStore` 签名。
+- 消费方：
+  - `AccountSetupScene.configuration(from:)` 透传 trim 后的 `email`；`connect` 用 `resolvedEmail` 写新账号地址、生成 `ConnectedAccount.address`（见 `CMP-SCN-ACCOUNT` 同日增量）。
+  - `AccountSetupViewModel` 用它预填/回传表单（`CMP-PRES`）；`ConfigurationSource`/`CommandLineComposition`/`DotEnvCredentialStore` 负责 `EAS_EMAIL` 的读写（`CMP-ROOT`）。
+  - `Outbox` 不直接读本类型：发信 `From` 仍来自 `accounts.address`，启动/重连迁移后自然使用显式地址。
+- 测试：`Tests/MailDomainTests` 的 `legacyConfigurationDecoding` 断言旧载荷 `email == ""` 且 `resolvedEmail == "u@mail.example.com"`，并断言编码再解码后配置相等；全量 465 tests / 77 suites、架构 4/4。

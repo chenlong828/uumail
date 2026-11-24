@@ -365,7 +365,8 @@ func makeAccountInput(
     password: String = "secret",
     domain: String = "corp",
     deviceID: String = "device-1",
-    displayName: String = "J Doe"
+    displayName: String = "J Doe",
+    email: String = ""
 ) -> AccountInput {
     AccountInput(
         host: host,
@@ -373,7 +374,8 @@ func makeAccountInput(
         password: password,
         domain: domain,
         deviceID: deviceID,
-        displayName: displayName
+        displayName: displayName,
+        email: email
     )
 }
 

@@ -2,7 +2,7 @@
 layer: design
 module: cli
 status: active
-updated: 2026-11-14
+updated: 2026-11-25
 component: CMP-CLI
 ---
 
@@ -73,3 +73,15 @@ component: CMP-CLI
 
 - 数据命令只经 `Composition` + `Scenes`；诊断命令可 import `EASClient`（显式例外，门 1 放行）。
 - 不 import `MailStore`/`Presentation`/`Outbox`；不写业务 SQL、不拼 MIME。
+
+## 设计增量：sync-sent 诊断命令（REQ-0038/REQ-0039，2026-11-25，P3，已实现）
+
+- 来源：`REQ-0038`（发件箱 Sent Items）/ `REQ-0039`（邮箱地址）。真实发信排障需要确认服务器 Sent Items 是否真的出现副本；App 的「发件箱」走同一条 `SyncScene.refreshSent()`，CLI 用同一路径给出可复现证据。
+- 命令：`uumailctl sync-sent --db <path>`。
+  - `--db` 必填，缺参打印 `sync-sent: --db <path> is required` 并退出 `2`。
+  - 经 `CommandLineComposition.make` 装配后调 `SyncScene.refreshSent()`；服务器侧只发 Sync 读命令，不发新邮件、不改服务器状态；本地按 `SCN-0029` 落 Sent 副本。
+  - 输出：成功打印 `sent synced: +<added> added, ~<changed> changed, -<removed> removed, key <syncKey>`；存在 Sent 文件夹时再打印 `latest <n> in <displayName>:` 与最近 **10** 封的主题（含服务器时间前缀）；无 Sent 文件夹打印 `no Sent Items folder`。
+  - 失败：场景返回错误时打印 `sync-sent failed: <error>` 并退出 `3`；成功退出 `0`。
+- 用途：真实发信后验证「服务器 Sent Items 确有副本」、核对 `From` 修正是否生效（错误 `From` 时 502 且无副本）。2026-11-25 用例：修正地址后同一封测试信发送成功，`sync-sent` 从服务器 Sent Items 拉到 **12 封**（含测试信）。
+- 边界：不新增服务器能力、不改 `MailGateway`/`SyncEngine`/schema/target/依赖；`sync-sent` 与 `sync` 共用 `refreshSent()`/`syncSentOnce`，不复制同步逻辑；不通知（已发送副本不是新收邮件）。
+- 定级：**P3**（仅 CLI 诊断入口；无 public 契约、协议、schema 或依赖变更）。

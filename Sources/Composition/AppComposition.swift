@@ -151,6 +151,12 @@ public final class AppComposition {
     /// Constructs one mailbox object graph. The pump is attached to the view model's
     /// enqueue hook so a send is delivered without waiting for the next tick.
     private func attachMailbox(configuration: ServerConfiguration, account: AccountID) {
+        // REQ-0039: adopt the explicit mailbox address (setup form / .env) over the old
+        // account@host derivation so outgoing From and Sent mirror use the real address.
+        if !configuration.email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           let stored = try? store.account(account), stored.address != configuration.resolvedEmail {
+            try? store.updateAccountAddress(account, address: configuration.resolvedEmail)
+        }
         let endpoints = gatewayFactory(configuration)
         let gateway = endpoints.read
         let engine = SyncEngine(gateway: gateway, store: store, account: account, writeGateway: endpoints.write)

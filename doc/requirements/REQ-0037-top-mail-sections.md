@@ -33,5 +33,5 @@ updated: 2026-11-24
   - 2026-11-24 **人工确认**：导航改为顶部三段切换「收件箱 / 发件箱 / 日历」，**完全去掉左侧文件夹栏**。
   - 2026-11-24 **人工确认**：邮件页保持「列表 + 阅读」两栏，日历页占满内容区，顶部切换在两种内容下都保留。
   - 2026-11-24 **人工确认**：草稿、已删除、垃圾邮件等其他文件夹**全部隐藏、不提供入口**。
-- **状态**：`delivered`（2026-11-24 实现并验证：`SCN-0028` verified；L2 `task-spaces/20261125-000000-sent-nav/probe/toolbar-nav.png`、`task-spaces/20261125-000000-sent-nav/probe/two-column.txt`；464 tests / 77 suites、架构 4/4；`make-app.sh` 成功（release，2026-11-24 23:57 CST）；真实点击/拖拽/整窗视觉为发布前人工项）
+- **状态**：`delivered`（2026-11-24 实现并验证：`SCN-0028` verified；L2 `task-spaces/20261125-000000-sent-nav/probe/toolbar-nav.png`、`task-spaces/20261125-000000-sent-nav/probe/two-column.txt`；465 tests / 77 suites、架构 4/4；`make-app.sh` 成功（release，2026-11-24 23:57 CST）；真实点击/拖拽/整窗视觉为发布前人工项）
 - **验收归属**：`SCN-0028` 的 3 正 1 反通过 + 上述约束逐条无违反 + 回归场景不退化；需求不另立测试。

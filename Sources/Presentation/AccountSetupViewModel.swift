@@ -13,6 +13,8 @@ public typealias AccountSetupSceneFactory = @Sendable (AccountInput) -> AccountS
 @Observable
 public final class AccountSetupViewModel {
     public var displayName: String
+    /// From address; empty falls back to account@host at connect time.
+    public var email: String
     public var host: String
     public var account: String
     public var password: String
@@ -33,6 +35,7 @@ public final class AccountSetupViewModel {
     ) {
         self.makeScene = makeScene
         displayName = configuration?.displayName ?? "工作"
+        email = configuration?.email ?? ""
         host = configuration?.host ?? ""
         account = configuration?.account ?? ""
         password = configuration?.password ?? ""
@@ -58,7 +61,8 @@ public final class AccountSetupViewModel {
             password: password,
             domain: domain.trimmingCharacters(in: .whitespacesAndNewlines),
             deviceID: deviceID.trimmingCharacters(in: .whitespacesAndNewlines),
-            displayName: trimmedDisplay.isEmpty ? trimmedAccount : trimmedDisplay
+            displayName: trimmedDisplay.isEmpty ? trimmedAccount : trimmedDisplay,
+            email: email.trimmingCharacters(in: .whitespacesAndNewlines)
         )
     }
 

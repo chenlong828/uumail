@@ -191,6 +191,32 @@ struct UumailCtl {
                 }
             }
 
+        case "sync-sent":
+            guard let path = value(of: "--db", in: arguments) else {
+                FileHandle.standardError.write(Data("sync-sent: --db <path> is required\n".utf8))
+                exit(2)
+            }
+            let composition = try await CommandLineComposition.make(
+                databasePath: path,
+                configuration: configuration
+            )
+            let outcome = await composition.sync.refreshSent()
+            if let report = outcome.report {
+                print("sent synced: +\(report.added) added, ~\(report.changed) changed, -\(report.removed) removed, key \(report.syncKey)")
+                if let sent = try composition.read.folders().first(where: { $0.type == 5 }) {
+                    let stored = try composition.read.messages(folderID: sent.serverID, limit: 10)
+                    print("latest \(stored.count) in \(sent.displayName):")
+                    for message in stored {
+                        print("  [\(message.receivedRaw ?? "")] \(message.subject ?? "(no subject)")")
+                    }
+                }
+            } else if let error = outcome.error {
+                print("sync-sent failed: \(error)")
+                exit(3)
+            } else {
+                print("no Sent Items folder")
+            }
+
         case "store":
             // Persists a folder snapshot into a local SQLite file, proving the store contract:
             // the composition bootstraps the account row and snapshot, the read scene prints it.
@@ -246,6 +272,7 @@ struct UumailCtl {
           seed                 store the env account in the login Keychain
           store --db <path>    bootstrap a local SQLite store with the folder snapshot
           sync --db <path>     sync the inbox into the store (read-only on the server)
+          sync-sent --db <path>  sync Sent Items into the store (read-only on the server)
 
         Data commands take --db <path>; folders defaults to .build/uumailctl.sqlite and
         send to .build/outbox.sqlite. Do not point two processes at the running app database.

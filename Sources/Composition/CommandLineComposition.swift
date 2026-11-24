@@ -40,6 +40,7 @@ public struct CommandLineComposition {
             domain: environment["EAS_DOMAIN"] ?? "",
             deviceID: try require("EAS_DEVICE_ID"),
             displayName: environment["EAS_USER"] ?? "",
+            email: environment["EAS_EMAIL"] ?? "",
             allowInsecureTLS: insecure
         )
     }
@@ -68,6 +69,10 @@ public struct CommandLineComposition {
         let account: AccountID
         if let existing = try store.accounts().first {
             account = existing
+            if !configuration.email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               let stored = try store.account(existing), stored.address != configuration.resolvedEmail {
+                try store.updateAccountAddress(existing, address: configuration.resolvedEmail)
+            }
         } else {
             let setup = AccountSetupScene(
                 gateway: gateway,

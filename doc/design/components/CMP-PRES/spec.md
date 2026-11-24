@@ -2,7 +2,7 @@
 layer: design
 module: presentation
 status: active
-updated: 2026-11-24
+updated: 2026-11-25
 component: CMP-PRES
 ---
 
@@ -688,4 +688,14 @@ component: CMP-PRES
 - 不变量：两个入口只经场景（`SyncScene.refreshSent`），不 import `SyncEngine`/`MailStore`；不新增通知路径；`refresh()`/`startAutoRefresh` 的语义与 5 分钟节奏不变；`select(folderID:)` 仍清空搜索词。
 - L1（`Tests/PresentationTests/MailboxViewModelTests.swift` 新增 1 例）：`selectSent syncs Sent Items and shows the sent copy`——`selectSent()` 后 `selection.folderID == "18"`、`messages` 只含 Sent 副本 `s1`、`sync.phase == .idle`、`sentFolderID == "18"`。
 - 尺寸：`MailboxViewModel.swift` **391 行**（≤400，余 9）、`MailboxViewModel+List.swift` **89 行**（≤400）；`Presentation` 共 2788 行；不新增文件/target/依赖。
+
+## 设计增量：设置页邮箱地址字段（REQ-0039，2026-11-25，P2，已实现）
+
+- 来源：`REQ-0039` / `SCN-0030`。表单新增一个可选的「邮箱地址」，由视图模型持有并透传到场景输入；格式校验、空值回退与已存账号迁移都不在展示层。
+- `AccountSetupViewModel` 新增 `public var email: String`，与 `host`/`account`/`displayName` 同级可变状态。
+  - `init(makeScene:configuration:)` 取 `configuration?.email ?? ""`；旧 Keychain 无该字段时为空串，表单显示为空。
+  - `input` 把 `email` trim 后填入 `AccountInput.email`；`canConnect` 不要求邮箱非空（留空仍可连接，走 `account@host` 回退）。
+- 视图绑定与占位文案见 `CMP-APP` 同日增量；场景侧的地址规则与迁移见 `CMP-SCN-ACCOUNT`。
+- 不变量：视图模型只做字段搬运，不判断地址有效性、不比较已存地址、不调用 `MailStore`；错误仍由 `connect`/`validate` 返回并经既有 `ErrorText` 呈现。无新增 public 类型/target/依赖，不改 schema。
+- 尺寸：`AccountSetupViewModel.swift` **104 行**。本增量未新增 Presentation 测试；既有设置页用例不回归，场景行为由 `AccountSetupSceneTests` 覆盖。
 

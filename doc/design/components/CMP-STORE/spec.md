@@ -2,7 +2,7 @@
 layer: design
 module: store
 status: active
-updated: 2026-11-18
+updated: 2026-11-25
 component: CMP-STORE
 ---
 
@@ -275,4 +275,19 @@ component: CMP-STORE
   与搜索都只返回 `Message`；邀请卡改走 `MailStore.meeting(account:folder:serverID:)`（由 `CMP-MEETING-STORE` 提供）。
 - 写侧 `applySyncBatch(account:folder:added:changed:removedServerIDs:syncKey:meetings:)` 新增 `meetings`（默认 `[]`），
   `MessageDelta.meetings` 在 `applyDelta` 的同一事务内写入；`CMP-STORE` 实测 952/1000 不变。
+
+## 设计增量：账号地址更新（REQ-0039，2026-11-25，P2，已实现）
+
+- 来源：`REQ-0039` / `SCN-0030`。设置页/`.env` 的显式邮箱需要在已有账号行上生效；本组件提供唯一写入口，不改表结构。
+- 新契约（`MailStore` 公开方法，additive）：
+
+  ```swift
+  public func updateAccountAddress(_ id: AccountID, address: String) throws
+  ```
+
+- 实现：`dbQueue.write` 内执行单条 `UPDATE accounts SET address = ? WHERE id = ?`；`db.changesCount == 1` 视为成功，否则抛 `MailStoreError.accountNotFound(id)`。不做 trim、不校验格式、不读取旧值、不写 `sync_state` 或其它表。
+- 错误模式：只有「账号行不存在」与底层 SQLite 失败两种；调用方（`AccountSetupScene`/组合根）按既有 `storage` 分类处理。地址为空串时本方法照写；当前调用方只在显式邮箱非空时才调用。
+- **无 schema 变更/无迁移**：`accounts.address` 列早已存在，v1…v12 迁移不变；旧库直接可用，无需重同步或回填。
+- 并发/事务：与其它账号写共用同一 `DatabaseQueue` 单写；不跨表、不与凭据保存组成事务（迁移先于 `credentials.save`，失败不回滚地址）。
+- 验证：本增量不新增存储层测试；地址迁移行为由 `AccountSetupSceneTests.explicitEmail` 与「a repeat connect reuses the existing account row」覆盖（见 `CMP-SCN-ACCOUNT`），`MailStoreTests` 既有账号/文件夹用例不回归。
 
