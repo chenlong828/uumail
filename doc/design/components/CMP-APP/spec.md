@@ -408,3 +408,60 @@ component: CMP-APP
   `item.label` 补 `toolTip`，已有值不覆盖；`MailboxToolbar` 的 7 个按钮补齐 `.help` 文案。
 - 证据：离屏探针 7/7 条目 `toolTip` 非空（`task-spaces/20261124-toolbar-tooltip/evidence/tooltip-probe.txt`）；
   全量 440 tests / 72 suites、架构 4/4、`make-app.sh` 成功。
+
+## 设计增量：浮动阅读窗宿主与双击/键盘入口（REQ-0031 / REQ-0032，2026-11-24，P2）
+
+**载体结论（探针先行，R63 关闭）**：浮窗用 **AppKit `NSWindow` + `NSHostingController`**，不用 SwiftUI `Window` 场景。
+
+- 探针证据 `task-spaces/20261124-152611/probe/`：
+  - `window-carrier.txt`：SwiftUI `Window(id:)` 确实是单例（两次 open 同一 window 编号）、`.defaultSize` 生效、
+    可在开窗后 `setFrame`；但**运行时算出的初始尺寸无法在显示前生效**——
+    `content-sized.txt` 请求 480×680 实测 660×622、`content-sized-ressize.txt`（`.windowResizability(.contentSize)`）实测 900×622。
+    若走 SwiftUI 载体只能在开窗后 `setFrame`，会先闪一个错误尺寸，违反「默认尺寸 = 阅读区宽 × 主窗口 85%」的可感知承诺。
+  - `appkit-window.txt`：AppKit 载体在 `orderFront` 前 `NSWindow(contentRect:)` 定尺寸，内容 480×707 精确生效；
+    复用同一 `windowNumber`、二次打开只改内容尺寸、`readerWindows` 计数 1。
+- 新文件 `Sources/uumail/ReaderWindowController.swift`（≈140 行，internal）：
+  - 持有唯一 `NSWindow`（`styleMask: [.titled, .closable, .resizable, .miniaturizable]`、`isReleasedWhenClosed = false`、
+    `isRestorable = false`、`setFrameAutosaveName("reader")`），内容由 `NSHostingController` 承载 `ReaderWindowView`。
+  - `show(ref:using router:model:)`：无窗 → 用 `router.readerSize(for:)` 在显示前建窗，位置贴主窗口右上、向内偏移，
+    `makeKeyAndOrderFront`；有窗 → 更新 router ref 与 model，`setContentSize`（仅当用户未手动调整过；已调整则沿用），置前。
+  - 撰写态 `router.blockedNotice` → 视图展示提示行，不替换内容。
+  - `windowShouldClose`：阅读态直接关；撰写态交给 `ComposeView` 既有的「放弃这封邮件？」确认，取消则 `return false`。
+- 新文件 `Sources/uumail/ReaderWindowView.swift`（≈120 行，internal）：信封头 + 静态提示 +（只读）会议卡 + 正文 + 工具栏；
+  阅读态 `MessageBodyView(allowRemoteContent: true)`，工具栏「回复 / 全部回复 / 转发」；撰写态整块换成 `ComposeView`
+  （`preferredWidth` = 内容宽、`preferredHeight` = 内容高），关闭后回阅读态。
+- 入口（`MailboxView`）：
+  - 行上 `.onTapGesture(count: 2)` 打开浮窗（单击仍由 `List(selection:)` 选中；双击时先选中再打开，属于既有选择行为）；
+  - `onKeyPress(.return)` 与 `onKeyPress(.space)`：`messageListFocused` 且有选中 → 打开浮窗（与双击同一路径）；
+  - 打开前把主窗口几何写入 `ReaderRouter`：阅读区宽沿用现有 `readingPaneSize.width`，窗口高取 `NSApp.keyWindow?.frame.height`。
+- 日历（`CalendarView` + 新文件 `CalendarSelection.swift` ≈90 行）：
+  - 删除 360×240 详情 sheet 与 `SelectedOccurrence`；新增 `selectedOccurrence`（同一时刻一个）；
+  - 月块/周块包一层 AppKit 点击捕获 `ClickCatcherView`（`clickCount == 1` → 选中，`== 2` → 打开；探针
+    `probe/click-catcher.txt`：1→仅选中、1,2→选中+打开、2→仅打开），Esc 清选中；
+  - 浮窗工具栏为「转发」「在日历中打开」；`在日历中打开` 复用 `CalendarExport.present`（`.ics` 文本由 `CMP-SCN-CALENDAR#ics(for:)` 提供）；
+  - `CalendarView` 从 325 行降到 ≈280（详情段移出、点击捕获与选中态进新文件），恢复单文件 ≤300。
+- 远程图片（决策 D6）：仅 `ReaderWindowView` 阅读态传 `allowRemoteContent: true`；静态提示文案
+  「远程图片来自发件人服务器，已自动显示」；主窗口 `MailboxView` 与撰写编辑器**不传 true**。
+- 目录与预算：`Sources/uumail` 约 2,130 → 约 2,450 行；`ReaderWindowController`/`ReaderWindowView`/`CalendarSelection`
+  各 ≤180。`MailboxView.swift` 实测 **305 行已超 ≤300**（`plan/risks.md` R71）：本批新增的双击/Enter/空格入口、浮窗工具栏接线
+  **必须落在新文件 `MailboxView+Reader.swift`**（SwiftUI 视图扩展），使主文件回到 ≤300；`CalendarView` 从 325 降到 ≈280
+  （详情段删除、点击捕获与选中态进 `CalendarSelection.swift`）。比例与拆分见 `T-1124-20` 出口，超预算即停，不调上限。
+- 装配：`ReaderCoordinator`（`@MainActor` 类，持有 `ReaderRouter` + `ReaderWindowController`）在 `UumailApp` 创建，
+  经 environment 下传；**`AppComposition` 不改**（仍 188/200 行），因此本批无 `CMP-ROOT` 任务。
+- 验证：
+  - L2 窗口探针（`T-SCN-0025-01`）：开窗内容尺寸 = `readerSize`、复用同窗、`frameAutosaveName` 生效（重启读取已保存 frame）；
+  - L2 日历探针（`T-SCN-0024-05/06`）：单击只选中、双击/Enter/空格打开、无 sheet；
+  - 远程图片：渲染文本含 `img`（CSP `img-src` 放行）且提示存在；主窗口同封仍无远程资源请求（同一套 `MessageBodyView`，传参不同）。
+
+## 实现（2026-11-24，T-1124-20）
+
+- 新文件：`ReaderCoordinator.swift`（118 行，AppKit `NSWindow` + `NSHostingView`，`setFrameAutosaveName("uumail.reader")`）、
+  `ReaderWindowView.swift`（146 行，阅读态/撰写态切换、工具栏按路由风格、远程图片静态提示）、
+  `CalendarSelection.swift`（44 行，`ClickCatcherView` + representable）、`CalendarBlocks.swift`（115 行，月块/周块/横幅）、
+  `MessageRowView.swift`（35 行）。
+- 改动：`MailboxView` 行双击 + Enter/空格入口（`MailboxView+Reader.swift`，292 行）；`CalendarView` 去详情、选中高亮、
+  双击/Enter/空格打开（293 行）；`UumailApp` 不再需要第二 Scene。
+- **架构门禁约束落地**：`uumail` 不得 import `Scenes`/`Observation`，因此读窗口用进程内单例
+  `ReaderCoordinator.shared`，入口传 `folderID`/`serverID` 字符串，`MessageRef` 只在 `Presentation` 内部出现。
+- 证据（L2）：`evidence/calendar-click/calendar-click.txt`（生产 `CalendarSelection` 的 `hitTest` 命中与 clickCount 映射）；
+  载体机制证据 `probe/appkit-window.txt`。真实点击/拖动/缩放/多屏与撰写关闭确认框登记为发布前人工项。

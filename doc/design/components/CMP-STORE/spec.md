@@ -230,3 +230,40 @@ component: CMP-STORE
   `MailStore+Meetings.swift` 提供 `meetings(account:from:to:limit:)`/`meetingInvite(account:uid:)`，列表页左连会议。
 - 不回填：迁移不重置游标（与 v9/v11 不同），`MEETING` 历史为空是已确认口径。
 - 测试：`MeetingStoreTests` 6 例 + `MigrationTests` v12 1 例 + WAL 2 例；`MailStore` 59 tests 全绿。
+## 设计增量：按引用取单封与列表时间窗（REQ-0031 / REQ-0033，2026-11-24，P1 已确认）
+
+- 触发：浮动阅读窗要打开「不在当前列表页」的邮件（日历旧邀请、其它文件夹），列表则要从「取 200 条」改为「最近 30 天全部」。
+- 决定（`history/decisions/2026-11-24-floating-reader-window.md` D12，P1 已人工确认）：新增两个只读查询，均为 additive，
+  不改既有查询签名、不改 schema。
+- 新契约（`CMP-STORE` 公开方法，`MailStore`）：
+  - `message(account: AccountID, folder: String, serverID: String) throws -> StoredMessage?`
+    - SQL：`SELECT ... FROM messages WHERE account_id = ? AND folder_id = ? AND server_id = ? LIMIT 1`；
+    - 命中主键/唯一索引路径，返回单行或 nil；不返回错误（只有数据库层失败抛 `storage`）。
+  - `messages(account: AccountID, folder: String, since: Date) throws -> [StoredMessage]`
+    - SQL：`... WHERE account_id = ? AND folder_id = ? AND julianday(received_raw) >= julianday(?) ORDER BY received_raw DESC`；
+    - **不带 LIMIT**（`REQ-0033` 明确不封顶）；`since` 由 `CMP-SCN-READ` 计算，本层不猜自然日。
+    - 窗口比较用 `julianday` 而不是字符串 `>=`：`received_raw` 是网关原样字符串（实测 `2026-11-18T02:00:00Z`，
+      也可能带毫秒 `.000Z`），混格式时字符串比较会在边界上错一秒；`julianday` 接受 `Z` 后缀，
+      代价是 `(account_id, folder_id, received_raw DESC)` 索引只用于排序段、过滤段为范围扫描——5,000 行量级已由
+      `SCN-0026` 的 1s 阈值兜住，不做表达式索引或新增列（避免 schema 变更，见 D12 的「不改 schema」）。
+  - 既有 `messages(account:folder:limit:)` 保留，`MailboxViewModel` 不再调用它（`SCN-0004`/`SCN-0009` 不依赖该默认值）。
+- 不变量：
+  - `received` 时间解析沿用既有 `StoredMessage` 映射（服务器 `DateReceived` 原样字符串 → `Date` 的既有解析器），
+    本增量不新造时间解析规则；解析失败的行与既有列表一致地按「无时间」排序兜底。
+  - 单封读取与时间窗读取都只读，不写、不改 `sync_state`。
+- 预算：`MailStore.swift` 当前约 814 行（2026-11-24），本增量约 +45 行，组件 ≤1,000 行不调；
+  新查询放既有文件（与 `messages(account:folder:limit:)` 相邻），不新增文件。
+- 验证（`MailStoreTests` 新增）：
+  - 命中 / 不存在 / 同 serverID 跨文件夹不串（复合键）；
+  - `since` 边界：等于 `since` 的行包含、早 1 秒排除；空文件夹返回空数组；
+  - 排序为 `received` 倒序；5,000 行夹具下两种查询的耗时被记录（`T-SCN-0026-03` 复用）。
+
+## 实现（2026-11-24，T-1124-17）
+
+- 新文件 `Sources/MailStore/MailStore+Lookup.swift`（73 行）：`message(account:folder:serverID:)`（单行、`LIMIT 1`、
+  软删排除）与 `messages(account:folder:since:)`（`julianday` 窗口、无 LIMIT、时间倒序、无法解析的时间保留）。
+  新查询放新文件而不是 `MailStore.swift`，因为后者已 591 行且组件整体超预算（R45）。
+- 测试：`Tests/MailStoreTests/MessageLookupTests.swift` 4 例（单封命中/缺失/跨文件夹同 id/软删不可见、
+  窗口边界含等值秒、250 行不被截断、排序、文件夹隔离）；`PerformanceTests.windowBaseline`
+  在 5,000 封窗口内数据上实测 `messages(since:)` **0.047s / 5,000 行**（阈值 1s）。
+- 既有 `messages(account:folder:limit:)` 保留但不再被列表调用；`MessageLookupTests` 同时钉住它的旧形状。

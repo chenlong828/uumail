@@ -1,0 +1,6 @@
+PROBE launch
+PROBE main frame=1200x800@156,106
+PROBE computed target=480x680@0,0
+PROBE content-sized window frame=660x622@306,195 requested=480x680@0,0
+PROBE after open windows=["uumail:1200x800@156,106", "阅读2:660x622@306,195"]
+PROBE done

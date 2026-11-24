@@ -1,0 +1,8 @@
+PROBE launch: windows=1 titles=["uumail"]
+PROBE phase0 windows=1 titles=["uumail"] main=1200x800@156,106
+PROBE reader hosted in window number=463967 title=阅读 frame=480x680@406,256 visible=true
+PROBE phase1 after 1st open: count=1 frames=["480x680@406,256"] numbers=[463967] identifiers=["Optional(\"reader\")"]
+PROBE phase2 sized reader to 480x680@406,256 (requested 480x680@0,0)
+PROBE phase3 after 2nd open: count=1 numbers=[463967] sameAsFirst=true isKey=true
+PROBE phase4 after orderOut+3rd open: count=1 visible=true sameNumber=true
+PROBE done

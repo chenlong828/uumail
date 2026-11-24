@@ -197,3 +197,30 @@ component: CMP-SCN-READ
 - 不变量：`attachments(for:)` 仍返回全量；`renderInlineImages` 仍用全量附件；`downloadAttachment`/缓存/单飞不变；`InlineImageHTML` 仍 internal。
 - 验证：`ScenesTests/InlineImageHTMLTests` 新增 `attachmentIDs...` 用例（contentID/名字回退/未命中/歧义/真实文件）；`ScenesTests` 全量回归。
 - 实现进度（2026-11-23，`T-1123-02`）：已实现（`InlineImageHTML.swift` 165 行，新增 `InlineImageReferences` 约 15 行）；`InlineImageHTMLTests` 新增 4 例（`attachmentIDsReturnsReferencedAttachments`、`attachmentIDsUseContentID`、`attachmentIDsSkipAmbiguousAndUnreferenced`、`attachmentIDsEmptyWithoutSources`），该 suite 18 例绿；全量 384 tests/59 suites、架构 4/4。
+
+## 设计增量：按引用取单封与列表时间窗（REQ-0031 / REQ-0033，2026-11-24，P1 已确认）
+
+- 触发：浮动阅读窗要按 `(folderID, serverID)` 打开任意邮件；列表要从「取 200 条」改为「最近 30 天全部」。
+- 新增契约（additive，只读；`ReadScene`）：
+  - `message(_ ref: MessageRef) throws -> Message?` —— 透传 `CMP-STORE#message(account:folder:serverID:)`；
+    不存在返回 `nil`（不是错误）；数据库失败抛既有 `MailError.storage`。
+  - `messages(folderID: String, since: Date) throws -> [Message]` —— 透传 `CMP-STORE#messages(account:folder:since:)`；
+    不做自然日计算（窗口起点由 `MailboxViewModel` 给出）。
+  - 既有 `messages(folderID:limit:)`、`search`、`bodyIfCached`、`open`、`markReadLocally`、`writeBackMarkRead` 签名不变。
+- 不变量：
+  - 两个新方法零网络、只读；不触碰 `sync_state` 与写路径。
+  - `message(_:)` 与列表使用同一 `StoredMessage → Message` 映射，字段口径一致（否则浮窗与阅读区会显示两套值）。
+  - `messages(folderID:since:)` 不使用 `MailboxViewModel` 的删除隐藏集合——隐藏是展示层状态，场景层只交库里的事实。
+- 错误模式：与既有读方法一致（`MailError.storage`），调用方（`ReaderViewModel` / `MailboxViewModel`）负责映射中文文案；
+  「找不到」用 `nil` 表达，不走错误。
+- 预算：`ReadScene.swift` 当前约 200 行，本增量约 +20 行；组件 ≤120k 不调。
+- 验证（`ScenesTests` 新增）：
+  - `message(_:)` 命中 / 不存在返回 nil / 跨文件夹同 serverID 取到各自那封；
+  - `messages(folderID:since:)` 的窗口边界与倒序与 `MailStoreTests` 一致（同夹具）；
+  - 两个方法均不触发 `MailGateway`（替身调用次数 = 0）。
+
+## 实现（2026-11-24，T-1124-18）
+
+- `ReadScene.message(_:)` 与 `messages(folderID:since:)` 落地（`Sources/Scenes/ReadScene.swift`，+2 方法、零网络）。
+- 测试 `Tests/ScenesTests/ReadSceneLookupTests.swift` 4 例：单封命中并断言 `gateway.calls.isEmpty`、窗口透传与倒序、
+  无法解析的时间不被隐藏、既有 `messages(folderID:limit:)` 形状不变。

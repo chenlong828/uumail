@@ -567,3 +567,55 @@ component: CMP-PRES
   `Sources/Presentation/CalendarPresentation.swift`：月/周/卡片展示值；`MailboxViewModel.meetingCard` 只读计算属性。
 - 测试：`Tests/PresentationTests/CalendarViewModelTests.swift` 11 例（6×7 网格、+N、周 lane 与整点范围、全天、
   模式切换、翻页、ICS、卡片字段/全天/无卡片）。
+## 设计增量：浮窗阅读状态、单例路由与列表 30 天窗口（REQ-0031 / REQ-0033，2026-11-24，P2）
+
+- 触发：`REQ-0031` 的浮动阅读窗需要「按引用读一封、就地回复、打开即已读」；`REQ-0033` 把列表加载从 200 条改为最近 30 天。
+- 新文件（`Sources/Presentation/`，public additive）：
+  - `ReaderViewModel.swift`（≈180 行）：
+    - 持有：`ref`、`message`、`header: MessageHeaderPresentation?`、`meetingCard: MeetingCardPresentation?`、
+      `body: BodyPresentation`、`bodyNotice`、`markReadErrorText`、`isMissing`、`isComposing`。
+    - `load(_ ref: MessageRef)`：`ReadScene.message(ref)` 命中 → 生成头/卡/正文（缓存优先 + `open(ref)` 补拉）；
+      未命中 → `isMissing = true`（不抛错）。
+    - 打开即已读：`markReadOnOpen()` → `ReadScene.markReadLocally`（失败写 `markReadErrorText`）+ 本地 0→1 时
+      `ReadScene.writeBackMarkRead`（失败静默）；与 `MailboxViewModel.performMarkRead` 同一语义，不另造写路径。
+    - 远程资源：本实例常量 `allowsRemoteContent = true`；**不写回** `MailboxViewModel.allowsRemoteContent`。
+    - 撰写种子：`composeReply()` / `composeReplyAll()` / `composeForward()` 用**本窗 message 与 quotableHTML**，
+      与 `MailboxViewModel+Compose` 的三个入口同规则；不读主窗口选中态。
+    - 依赖仅 `Scenes`/`MailDomain`，不 import AppKit；不感知窗口。
+  - `ReaderRouter.swift`（≈70 行）：
+    - `currentRef`、`isComposing`、`blockedNotice: String?`；
+    - `open(_ ref:, geometry: ReaderGeometry)`：撰写态 → 只置 `blockedNotice` 并返回 `.blocked`；否则替换 ref 并返回
+      `.replaced` / `.created`（由 App 层据此建窗或置前）；
+    - `readerSize(for geometry: ReaderGeometry) -> CGSize`（纯函数）：`宽 = max(480, geometry.readingPaneWidth)`、
+      `高 = max(460, min(geometry.windowHeight * 0.85, geometry.screenHeight))`；几何缺失时用 1280×720 兜底。
+    - `ReaderGeometry` 为值类型（阅读区宽、主窗口高、屏可用高），由 App 层测点写入；PRES 不读 `NSWindow`。
+- `MailboxViewModel` 改动（拆迁见 `+Compose` / `+Body` 既有拆分纪律）：
+  - 列表加载：`read.messages(folderID:limit: 200)` → `read.messages(folderID:since: startOfDay(now − 30d))`；
+    计数与状态栏仍取 `visibleMessages.count`，不加封顶、不加提示。
+  - 新增 `makeReaderModel() -> ReaderViewModel`（放在 `MailboxViewModel+Compose.swift`）：注入 `read`、`composeScene`、
+    `account`、`onEnqueued`；主文件 `MailboxViewModel.swift` **本批不增长**（实测 416 行，见 `plan/risks.md` R70；列表改动是
+    就地替换一次调用，factory 进 `+Compose` 扩展）。该文件已超 ≤400 预算属**既有欠账**，本批不夹带拆分；若实现后仍在 400 以上，
+    按 R70 的方案另立拆分任务，不以「反正已经超了」为理由继续加。
+- 数据所有权：浮窗阅读态（ref、正文、撰写态）是**每窗一份**的展示状态，由 `ReaderViewModel`/`ReaderRouter` 持有；
+  邮件与正文真源仍是 `CMP-STORE`，浮窗不复用也不写主窗口的 `selection`/`body`/`allowsRemoteContent`。
+- 不变量：
+  - 浮窗与主窗口同时打开同一封时，两边的正文各走各的缓存读取，不共享可变状态；
+  - 已读只有一条写路径（`markReadLocally` + `writeBackMarkRead`），浮窗不新增写命令；
+  - 路由的「撰写态拒绝替换」是显式状态迁移，不用视图层标志位。
+- 预算：`Presentation` 当前约 1,700+ 行 → 约 1,950；两新文件合计 ≈250；`MailboxViewModel` 416 → 不增长（R70 另有拆分任务）；
+  新文件单文件 ≤250，`MailboxViewModel+Compose.swift` 增加约 12 行。
+- 验证（`PresentationTests`）：
+  - `ReaderRouter`：created/replaced/blocked 三态、撰写态替换被拒、尺寸纯函数的 480/460 下限与屏高上限、几何缺失兜底；
+  - `ReaderViewModel`：命中/缺失、缓存命中不触网、补拉失败文案、打开即已读只写一次、三种种子与主窗口一致；
+  - 列表窗口：`since` 由固定时钟注入计算（30 天前 00:00）、不再出现 200 条截断、计数 = 返回行数。
+
+## 实现（2026-11-24，T-1124-19）
+
+- 新文件：`ReaderViewModel.swift`（218 行）、`ReaderRouter.swift`（107 行）、`MailboxViewModel+Reader.swift`（35 行：
+  `listWindowStart` / `makeReader` / `reloadListAfterExternalChange`）。
+- `MailboxViewModel.reloadCurrentList` 改为 30 天窗口；新增私有写 `sync.phase` 的小方法 `presentLocalListFailure`
+  （extension 在本文件外无法写 `sync`）。
+- 预算：`MailboxViewModel.swift` **424 行**（原 416，本批 +8：窗口加载一行 + 失败回填 helper），仍超 ≤400，
+  已登记 `plan/risks.md` R70；拆分不在本批夹带。
+- 测试 `Tests/PresentationTests/ReaderViewModelTests.swift` 10 例（3 套件）：路由尺寸/三态、缓存正文与即读写一次、
+  缺失 ref、回复种子、预览不可引用、窗口边界与无 200 条截断、空文件夹。

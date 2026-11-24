@@ -1,0 +1,4 @@
+PROBE after clickCount=1: singles=1 doubles=0
+PROBE after clickCount=1,2: singles=1 doubles=1
+PROBE after clickCount=2: singles=0 doubles=1
+PROBE done

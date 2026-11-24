@@ -5,106 +5,97 @@ status: draft
 updated: 2026-11-24
 ---
 
-# 风险
+# 风险（现行）
 
-只记跨工序风险：触发信号、影响、缓解、落点。单工序内部风险写在该工序 brief 里。
+只记仍未关闭的跨工序风险：触发信号、影响、缓解/待决、落点。单工序内部风险写在该工序 brief 里。
 
-| ID | 风险 | 触发信号 | 影响 | 缓解 | 落点 |
+2026-11-24 复核 + 同日拍板：已完成处置的 32 条移入 `history/decisions/2026-11-24-risk-closeout.md`；
+Q1–Q7 的拍板结论见 `history/decisions/2026-11-24-risk-review-decisions.md`。本文件只留仍存在或待执行的风险，
+分「已拍板待执行 / 处置中 / 已接受或延后 / 外部监控 / 衍生风险」五组。
+
+## 一、已拍板、待执行
+
+| ID | 风险 | 拍板结论 | 后果与顺序 | 落点 |
+|---|---|---|---|---|
+| R21 | 普通同步遇到只带 `Read` 的 partial `Change`，会用空值覆盖 `subject`/`sender`/`received_raw` | **立即修**（D2）：三字段补 `COALESCE` + L1「只带 Read 的 Change 不清空信封」 | 先于 W-M3-17 实现；`MailStore.swift#applyDelta` 与 `MailStoreTests` 小改，不新增 schema | `MailStore.swift#applyDelta`、`MailStoreTests` |
+| R45 | `CMP-STORE` 实测 **1225/1000**（2026-11-24 16:45，含新 `MailStore+Lookup.swift` 73；拆分前仍在长），`MailStore+Meetings.swift` 273 行（设计承诺 ≤120） | **先立 P1 拆分，不上调预算**（D1）：先拆 meetings，账号/文件夹另立 `W-REFACTOR-02` | 拆分后再开 W-M3-17；并行会话的「约 814/924」估算作废，拆分后重测；规格预算节要同步 | `CMP-STORE/spec.md` 预算节、`roadmap.md` §W-REFACTOR-02 |
+| R70 | `CMP-PRES` `MailboxViewModel.swift` **424** 行（2026-11-24 16:45，新增 Reader 文件后主文件仍涨），超单文件 ≤400 | **拆文件**（D1）：Reader/列表窗口逻辑放新文件；不上调 450 | 并行会话已新增 `MailboxViewModel+Reader.swift`，需在主文件重测后再判断是否闭合 | `CMP-PRES/spec.md` 预算节、`T-1124-19` |
+| R71 | `CMP-APP` `MailboxView.swift` 305 行、`CalendarView.swift` 325 行，均超单文件 ≤300 | **拆文件**（D1）：浮窗入口/手势放独立文件；不上调 320 | 与 W-M3-17 的新视图文件一起落，避免再往主文件加行 | `CMP-APP/spec.md` 预算节、`T-1124-20` |
+| R72 | `Scenes` 合计 **1306/1200**（2026-11-24 16:45），且已有两个 HTML 纯工具（`HTMLText` 221 + `InlineImageHTML` 165） | **立 P1 拆分**（D1）：`HTMLText`/`InlineImageHTML` 到纯工具组件，预算不动 | 拆分触发条件已满足；不排在拆分前继续往 `Scenes` 加功能 | `architecture.md` §7 第 12 条、`Scenes` 预算 |
+| R13 | 发送只入队，列表/状态栏没有待发/失败计数 | **下一批做**（D7）：W-M3-17 后单独小批加 `pending`/`failed` 角标 | 本轮不塞进浮窗批次；在角标落地前保留撰写页文案 | `CMP-PRES/spec.md`、`CMP-APP/spec.md`、`CMP-OUT/spec.md` |
+| R73 | 发布前证据未闭环：6 张核心场景卡仍 `designed`，多项 L3/真机冒烟未执行 | **发布前逐张补 `verified` + 人工冒烟清单**（D17） | 作为发布门，不是 W-M3-17 验收门；未完成不宣称「发布就绪」 | `roadmap.md`、各场景卡 §状态 |
+
+## 二、处置中（W-M3-17，设计完成、待实现）
+
+| ID | 风险 | 现状 | 影响 | 处置/拍板 | 落点 |
 |---|---|---|---|---|---|
-| R1 | 网关设备清单被清理或换机 | 所有命令 `200` 空 body、写命令 `401`；短信回执显示设备被删 | 客户端立即不可用，且错误表现为「成功但没数据」，最易误判 | 把「0 字节 200」映射为 `deviceNotRegistered` 并给出登记指引（2026-11-17 收窄：`Sync` 的空响应改判 `syncKeyInvalid` 并自动重建，只有无状态命令算设备未登记，见 `CMP-EAS` 设计增量）；启动时做一次轻量探活 | `design/components/CMP-EAS/playbook.md` §6 |
-| R2 | 公司收紧 EAS 或要求 MDM/零信任客户端 | IT 公告、网关拒绝新设备、`OPTIONS` 不再返回命令列表 | 项目前提失效 | 只走官方移动端通道，不绕过认证；上线前与 IT 确认合规；能力探测失败时明确提示 | `design/architecture.md` §7 |
-| R3 | 公司迁移到 Exchange Online / 关闭本地 EAS | IT 公告、账号迁云、本地 EAS 网关下线 | 本项目前提消失：Basic 认证链与新协议均不在范围内 | 项目定位即私有化 Exchange 客户端（T13），不做假兼容；迁移即重新立项评估 | `history/decisions/2026-11-09-scope-baseline.md`、`design/architecture.md` T13 |
-| R4 | GAL 与联系人不可用 | `Search`/`Find`/`ResolveRecipients` 非成功状态 | 撰写时无法目录补全，与「企业邮箱体验」预期有落差 | 首版只做本机通讯录 + 收件人历史；UI 不暴露 GAL 入口；能力矩阵标注实测结论 | `design/components/CMP-EAS/playbook.md` §5 |
-| R5 | 只支持 5 分钟轮询，新邮件有延迟 | 通知与列表最多晚一个轮询周期 | M3 体验目标（≤60s）在本网关不可承诺 | Ping 实测不支持长轮询（`Status=4`）；固定 5 分钟轮询并在 UI 标注，不做 IMAP 式长连接 | `design/components/CMP-EAS/playbook.md` §5.2、`design/architecture.md` T3 |
-| R6 | 大邮箱导致本地库膨胀 | 库文件增长、列表打开变慢、备份失败 | M1 可用性下降 | 按文件夹/时间窗口裁剪正文，列表只保信封；附件 2 GB 最旧优先淘汰 | `design/components/CMP-STORE/spec.md`、`design/components/CMP-APP/spec.md` |
-| R7 | HTML 邮件攻击面 | 脚本、远程图片、追踪像素、畸形样式 | 隐私泄露与渲染崩溃 | WKWebView 关脚本 + CSP；默认阻止远程资源；正文经 sanitizer 再渲染 | `design/architecture.md` T5 |
-| R8 | 服务器限流 | `503` + `Retry-After`、批量 Sync 变慢 | 同步卡死或账号被临时封禁 | 单账号串行、全局退避、Retry-After 优先；Ping 与 Sync 不并发轰炸 | `design/components/CMP-SYNC/spec.md` |
-| R9 | WBXML 编解码边界 | 空元素、code page 切换、NUL 结尾、opaque 长度 | 请求被网关挂起 20s 后 `502`，表现为「网络问题」 | golden fixture round-trip；以探针真实字节为准，不照抄规范写法 | `design/components/CMP-EAS/playbook.md` §4 |
-| R10 | 时间与排序错乱 | 列表顺序与服务器不一致、跨时区显示偏差 | 用户找不到新邮件 | 统一以服务器 `DateReceived` 排序，本地接收时间只做兜底 | `design/components/CMP-STORE/spec.md` |
-| R11 | 抓包样本含敏感内容 | 真实邮件正文/主题进入仓库或日志 | 合规事故 | 已决：脱敏后入仓（`history/decisions/2026-11-09-scope-baseline.md` 决策记录）；脱敏脚本与样本同目录，`.env`、`logs/`、`output/` 不入库，提交前检查 | `history/decisions/2026-11-09-scope-baseline.md`、`design/architecture.md` §7.3 |
-| R12 | 传输与静态数据加固缺口 | 无 certificate pinning；本地库与缓存明文、无 SQLCipher；无审计日志 | 内部 CA 中间人或磁盘/备份泄露时邮件内容暴露 | 凭据只进 Keychain；库与缓存依赖 FileVault；附件名过滤路径分隔符；不做 pinning/SQLCipher 为已知接受项，后续按需补 | `design/components/CMP-STORE/spec.md` 数据所有权、`design/components/CMP-APP/spec.md` |
-| R13 | 发送只入队后用户看不出待发/失败 | 离线或投递失败后，列表与状态栏没有 pending/failed 计数；只有撰写页短暂显示「已加入发件箱」 | 用户误以为邮件已发出，重复发送或错过重试 | 组合根已有 `OutboxPump` 自动重投；短期靠撰写页状态文案，后续加列表/状态栏角标（`Outbox.pending` 已可读） | `design/components/CMP-PRES/spec.md`、`CMP-APP/spec.md`、`CMP-OUT/spec.md` |
-| R14 | 网关 Sync 信封不返回 `Cc` | `EASClientTests` fixture 或真机样本无 `Cc`；`To` 有值而 `Cc` 恒空 | REQ-0012 的「全部回复填抄送」无法按当前路径交付 | 已关闭（2026-11-14）：T-1114-02 真机 Sync 回放确认网关返回 `Cc`，证据见 `design/components/CMP-EAS/playbook.md` §5.3；后续按 REQ-0012 实现 | `design/components/CMP-EAS/spec.md` 设计增量、`design/scenarios/mail/send/reply-all-recipients/scenario.md` |
-| R15 | v9 回填只覆盖最近窗口，且升级后首次同步可能发一次新邮件通知 | 旧库升级后第一次同步；`report.added > 0` 但用户没有新邮件 | 更早邮件 `cc` 为空；一次性通知噪声 | REQ-0012 已把范围限定为「最近同步窗口」；更早邮件不伪造；通知副作用登记为已知接受项，若不可接受另开 CMP-SYNC 任务抑制 | `design/components/CMP-STORE/spec.md` 设计增量、`design/scenarios/mail/send/reply-all-recipients/scenario.md` |
-| R16 | 网关是否接受 `Sync` 客户端写命令（`Change` 的 `Read=1`、`Delete`）未验证 | T-1114-12 的录制/真机样本被拒（`Status` 非 1、写命令 `401` 或无 `SyncKey` 返回） | REQ-0013 的服务器已读回写与 REQ-0014 的服务器删除无法按当前路径交付 | **已关闭（2026-11-14）**：真机样本证 `Change/Read=1` 与 `Delete` 均 `Collection/Status=1` + 新 key，读回 `Read=1`，删除进入「已删除邮件」（`Type=4`，新 `ServerId`），重复删除同 ID 为成功 no-op；证据 `task-spaces/20261114-232232/evidence/r16-real-gateway.txt` | `design/components/CMP-EAS/spec.md`、`design/components/CMP-EAS/playbook.md` §3/§5、`design/scenarios/mail/read/*` |
-| R17 | `MailboxViewModel` 已 345/400 行，新增 10 秒计时、删除态与失活处理会超单文件预算 | T-1114-17 实测超过 400 行或组件规格失真 | 展示层文件继续膨胀，评审无法按预算守门 | **已关闭（2026-11-14）**：拆出 `MailboxDwell`/`MailboxDeletion`/`MailboxViewModel+Compose`/`MailboxViewModel+Delete`/`MailboxViewModel+Body` 后主文件 **298 行**（目标 ≤380），`PresentationTests` 52 例绿 | `design/components/CMP-PRES/spec.md` 设计增量、`design/components/CMP-APP/spec.md` |
-| R18 | 自动已读/删除只做在线写回，没有离线队列 | 断网时删除失败回滚、已读回写丢失；随后全量重建可能回退本地已读 | 用户感知「删了又回来」「已读又变未读」，与离线可用预期有落差 | REQ-0013/0014 已把范围与失败语义写明；删除失败明确提示可重试，已读本地不丢；T-1114-10 已确认本批不建 `pending_op`/`readDirty`；离线排队仍挂 Q2，若产品要求离线可删则另立工序 | `plan/open-questions.md` Q2、`design/components/CMP-PRES/spec.md`、`design/components/CMP-SYNC/spec.md` |
-| R19 | 同一账号出现两个 `SyncEngine`，或写命令与 `syncOnce` 在 actor `await` 处交错，导致同一集合 `SyncKey` 回退/丢变更 | 组合根或场景新建第二个引擎；删除/已读与同步同时发生；`syncInbox` 沿用旧局部 key | 重信/丢信，`Status=3/4` 重建也可能互相顶掉 | T-1114-10 定：一个账号一个 `SyncEngine`，`SyncScene`/`ReadScene` 共用；显式 FIFO 门串行「读 key→一次 Sync→commit」，`syncInbox` 每轮门内重读 key；T-1114-15 补并发测试，T-1114-21 端点装配检查 + T-1114-16 同 engine 注入检查 | `design/components/CMP-SYNC/spec.md` 设计增量、`design/components/CMP-ROOT/spec.md` 设计增量 |
-| R20 | Sync 写响应可能携带其它变更/`MoreAvailable`，或删除 not-found 的逐条状态未定义 | T-1114-12 样本出现非空 `Commands`、`MoreAvailable=1` 或无明确 not-found 状态 | 直接推进 key 会跳过未消费变更；把所有错误当成功会误删/误恢复 | **已关闭（2026-11-14 真机）**：写响应确实携带整页 delta + `MoreAvailable`；`commit*` 与本地效果/key 同事务提交，剩余页由下一轮同步消费，不拒绝。重复删除同 `ServerId` 返回 `Status=1` + 新 key，not-found 为成功 no-op（无逐条状态）；删除移动至「已删除邮件」 | `design/components/CMP-EAS/spec.md`、`design/components/CMP-SYNC/spec.md`、`design/scenarios/mail/read/keyboard-delete/scenario.md` |
-| R21 | 普通 `applySyncBatch` 遇到只带 `Read` 的 partial `Change`，可能用 nil 清空 `subject`/`sender`/`received_raw` | 服务器 `Change` 只带 `Read`；本地 upsert 后主题/发件人/日期变空 | 列表显示失真，且写路径若直接 apply 回包会放大 | 本批 `commit*` 排除目标 `added/changed` 保护写路径；普通同步统一 `COALESCE` 属 SCN-0003 语义变更，另立 CMP-STORE 任务，不混进本批 | `design/components/CMP-STORE/spec.md` 设计增量、`design/scenarios/mail/receive/inbox-sync/scenario.md`（仅登记，不本批改） |
-| R22 | 非可选写端口使 T-1114-15/16 必须同一 change 改 `CMP-ROOT`，跨组件仅装配例外与组件级 WIP 冲突 | 两个 change 并行，或与其他 `CMP-ROOT` 任务并行；组合根被塞入业务判断 | 任务无法按单组件评审/回滚；组合根变成第二个业务层 | T-1114-10 已登记例外：组件列写 `+CMP-ROOT（仅装配）`，`CMP-ROOT` 的 WIP 由该 change 独占，不并行第二个 `CMP-ROOT` 任务；组合根只构造/注入/路由；P1 确认清单与决策记录同步 | `design/architecture.md` §3.1/§10、`design/components/CMP-ROOT/spec.md`、`plan/roadmap.md` §W-M3-03 |
-| R23 | 搜索模式的列表/选择身份只按 `serverID`，跨文件夹可能重复 | `searchLocal` 跨文件夹返回；`messages` 主键含 `folder_id`；`Selection.messageID`/`ForEach(id: serverID)` 只按 `serverID` | 搜索模式下删除/打开可能命中另一文件夹的同 ID 邮件；`SCN-0009` 的搜索删除断言可能假绿 | T-1114-17 用跨文件夹同 `serverID` fixture 验证，作为验收前证据；若冲突，把列表/选择身份改为 `MessageRef`（folder + serverID）或等价复合键；若因此改 `Selection.messageID` 公开类型/语义，按 P2 契约变更另评，不在本批静默改；现有场景断言不足以覆盖冲突，若冲突成立按 P2 修订场景，不在本节点重写 | `design/components/CMP-PRES/spec.md` 设计增量、`design/components/CMP-APP/spec.md`、`design/scenarios/mail/read/keyboard-delete/scenario.md` |
-| R24 | `WKWebView.appearance` 被未来 SwiftUI/AppKit 更新重置，正文画布重新跟随深色 | 深色主题下正文变黑/透明，作者 `prefers-color-scheme: dark` 变体重新生效；`AppearanceProbe` 回归红 | 阅读白底失效，REQ-0015 核心场景退化 | `MessageWebView.makeNSView` 设常量、`updateNSView` 在 `lastRender` guard 前复确认 `appearance`；实现后把像素探针纳入回归；若仍被重置，再评估 `NSView` 子类/fence | `design/components/CMP-APP/spec.md` 设计增量、`SCN-0010` |
-| R25 | `UserDefaults` 写失败没有可观察同步信号，REQ-0016 的写失败分支无法强制注入 | 偏好写入失败但 `save` 不抛；测试无法区分「写成功」与「写失败」 | 「写失败不回滚/不弹错」只能靠设计保证与代码审查，验收强度不足 | `save` 不抛/不回滚，会话外观由 `@State` 独立持有；测试覆盖损坏回退/持久化/幂等；若评审要求强制注入，另评最小存储协议或可失败存储替身，不本批预付 | `design/components/CMP-PRES/spec.md` 设计增量、`SCN-0011` |
-| R26 | SwiftUI 菜单勾选只在父级菜单打开时刷新；静止读取 `NSMenuItem.state` 得到旧值 | 自动化测试未打开父菜单就读状态，出现假红/假绿；评审误判勾选未生效 | `SCN-0011` 的勾选断言不可信，可能挡住真实回归或放过错误 | 测试先打开系统 View 菜单再读 `state`；真实 UX 已由 2026-11-16 菜单探针验证；把「必须打开父菜单」写入 `SCN-0011` 测试说明 | `design/components/CMP-APP/spec.md` 设计增量、`SCN-0011` |
-| R27 | 阅读页头部过长（超长主题/多收件人/长地址）把正文挤出可视区 | 头部占满右侧栏，正文需滚到头才能读，或头部截断吞掉关键信息 | 阅读体验反而变差，`REQ-0017` 的「补上常见信息」目标落空 | 头部换行/截断 + 正文区域可滚动；设计在 `CMP-APP` 增量写上限；`SCN-0012` 失败路径覆盖长头部 | `design/components/CMP-APP/spec.md` 设计增量、`SCN-0012` |
-| R28 | 切换邮件时头部与正文状态不同步 | 头部已显示 B，正文仍是 A；或正文 `.none` 空窗把头部清掉；快速切换/慢补拉时最明显 | 用户看错发件人/收件人，误判邮件归属 | 头部只以 `selectedMessage` 为唯一来源；`.none` 区分「无选中/已选中待正文」；`T-SCN-0012-03` 用慢正文/切换断言 | `design/components/CMP-PRES/spec.md`、`CMP-APP/spec.md` 设计增量、`SCN-0012` |
-| R29 | L2 无头探针读不到 SwiftUI 文本 | `NSHostingView` 无可访问文本节点，只能截图；评审无法按 L2 核对显示值 | `SCN-0012` 无法按 L2 验收，可能被迫升 L3 或退化成只测映射 | 设计落卡前先证 seam；预留纯映射 + 简单 `Text` 行/可探针宿主；不可行时由场景卡声明 L3，不静默降级、不用 L1 映射冒充显示 | `design/components/CMP-APP/spec.md` 设计增量、`SCN-0012` |
-| R30 | 发起人期望的「发送时间」是真实 `Sent`，不是 `DateReceived` | 上线后指出时间不对；或设计阶段要求新增 `Sent` 字段 | 需求口径不符，返工并可能牵出 EAS 探针 | `REQ-0017` 非目标与澄清记录已写明；要 `Sent` 另立需求并先证网关可达性，不改本卡 | `requirements/REQ-0017-reading-pane-headers.md`、`SCN-0012` |
-| R31 | L2 探针依赖 SwiftUI「可选中 `Text` 由 `NSTextField` 承载」的实现细节 | OS/SwiftUI 升级后可选文本不再出现或不再带 `stringValue`，探针读到 0 个字段 | `SCN-0012` 的 L2 断言全红；若把断言写成「有字段才比对」，则会假绿 | 探针先断言字段存在再比对值，承载方式变化时红而非静默通过；届时由 `SCN-0012` 声明 L3 或换 seam，不用 L1 映射冒充；设计探针证据见 `task-spaces/20261116-212545/evidence/header-probe/` | `design/components/CMP-APP/spec.md` 设计增量、`SCN-0012` |
-| R32 | 远程图片开关与手动置读都进主工具栏后，默认窗口工具栏拥挤/溢出 | 900×560 下工具栏项被折叠进溢出菜单，或回复/转发被挤掉 | 用户找不到新入口，或原有回复动作可发现性下降 | **设计已缓解（2026-11-16）**：`MailboxToolbar` 用 7 个紧凑图标按钮（新建/回复/全部回复/转发/加载远程图片/标记为已读/刷新），不新增第二条工具条；设计探针在 900×560 + 搜索框下 `NSToolbar.visibleItems` 含全部 7 项，无溢出；实现按 `SCN-0013`/`SCN-0014` L2 复跑 | `design/components/CMP-APP/spec.md` 设计增量、`SCN-0013`/`SCN-0014`、`task-spaces/20261116-223645/evidence/toolbar-probe/` |
-| R33 | 远程图片放行状态跨邮件泄漏 | 开关状态留在视图或全局，切换邮件后仍放行远程资源，追踪像素被请求 | 违反 T5/D6 的「单封临时放行」，造成隐私泄露 | **设计已定（2026-11-16）**：状态归 `MailboxViewModel`；`selectedListKey` 变化时重置 false；setter 由 `canAllowRemoteContent` 守卫（选中身份须等于正文 `openedBody`/`openingRef` 且 `.loaded`），旧正文窗口强制调用为 no-op；`MessageBodyView` 去掉 `@State`；L1 `remoteContentResetsOnSelectionChange`/`remoteContentCannotLeakToStaleBody`，L2 `T-SCN-0013-03` | `design/components/CMP-APP/spec.md`、`CMP-PRES/spec.md` 设计增量、`SCN-0013` |
-| R34 | 自动已读从 10 秒缩短到 3 秒，用户只是扫过列表就被置读 | 选中后快速扫一眼/短暂停留即蓝点消失，事后找不到未读 | 未读列表失真，用户误以为邮件已处理 | 3 秒是发起人明确要求；仍要求应用前台、当前选中、非搜索，切走/失活立即取消；不做可配置；`SCN-0008` 按 3 秒重验，负例覆盖 2 秒切走/后台；`MailboxDwell` 仅计时，写路径唯一 | `requirements/REQ-0013-dwell-auto-read.md`、`SCN-0008` |
-| R35 | 手动置读与自动计时/同步并发，产生重复网络写或重复 0→1 | 同一封邮件在同一时刻被按钮与计时各写一次，或写回与同步抢集合 key | 多余的 `Change/Read=1`；写响应异常时更难定位 | 复用 `ReadScene` 的本地置读与 `SyncEngine` 串行门；自动/手动共用 `MailboxViewModel.performMarkRead`，只有真实 0→1 才回写；列表刷新后自动计时取消；`T-SCN-0014-01`/`T-SCN-0014-03` 断言恰好一次网络写 | `design/components/CMP-PRES/spec.md`、`CMP-SCN-READ/spec.md` 设计增量、`SCN-0014`/`SCN-0008` |
-| R36 | SwiftUI `.toolbar` 项在无头 `NSHostingView`/`NSWindow` 中不可读，工具栏位置无法按 L2 断言 | 探针读不到工具栏项/按钮，或只能读到底层视图；硬把 L2 写成截图/AX | `SCN-0013`/`SCN-0014` 的入口位置无法验收，可能被迫升 L3 或退化成只测映射 | **设计阶段已证（2026-11-16）**：离屏 `NSHostingController` + `NSWindow` 可读 `NSToolbar.items` 的 `label`/`isVisible`/`visibleItems`；`window.sendEvent` 合成点击可驱动 Button/Toggle，禁用项不触发；生产形状 `MailboxToolbar` 33 条断言 PASS，证据 `task-spaces/20261116-223645/evidence/toolbar-probe/`。实现时换生产源复跑；不使用 L1 冒充 | `design/components/CMP-APP/spec.md` 设计增量、`SCN-0013`/`SCN-0014`、`evidence/toolbar-probe/` |
-| R37 | L2 工具栏探针依赖 `window.sendEvent` 合成点击与 SwiftUI 工具栏项实现 | OS/SwiftUI 升级后合成点击不再命中工具栏项，或 `NSToolbarItem.label` 变空 | L2 断言假红/假绿，或点击驱动不了入口 | 探针先断言条目存在且 `visibleItems` 包含它，再点击；状态变化后让 run loop 转一帧再点禁用项；点击不动时红灯而不是静默跳过；必要时改为直接触发 `Actions` 闭包并登记限制，不能把 L1 冒充 L2 | `design/components/CMP-APP/spec.md` 设计增量、`SCN-0013`/`SCN-0014`、`evidence/toolbar-probe/` |
-| R38 | 本地置读失败的错误类型不是 `MailError`，`ErrorText` 回退 `String(describing:)`，中文提示契约假绿 | 测试只注入 `MailError` 时绿；生产 `ReadScene.markReadLocally` 抛 `MailStoreError`/GRDB `DatabaseError` 时状态栏显示英文/调试文本，`T-SCN-0014-04` 名存实亡 | 违反 `REQ-0019`「本地写失败可感知中文提示」；手工置读失败用户看不懂 | **设计已缓解（2026-11-16 第 2 轮）**：`MailboxViewModel.performMarkRead` 返回 `MailError?`，非 `MailError` 归一为 `.storage(reason:)`；`markSelectedRead` 只把 `MailError` 交 `ErrorText`；`T-SCN-0014-04` 补非 `MailError`（`MailStoreError.database`/`NSError`）L1，断言「本地存储失败：…」、保持未读、零回写 | `design/components/CMP-PRES/spec.md` 设计增量、`CMP-SCN-READ/spec.md`、`SCN-0014`、`task-spaces/20261116-223645/design.md` §5.2/§7.9 |
-| R39 | 界面字号缩放机制与 SwiftUI 显式 `.font` 修饰冲突 | 根环境值/默认字体改了，但 `.font(.caption/.headline/.body)` 仍按原字号；或 100% 档被额外修饰符改变基线 | 部分界面文字不缩放、用户看到半套缩放；场景抽样漏面则假绿 | 设计逐项列出 `MailboxView`/`MessageHeaderView`/`MessageBodyView`/`MailboxToolbar`/`AccountSetupView`/`ComposeView` 的字体使用并替换为 scale-aware 字体/修饰符；100% 恒等断言；L2 抽样侧栏/列表/头部/状态栏/配置/撰写；不能用 L1 映射冒充 | `design/components/CMP-APP/spec.md` 设计增量、`SCN-0015` |
-| R40 | 正文缩放机制不覆盖作者显式 `px`，或 `pageZoom` 放大图片/表格导致溢出 | CSS 只改 body `font-size`，作者内联 20px 不变；或 `pageZoom` 把图片/表格一起放大导致溢出/遮挡 | 「阅读正文按比例」只实现一半，或正文布局变差；用户以为功能失效 | 设计用默认样式 + 作者内联 px + 表格/图片夹具探针，比较 CSS 注入/`pageZoom`/混合的代价；`design.md` 记录作者样式/图片/表格/白底/CSP 影响；验收含作者 px；默认不重载 | `design/components/CMP-APP/spec.md` 设计增量、`SCN-0015` |
-| R41 | 225% 下布局溢出/控件不可操作 | 头部 44pt 标签裁字、工具栏 7 项溢出且无溢出菜单、状态栏/列表行高固定、头部挤压正文 | 225% 档不可用，需求核心场景失败；既有 `SCN-0012`/`SCN-0013` 回归红 | 设计给 225% 预算：标签宽/头部上限/工具栏溢出/列表行高/状态栏/最小阅读区；L2 在 900×560 与放大窗口验证 7 个动作可达、正文可滚动、无重叠；100% 数值预算不变 | `design/components/CMP-APP/spec.md` 设计增量、`SCN-0015`/`SCN-0012`/`SCN-0013` |
-| R42 | 100% 恒等档回归 | 新增环境值/缩放修饰符/`baseCSS` 改动让默认字体、边距、行高变化；或 100% 仍套一层缩放 | 既有 `verified` 场景与用户基线同时回归；「默认 100%」名不副实 | 100% 走恒等分支、无额外修饰；L1 断言 `baseCSS` 13px/1.55；L2 对比 100% 字体/边距；回归 `SCN-0010`/`SCN-0011`/`SCN-0012`/`SCN-0013`/`SCN-0014` | `design/components/CMP-APP/spec.md` 设计增量、`SCN-0015` |
-| R43 | L2 文本/正文度量 seam 不可行 | 离屏 `NSHostingController` 读不到字号；WebView 在 `allowsContentJavaScript = false` 下取不到计算样式；只能退化成 L1 映射 | `SCN-0015` 无法按声称层级验收；可能假绿或被迫升 L3 | 设计落 `designed` 前先证 seam：`NSTextField.font`、`NSToolbar.visibleItems`、`WKWebView.pageZoom`/快照/等效度量；不可行时由正式卡声明 L3 并写理由；不得静默降级或用 L1 冒充 | `design/components/CMP-APP/spec.md` 设计增量、`SCN-0015` |
-| R44 | 字号偏好写失败/启动闪烁/与主题耦合 | `UserDefaults` 写失败不可观察；启动先 100% 后跳；切主题把字号重置或反之；父菜单未打开读勾选为旧值 | 用户看到跳变/偏好丢失；验收「重启保持」「主题独立」不可信 | 会话状态为真源、store 不抛不回滚；`init` 读偏好后再渲染首帧；字号/主题独立 key；勾选先开父菜单（R26）；覆盖 invalid/round-trip/relaunch/theme independence | `design/components/CMP-PRES/spec.md`、`CMP-APP/spec.md` 设计增量、`SCN-0015`/`SCN-0011` |
-| R45 | `MailStore` 组件实测 1008 行，已超 1000 行硬上限 8 行 | `wc -l Sources/MailStore/*.swift` 合计 1008；下一次改 store 的人没注意就继续加行 | 越改越难拆；如果联系人改走派生表，会把 schema/迁移/预算三件事一起压上来 | **本批 REQ-0022 新增 0 行**（会话内聚合，不建表/不加查询）；既有 8 行登记为欠账；下一位改 `MailStore` 的任务先拆分或走 P1 预算调整，不静默继续加行 | `design/components/CMP-STORE/spec.md`、`task-spaces/20261118-082503/evidence/design-baseline.log` |
-| R46 | 收件人联想是会话内投影，旧邮件/未同步文件夹/超上限联系人不出现 | 用户清理旧邮件后，之前能补全的地址不再出现；或某文件夹未同步；或超出 500/文件夹、5,000 总计 | 用户以为联想「丢了数据」；与「持久联系人」的预期不符 | 已在 `REQ-0022` 非目标、`SCN-0017` 失败路径与决策记录 D2 写明「当前只利用已有缓存」，并写清 500/5,000 上限；要持久联系人另立 v11 需求，不把本批当持久通讯录；`ContactDirectory` 只读本地信封、不联网 | `requirements/REQ-0022-recipient-autocomplete.md`、`SCN-0017`、`history/decisions/2026-11-18-recipient-autocomplete.md` |
-| R47 | L2 候选浮层探针读不到 SwiftUI 行文本/位置，或浮层被后续兄弟覆盖/裁剪 | 离屏 `NSHostingView` 下 `RecipientSuggestionList` 的行没有 `NSTextField`/`NSTextView` 承载；或 `.overlay` 被 `VStack` 后续的格式栏/编辑器盖住、hit-testing 出界 | `SCN-0017` 的「可见候选/人名+邮箱/无名字回退/点击」无法按 L2 验收，可能被迫升 L3 或退化成 L1 映射 | 设计把候选浮层改为 Form 的 `.overlay`（不参与布局，`task-spaces/20261118-082503/evidence/design-probe/overlay-probe.txt` 已证 ZStack 会下推布局、overlay 不会），并给 `ComposeRecipientForm` 在 `ComposeView` 的 VStack 中 `.zIndex(10)`；探针先断言行/字段存在再比对文本、frame 与点击；若仍读不到，由 `SCN-0017` 改声明 L3 并写理由，**不得**静默降级或跳过 | `design/components/CMP-APP/spec.md` 设计增量、`SCN-0017`、`task-spaces/20261118-082503/` |
-| R48 | 点击候选行时字段先失焦，候选被清空导致选不中 | `controlTextDidEndEditing` 在 `Button` 的 mouseUp 前触发；`recipientFocusLost()` 清掉 `activeField`/候选 | 鼠标选中路径不可用，只能键盘；L2 点击用例红 | `ComposeRecipientForm` 用 `suggestionClickInFlight` 守卫把失焦清空延后到下一 runloop；点击用原字段 index 完成选中后再还焦点；`T-SCN-0017-03` 的 `.clickAfterFocusLoss` 必测 | `design/components/CMP-APP/spec.md`、`SCN-0017` |
-| R49 | 首次聚焦同步聚合 5,000 封信封阻塞主线程 | 大邮箱首次聚焦时 UI 停顿，或 `T-SCN-0017` 性能夹具超过设计目标 | 输入/取消/发送被拖慢，违反「不阻塞撰写」 | 已设每文件夹 500、总计 5,000 上限；实现期用 5,000 封夹具记录首次加载耗时（目标 ≤100ms）；超目标回设计改异步加载或降上限，不在输入路径查库 | `design/components/CMP-PRES/spec.md`、`CMP-SCN-COMPOSE/spec.md`、`SCN-0017` |
-| R50 | 候选行邮箱列保底内显示串被缩短；175%/225%×480 只能显示 `h…@c` 级最低形态 | 名字加宽后邮箱变窄；若只读 `stringValue` 或只断言帧宽，会把「显示截断/`@` 不可见」误判为通过 | 用户难以用邮箱区分同名联系人；A2 断言假绿/假红 | 第 2 轮改为「保留 `@` 的显式中间缩短」：`addressLabel.stringValue` 就是已缩短的显示串，断言含 `@` 且两侧各至少 1 字符、显示串宽 ≤ 帧宽 + 0.5；完整地址另存在 `fullAddress` 供 `.help`/无障碍；175%/225% 的 `h…@c` 是名字优先下的最低可辨形态，不写成「任意地址固定字符数」契约；若产品要求邮箱更完整，需改需求取舍或浮层/换行方案 | `CMP-APP/spec.md` 设计增量、`SCN-0017` T-03、`task-spaces/20261119-164437/design2.md` §4/§9、`evidence/name-width-probe/round2/` |
-| R51 | 交付载体 plist 丢失 ATS 键（`Resources/Info.plist` 被删/改回内联 heredoc/构建时未装机） | `plutil -extract NSAppTransportSecurity.NSAllowsArbitraryLoadsInWebContent` 非 `true`；`cmp dist/uumail.app/Contents/Info.plist Resources/Info.plist` 非 0；远程图片重新空白 | 放行开关仍工作但图片始终空白，功能静默失效，用户误以为开关坏了 | plist 单一来源 + `Scripts/make-app.sh` 只 `cp`（缺文件即失败，不静默生成）；`T-SCN-0018-02/03` 的 `plutil`/`cmp`/脚本接线断言；里程碑重建后核对 `dist/build-info.txt` 与构建时 HEAD；发布前按 `SCN-0018` 复跑 L2 | `design/components/CMP-APP/spec.md` 设计增量、`SCN-0018`、`Scripts/make-app.sh`、`Resources/Info.plist` |
-| R52 | 测试误用 `127.0.0.1`/`localhost` 判 ATS，或省略无 ATS 负控制 | 本地主机名/IP 字面量被 ATS 豁免，放行档「命中」；或负控制在无 ATS bundle 下也命中 | ATS 根因与修复被假绿掩盖，或把主机名/载体配置错误判成通过 | 探针图片 URL 用解析到受控服务的非本地主机名（`127.0.0.1.nip.io` 一类）；无 ATS 负控制必须 0 命中；`data:` 正控制必须渲染；离线无法解析时登记跳过，不退回 IP 字面量 | `SCN-0018` §测试、`test.md`/`test2.md`、`evidence/carrier-verify/`、`history/decisions/2026-11-19-remote-image-ats.md` |
-| R53 | 载体契约没有 CI 回归守护 | `uumail` 是可执行 target，`Package.swift` 无对应测试 target；探针只在 task-space，不入库；ATS 键/`cp` 接线回归靠里程碑手动断言 | 后续重构 `make-app.sh` 或 plist 时可能静默回退，直到用户再次遇到空白才发现 | 不新增 target/依赖（设计边界）；在 `SCN-0018` 与 `CMP-APP` 增量保留 L1 静态断言命令；里程碑/发布前按 `SCN-0018` 复跑；若将来改 `ComposeEditor` 的 WebView 配置，另拆探针任务，不静默扩 | `SCN-0018`、`task-spaces/20261119-213812/review4.md` §7 N6、`plan/roadmap.md` §W-M3-11 |
-| R54 | 像素/解压炸弹 guard 未实现（设计 `design2.md` §6 R11；项目 R11 已被敏感内容占用，故落 R54） | `InlineImageHTML` 只按 20MB 字节 guard 截断，且在 `Data(contentsOf:)` 之后；超像素/畸形大图仍可能交给 WebView | 极端畸形图可能卡顿/渲染失败；不改变正文文字可读性 | `T-SCN-0019-04` 只断言「有文字时正文可读」；后续 P2/独立任务用纯 Foundation 头解析补像素上限，若引入 ImageIO 先过架构门；不写成验收契约 | `task-spaces/20261120-111818/design2.md` §2 N6/§6 R11、`SCN-0019`、`task-spaces/20261120-111818/review5.md` §4 |
-| R55 | 注释/其它属性值内嵌套 `<img src=…>` 仍会被识别（`review4.md` §6 N1） | `InlineImageHTML` 的标签扫描不区分 HTML 注释/其它标签属性值内的字面量；`sources` 会收集、`replacingSources` 会改写 | 不改变可见正文、不产生第三方请求；注释内 `cid:` 若匹配附件会多一次本地 `downloadAttachment` | 后续 P3 把 `imgTagPattern` 限制在标签上下文（跳过注释/其它标签属性值）或换最小 HTML 分词器，补对应 L1；当前不写成已修复 | `task-spaces/20261120-111818/evidence/review4/edge-probe.txt`、`review4.md` §6 N1、`review5.md` §4 |
-| R56 | 重复会议按时区固定偏移展开，跨夏令时偏一小时 | 会议 TimeZone 带 `DaylightDate/DaylightBias`；本机/会议时区有 DST；展开点与 Outlook 差 60 分钟 | 用户在夏令时地区看到错时会议，且与 `.ics` 导入结果不一致 | 只解析 `Bias` + 名称，展开用固定偏移；`Asia/Shanghai` 无 DST 的部署不受影响；事件详情标注「时区按固定偏移」；要求精确则升级 Q5（完整 TZ 规则） | `design/components/CMP-DOMAIN/spec.md` 增量、`plan/open-questions.md` Q5、`SCN-0024` |
-| R57 | 同一 `UID` 的多封邀请乱序到达，旧时间覆盖新时间 | 同步窗口内旧邀请晚于更新到达；`DtStamp` 缺失/相同；取消与会话更新交错 | 日历显示过期时间，用户按错时间赴会 | 写入端按 `dtstamp` 只升不降（`NULL` 视为最旧）；取消/过期删除整行；`T-SCN-0024-04` 用「先新后旧」负例钉住；`DtStamp` 缺失时以到达顺序为准并登记 | `design/components/CMP-STORE/spec.md` 增量、`SCN-0024` |
-| R58 | 不回填历史邀请，升级后日历为空、旧邀请无会议卡 | 升级后打开日历；旧邀请邮件；用户翻到上个月 | 用户以为功能没做或丢会议；旧邀请邮件看不到卡片 | 用户 2026-11-24 已二次确认接受；空态文案写明「只展示升级后新收到的邀请」；日历页与卡片都不伪造数据；如后续要补，另立回填工序（分页回扫或首次打开补拉） | `requirements/REQ-0029-calendar-views.md`、`SCN-0024` 失败路径、`SCN-0023` 失败路径 |
-| R59 | 月/周网格与会议卡的 L2 探针读不到文本/几何，只能降级 L1 | 无头 `NSHostingView` 下 `LazyVGrid` 单元格文本不可读、`.popover` 不出现、`GeometryReader` 帧为 0 | `SCN-0024` 的周视图定位与 `SCN-0023` 的「点击→导出」无法按 L2 验收 | 设计阶段先证 seam（月格文本、周块 frame、popover 可驱动）；不可行时由场景卡声明 L3 并写理由，不用 L1 投影冒充 | `design/components/CMP-APP/spec.md` 增量、`SCN-0023`/`SCN-0024` |
-| R60 | 网关不返回 `MeetingRequest`（或返回空 UID/时间）时，日历页整页为空 | 其它 Exchange 版本/网关策略；`MessageClass` 为请求类但无 `MeetingRequest` 子树 | 用户以为功能没做，实际是服务端不下发 | `EASClientTests` 覆盖「请求类邮件但缺 `MeetingRequest`」→ 退化为普通邮件、不崩；日历页空态提示「未识别到会议邀请」；不伪造事件、不猜正文时间 | `design/components/CMP-EAS/spec.md` 增量、`SCN-0024` 失败路径 |
-| R61 | 启用 WAL 后出现 `-wal`/`-shm` 副文件，备份/复制库漏带导致数据不一致 | 用户或脚本只拷 `mail.sqlite`；崩溃后 `-wal` 未 checkpoint；测试夹具直接复制主文件 | 备份丢失最近写入（会议/邮件）；恢复后状态回退 | 文档写明备份三件套或统一用 `VACUUM INTO`；关闭连接时默认 checkpoint；测试夹具用 `VACUUM INTO` 或先 checkpoint 再复制；库目录清理脚本只删三个文件一起删 | `design/components/CMP-STORE/spec.md` WAL 增量、`plan/risks.md` |
+| R62 | 浮窗要按「文件夹 + serverID」取不在当前列表页的邮件，`ReadScene` 只有按文件夹取页 | 读契约已按 P1 确认（D12）；`MailStore`/`ReadScene` 新查询已在写 | 若实现期在视图层过滤，跨组件契约被绕过；更早邮件打不开 | `T-1124-17`/`T-1124-18` 落 `message(account:folder:serverID:)` 与 `messages(folderID:since:)`；不改 schema | `CMP-STORE`/`CMP-SCN-READ` 增量、`roadmap.md` §W-M3-17 |
+| R64 | 浮窗就地撰写与主窗口撰写 sheet 各持一个 `ComposeViewModel`，可能两份草稿/引文错位/关窗丢稿 | 设计已定：撰写态禁替换、关闭走「放弃这封邮件？」、种子只从本窗取 | 用户丢草稿或发出不完整回复 | `T-SCN-0025-04` 反例钉住「取消/确认都不入队」 | `CMP-PRES` 增量、`SCN-0025` |
+| R65 | 更早邀请正文未缓存时浮窗先占位再补拉；浮窗无远程图片开关，补拉失败只有占位 | 设计已定占位文案与可点重试 | 用户以为浮窗坏了 | `SCN-0024` 失败路径覆盖「来源邮件已删/未缓存」 | `CMP-APP` 增量、`SCN-0024` |
+| R66 | 浮窗阅读态默认放行远程资源（D6），追踪像素可得知打开时间与 IP；同封在浮窗有图、主窗口仍是占位 | **确认维持默认显示**（D3） | 隐私泄露；两窗口表现不一致为已知代价 | 放行只限浮窗阅读态；顶部静态提示；主窗口与撰写编辑器仍阻止；不扩 ATS；被否决才回退并重开 D6 | `history/decisions/2026-11-24-floating-reader-window.md` D6、`SCN-0025` |
+| R67 | 列表改「最近 30 天、不封顶」（D12）后，大邮箱首屏读取/渲染变重，可能突破 5k 基线 | **突破就回设计**（D4）；5k 夹具随 `T-1124-21` 跑 | M4 性能门槛失守；`SCN-0026` 假绿 | 查询按 `received` 时间窗、不在客户端过滤；>1s 停下评估分页/封顶，不静默放宽、不改回 200 | `REQ-0033`、`SCN-0026`、R6 |
+| R68 | 日历去掉详情后，单击/双击/Enter/空格共用一块区域，可能互相吃掉 | 探针证 `clickCount=1,2` 会先发单击再发双击；并行会话已按「立即选中」把本行标成关闭 **已实现（2026-11-24）**：`ClickCatcherView` 单次单击延迟 0.28s 判定，双击取消待生效选中；探针 `evidence/calendar-click/calendar-click.txt`（立即 0 → 延迟后 1；1,2 → 选中 0/打开 1）。| 双击打开前会闪一下选中；与用户拍板不一致 | **已拍板延迟 250–300ms 判定**（D5）：单击延迟生效、双击直接打开；若实现成本过高，回设计重开 D9，不静默沿用「闪一下」 | `CMP-APP` 增量、`SCN-0024` |
 
-2026-11-17 设计处置（run `20261117-071134`，`REQ-0020`/`SCN-0015`；**未关闭**，实现/验证时按场景卡复核；第 2 轮按评审 fail 修订）：
+R63（窗口载体）已由 2026-11-24 探针关闭并移入 `history/decisions/2026-11-24-risk-closeout.md`：
+SwiftUI `Window` 显示前不能可靠应用计算尺寸，改用 AppKit `NSWindow` + `NSHostingController`。
 
-- **R39**：界面缩放改为「环境值 + `scaledFont(_:)`（原 `.font(style)` 点）+ `scaledInheritedFont(_:)`（原默认字体点；100% 不加修饰）+ 根 `.font` 仅 >100% 安装」。第 2 轮实测：装根 `.font(.body)`/显式 `.font(.body)` 会把默认两行文本 32.0→31.5pt，因此 100% 不装；生产头部 100% 159.5pt（第 1 轮 158.5pt 是 fixture/补丁副本拟合值）。`ContentUnavailableView` 与字符串标题 `Button` 实测不吃环境字体（尺寸比 1.00），已用 `EmptyState`（100% 原组件、>100% 自绘）与按档位分支的按钮 label 补齐；`UumailApp` 根级数据库错误页也纳入 `EmptyState`。覆盖清单见 `CMP-APP` 增量、`design.md` §6.2、`evidence/font-size-probe/round2/{HeaderBodyProbe,EmptyStateProbe2}.txt`。
-- **R40**：正文改用 `WKWebView.pageZoom`，作者显式 `px`/图片/表格随整页缩放；实测 1.0→2.25 导航增量 0、作者 20px 渲染 40→90 设备像素（2.250×）、默认 13px 26→59（2.269×）、滚动保持、白底/CSP/禁 JS 不变。代价（固定宽度大表可能横向滚动）与候选否决见 `design.md` §4.2；图片/表格像素断言留实现期夹具，`evidence/font-size-probe/WebProbe.txt` 已含图片/表格夹具。
-- **R41**：175%/225% 预算落为标签宽 `44×scale`、**元数据区（头部+附件条+banner）cap 220pt 并内部滚动**（100–145% 不 cap）、480pt 保守高下正文视口实测 **259pt**（≥200 下限、达 260 目标）、145% 205pt、120% 242.5pt、状态栏计数 `.layoutPriority(1)`、工具栏 7 动作在 100%/225% 均可见。第 1 轮“只 cap 头部”实测 225% 视口仅 **147.5pt**，已否决；`ViewThatFits` 在真实栈里 100% 也会 cap，已改为按档位分支。证据 `evidence/font-size-probe/round2/{HeaderBodyProbe,CapDiag}.txt` 与 `ToolbarZoomProbe.txt`。
-- **R42**：100% 恒等有 L2 断言：生产头部 159.5pt、完整 body 视口 273pt（480 高）/353pt（560 高）、字体 size/family/traits 全等、`baseCSS` 13px/1.55、`pageZoom=1`；100% 不装根 `.font`、不包 cap、`EmptyState` 100% 与 `ContentUnavailableView` 逐点相等。实现期按 `T-SCN-0015-01`/`percent100MatchesBaseline` 复跑，并回归 `SCN-0010…0014`。
-- **R43**：L2 seam 的设计阶段出口已达成，但**证据来源拆开**：100% 用未修改生产源；225% 用“生产源 + 设计 diff 补丁副本”（`round2/patched/`、`patches/`）；生产源 225% 复跑标为**实现期 L2**，不再写成“设计期已证生产”。设计期已测：菜单（真实 App+父菜单打开）、界面字体（`NSTextField.font`）、生产头部 100%（159.5pt）与设计 diff 副本 225%（312.5pt/44×2.25/不重叠）、完整 body 视口（100% 273、120% 242.5、145% 205、175/225% 259）、`EmptyState`/按钮/根错误页（100% 逐点相等、120/225 比例 1.2/2.25）、工具栏（`NSToolbar.visibleItems`）。限制与非 `textSelection` 文本的替代（源码覆盖审计）已写入 `SCN-0015` 与 `design.md` §9，不静默降级。
-- **R44**：`@State` 会话真源 + store 不抛/不回滚；首帧读取；独立 key `appearance.fontSize`；父菜单打开再读勾选（R26）；L1 覆盖缺失/损坏/持久化/幂等，L2 覆盖 seed 175 首帧与重复 no-op。证据 `MenuProbe.txt`/`MenuProbe.seed175.txt`，决策记录 `history/decisions/2026-11-17-font-size.md` 与第 2 轮 `history/decisions/2026-11-17-font-size-round2.md`（默认确认，未经人工）。
+## 三、已接受 / 延后（保留监控）
 
+| ID | 风险 | 口径与复核条件 | 落点 |
+|---|---|---|---|
+| R4 | GAL 与联系人不可用 | 首版只做本机通讯录 + 收件人历史；要 GAL 另立需求 | `CMP-EAS/playbook.md` §5 |
+| R5 | 只支持 5 分钟轮询，新邮件有延迟 | 网关不支持 Ping 长轮询；固定 5 分钟并在 UI 标注；要 ≤60s 需换通道 | `CMP-EAS/playbook.md` §5.2 |
+| R7 | HTML 邮件攻击面 | 已设控制：WKWebView 关脚本 + CSP + 默认阻止远程 + sanitizer；改 CSP/载体时回归 | `architecture.md` T5、`SCN-0004` |
+| R8 | 服务器限流 | 已设控制：单账号串行、退避、`Retry-After` 优先；出现 503 风暴时复核 | `CMP-SYNC/spec.md` |
+| R9 | WBXML 编解码边界 | 已设控制：golden fixture round-trip、以探针真实字节为准 | `CMP-EAS/playbook.md` §4 |
+| R10 | 时间与排序错乱 | 已设控制：服务器 `DateReceived` 排序，本地时间兜底 | `CMP-STORE/spec.md` |
+| R12 | 无 certificate pinning；库/缓存明文、无 SQLCipher、无审计日志 | 凭据只进 Keychain，库/缓存依赖 FileVault；不做 pinning/SQLCipher 为已知接受项 | `CMP-STORE/spec.md`、`CMP-APP/spec.md` |
+| R25 | `UserDefaults` 写失败没有可观察同步信号 | 接受测试强度不足：靠「不抛/不回滚 + 会话状态真源」保证；要强制注入另评存储协议 | `CMP-PRES/spec.md`、`SCN-0011` |
+| R30 | 发起人期望的「发送时间」是真实 `Sent`，不是 `DateReceived` | `REQ-0017` 已写明非目标；要 `Sent` 另立需求并先证网关可达性 | `REQ-0017`、`SCN-0012` |
+| R31 | L2 探针依赖 SwiftUI「可选 `Text` 由 `NSTextField` 承载」 | OS/SwiftUI 升级后探针可能全红；探针先断言字段存在再比对，红了再换 seam，不静默假绿 | `SCN-0012`、`task-spaces/20261116-212545/evidence/header-probe/` |
+| R37 | L2 工具栏探针依赖 `sendEvent` 合成点击 | 升级后可能点不中；点击不动即红灯，不静默跳过；必要时改直接触发 `Actions` 并登记限制 | `SCN-0013`/`SCN-0014`、`task-spaces/20261116-223645/evidence/toolbar-probe/` |
+| R46 | 收件人联想是会话内投影，旧邮件/未同步文件夹/超上限联系人不出现 | `REQ-0022` 非目标与 `SCN-0017` 失败路径已写明；要持久联系人另立 v11 需求 | `REQ-0022`、`SCN-0017`、`history/decisions/2026-11-18-recipient-autocomplete.md` |
+| R49 | 首次聚焦聚合 5,000 封信封可能阻塞主线程，且没有实测 | **2026-11-24 拍板延后**（D16），不排下一批；保留「目标 ≤100ms、无 5k 夹具」的事实 | `CMP-PRES/spec.md`、`SCN-0017` |
+| R53 | ATS 载体契约没有 CI 回归守护 | **2026-11-24 拍板延后**（D16）；继续靠里程碑/发布前手动复跑 | `SCN-0018`、`Scripts/` |
+| R54 | 像素/解压炸弹 guard 未实现 | **2026-11-24 拍板延后**（D16）；`InlineImageHTML` 仍只有 20MB 字节截断 | `SCN-0019`、`InlineImageHTML` |
+| R55 | HTML 注释/其它属性值内嵌套的 `<img src=…>` 仍会被扫描/改写 | **2026-11-24 拍板延后**（D16）；可见正文不变，但会多一次本地下载 | `task-spaces/20261120-111818/review4.md` §6 N1、`SCN-0019` |
+| R56 | 重复会议按时区固定偏移展开，跨 DST 偏一小时 | **2026-11-24 拍板维持固定偏移**（D12/Q5）；事件详情标注；要精确另立 P2 | `CMP-DOMAIN/spec.md`、`SCN-0024` |
+| R58 | 不回填历史邀请，升级后日历为空、旧邀请无会议卡 | 用户 2026-11-24 二次确认接受；空态写明「只展示升级后新收到的邀请」 | `REQ-0029`、`SCN-0024` |
+| R59 | 月/周网格与会议卡的 L2 探针读不到文本/几何，只能降级 L1 | 两条视觉/`NSWorkspace` 断言已按场景卡登记为发布前人工冒烟，不放宽为 L1 通过 | `SCN-0023`/`SCN-0024` |
+| R60 | 网关返回「请求类邮件但缺 `MeetingRequest` 子树」时，日历页为空 | **2026-11-24 拍板延后**（D16）；缺该用例的事实保留，不写成已覆盖 | `EASClientTests`、`SCN-0024` |
+| R61 | 启用 WAL 后 `-wal`/`-shm` 副文件，备份/复制漏带导致数据不一致 | **2026-11-24 拍板延后**（D16）；仍只有文字约定，不做 `VACUUM INTO` 命令 | `CMP-STORE/spec.md` WAL 增量 |
+| R69 | 打开浮窗即标已读（D7）不可撤销 | **2026-11-24 拍板接受**（D15）；要撤销另立「标为未读」需求 | `REQ-0031`、`SCN-0025`、决策 D7 |
+
+## 四、外部监控（项目不可控，只跟信号）
+
+| ID | 风险 | 触发信号 | 项目侧动作 | 落点 |
+|---|---|---|---|---|
+| R1 | 网关设备清单被清理或换机 | 所有命令 `200` 空 body、写命令 `401`、短信回执显示设备被删 | 已把「0 字节 200」映射为 `deviceNotRegistered` 并给登记指引；启动做轻量探活 | `CMP-EAS/playbook.md` §6 |
+| R2 | 公司收紧 EAS 或要求 MDM/零信任客户端 | IT 公告、网关拒绝新设备、`OPTIONS` 不再返回命令列表 | 只走官方移动端通道，不绕过认证；上线前与 IT 确认合规；失败明确提示 | `architecture.md` §7 |
+| R3 | 公司迁移到 Exchange Online / 关闭本地 EAS | IT 公告、账号迁云、本地网关下线 | 项目定位即私有化 Exchange 客户端（T13），不做假兼容；迁移即重新立项 | `history/decisions/2026-11-09-scope-baseline.md`、`architecture.md` T13 |
+| R11 | 抓包样本含敏感内容 | 真实邮件正文/主题进入仓库或日志 | 脱敏后入仓；`.env`/`logs/`/`output/` 不入库；提交前检查 | `history/decisions/2026-11-09-scope-baseline.md`、`architecture.md` §7.3 |
+
+## 五、本次拍板带入的衍生风险（待设计）
+
+| ID | 风险 | 触发 | 影响 | 控制方向 |
+|---|---|---|---|---|
+| R74 | 同步日历集合后，邀请与日历项按 `UID` 去重/改期/取消的冲突规则未定 | 同一会议既有邀请又有日历项；组织者改期；取消 | 重复条目、旧时间、已取消会议仍显示 | Q6 设计时先定「服务器日历优先 + 邀请补历史」的合并表；用真实样本钉住 |
+| R75 | `PendingOps` 离线队列与在线写回并存，顺序/重复写/跨设备一致未定 | 断网删除后恢复网络；同一封在别的设备已改 | 重复删除、已读回退、队列卡死 | M4 P1 设计：单账号 FIFO、幂等键、冲突以服务器为准；先补离线用例 |
+| R76 | 3 个月删邮件行会破坏搜索/日历/附件/选中态的引用完整性 | 定期清理与用户正在浏览/日历引用旧邮件同时发生 | 日历空白、附件打不开、列表选中悬空 | 清理契约先设计级联与保留策略；删除前检查会议/附件引用；补清理用例 |
 
 ## 风险等级口径
 
 - 高：直接使项目不可用或造成合规事故（R1、R2、R11）。
-- 中：影响关键旅程但可降级（R3、R4、R5、R6、R8、R12、R13、R18、R19、R21、R22、R23、R24、R27、R28、R29、R31、R32、R33、R34、R35、R36、R37、R38、R39、R40、R41、R42、R43、R44、R45、R47、R48、R49、R50、R51、R52、R53、R54、R56、R57、R58、R59、R60）。
-- 低：局部体验或可回滚（R7、R9、R10、R15、R25、R26、R30、R46、R55）。
+- 中：影响关键旅程但可降级（R3、R4、R5、R8、R12、R13、R21、R45、R49、R53、R54、R56、R58、R59、R60、R61、R62、R64、R66、R67、R68、R70、R71、R72、R73、R74、R75、R76）。
+- 低：局部体验或可回滚（R7、R9、R10、R25、R30、R31、R37、R46、R55、R65、R69）。
 
-R14 已于 2026-11-14 关闭（T-1114-02：网关 Sync 信封实测返回 `Cc`）。R16/R17/R20 已于 2026-11-14 关闭（真机写命令、预算拆分、写响应语义）。R27–R31 为 2026-11-16 阅读页信封头新增，**未关闭**；落点与缓解见各行。
+## 变更记录
 
-2026-11-16 设计探针（run `20261116-212545`）：R29 的 L2 可读 seam 已证实——无头 `NSHostingView` 下 SwiftUI 可选 `Text` 由 `NSTextField` 承载、`stringValue` 就是渲染文本（AX 树在无头宿主下读到 0 个元素，故放弃 AX 方案）；证据 `task-spaces/20261116-212545/evidence/header-probe/`。R27 的行数上限与 R28 的 `.none` 收口已写入 `CMP-APP`/`CMP-PRES` 设计增量；R29 收窄为受 R31 约束，仍需实现后回归。
-
-R32–R38 为 2026-11-16 需求分析/设计新增（远程图片开关归位、手动置读、自动已读 10→3 秒、工具栏 L2 探针、合成点击载体、非 `MailError` 归一），**未关闭**；落点与缓解见各行。R33 的现状证据见 `task-spaces/20261116-223645/evidence/current-state.txt`（`MessageBodyView` 的 `@State` 无按邮件重置）；R32/R33/R36/R38 的设计处置见同目录 `design.md`、`evidence/toolbar-probe/` 与第 2 轮 §5.2/§7.9。R37 是 R36 设计阶段证通后的残余测试载体风险，实现复跑时按场景卡先断言条目存在再点击。
-
-R39–R44 为 2026-11-17 需求分析新增（`REQ-0020` 字体大小），**未关闭**；落点与缓解见各行。现状证据见 `task-spaces/20261117-071134/evidence/current-state.txt`（无既有字号实现、正文 13px 固定、`lastRender` 不含字号、头部 44pt 固定宽、工具栏 7 项）；设计待答清单见同目录 `brief.md` §7。R43 的 L2 度量 seam 已由 2026-11-17 设计探针证通（见上「2026-11-17 设计处置」；225% 为生产源+设计 diff 副本，生产源复跑留实现期），剩余为实现期复跑；若实现期 seam 失效，由 `SCN-0015` 声明 L3 并写理由。
-
-R45–R49 为 2026-11-18 需求分析/设计新增（`REQ-0022` 收件人联想），**未关闭**；落点与缓解见各行。R45 的现状证据见 `task-spaces/20261118-082503/evidence/design-baseline.log`（`MailStore` 四文件合计 1008 行）；R46 的已接受降级见决策记录 D2；R47 的布局部分已由设计探针 `task-spaces/20261118-082503/evidence/design-probe/overlay-probe.txt` 证 `.overlay` 不改变布局，实现期仍需按 `SCN-0017` 的 L2 探针复核行文本/点击；R48/R49 留实现期 L2/性能夹具。
-
-R50 为 2026-11-19 设计新增（`REQ-0023` 候选行显示名宽度），**未关闭**；第 2 轮改为「邮箱 `@` 两侧可见的最小保底 + 地址显式缩短」，见 `task-spaces/20261119-164437/design2.md` §4。设计期 L2 探针已证：当前行宽=浮层宽（409/629）、200 兜底未命中、45% 上限是唯一约束；设计候选在 100%/145%/**175%**×480 把 15 字名看全（14.9 字）、225%×480 为约 10.7 字（授权降级）；145%/175%/225%×480 的邮箱显示串均含 `@` 两侧且放得下（`hr-…@corp.t` / `h…@c` / `h…@c`），完整地址保留在行上（生产源 + 设计 diff 副本，`evidence/name-width-probe/round2/`，250 CHECK/0 FAIL）；实现期必须换生产源复跑 `T-SCN-0017-03`。
-
-R51–R53 为 2026-11-19 W-M3-11（`REQ-0024`/`SCN-0018` 交付载体 ATS 例外）收尾同步新增，**未关闭**；R51 的载体断言与 R52 的负控制/正控制已在 `T-SCN-0018-02/03` 与 `T-SCN-0018-01` 落地，证据见 `task-spaces/20261119-213812/`；R53 的「无 CI 守护」是已知流程残余，若需 CI 化另拆任务，不在本批静默扩 target。
-
-R54–R55 为 2026-11-20 W-M3-12（`REQ-0025`/`SCN-0019`）收尾同步新增，**未关闭**；R54 对应设计 `design2.md` §6 R11（项目 R11 已被敏感内容占用，故用新号），R55 对应 `review4.md` §6 N1；均只登记，不写成已修复/已处理。A5 真实样本冒烟仍为发布前/人工项（`roadmap.md` §W-M3-12）；`SCN-0018` ATS carrier 未重建仍是已登记残余。
-
-2026-11-24 W-M3-16 收尾：R56（固定偏移）与 R58（不回填）按人工确认保留为已接受限制；R57 由 `DtStamp` 只升不降的写入规则与
-`T-SCN-0024-04` 负例钉住；R59 的两条视觉/`NSWorkspace` 断言未做无头探针，已按场景卡登记为发布前人工冒烟项（不放宽为 L1 通过）；
-R60 的退化路径由 `EASClientTests` 的「请求类但缺 MeetingRequest」用例覆盖；R61 在 WAL 规格与备份约定中登记，未关闭。
+- 2026-11-24（风险拍板）：Q1–Q7 与 R13/R21/R45/R49/R53/R54/R55/R60/R61/R66/R67/R68/R69/R70–R73 逐项拍板，
+  结论见 `history/decisions/2026-11-24-risk-review-decisions.md`；新增 R74–R76（日历集合冲突、离线队列、3 个月删行）。
+  R21、R45、R70–R72 转为「已拍板待执行」；R49/R53/R54/R55/R60/R61 延后；R68 由「探针关闭」改回「处置中：延迟判定」。
+- 2026-11-24（W-M3-17 设计，`T-1124-16`）：R62 的 P1 确认门通过（决策 D12）；R63 由窗口探针关闭；
+  R64/R65/R66/R67/R69 分别落 `SCN-0025` 反例、`SCN-0024` 失败路径、决策 D6 可逆边界、`SCN-0026` 的 5k 断言、已接受限制。
+- 2026-11-24（全量复核）：R14–R63 中已完成处置的 32 条移入 `history/decisions/2026-11-24-risk-closeout.md`；
+  新增 R70–R73（PRES/APP/Scenes 预算漂移、发布前证据未闭环）；R21 经代码复核确认未关闭；
+  R45 更新为实测 1152/1000（拍板时已涨到 1225）；R60 的「已覆盖」更正为「缺用例」；R62 由「待 P1 确认」改为「已确认待实现」。

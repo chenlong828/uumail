@@ -118,3 +118,15 @@ component: CMP-ROOT
 
 - `AppComposition` 在 `attachMailbox` 中构造 `CalendarScene` 与 `CalendarViewModel` 并暴露 `calendar`；
   `UumailApp` 传给 `MailboxView`。`AppComposition` 188 行（≤200），架构门 4/4。
+## 设计增量：浮动阅读窗本批不改装配（REQ-0031 / REQ-0032，2026-11-24）
+
+- 决定：`AppComposition` **零改动**（当前 188/200 行）。浮窗的 `ReaderRouter` 与 `ReaderWindowController` 由 `UumailApp`
+  创建并 owning，`ReaderViewModel` 由 `MailboxViewModel.makeReaderModel()` 在展示层内部构造（`read`/`composeScene`/`account`/
+  `onEnqueued` 均已在展示层持有），因此不需要新的场景或网关穿过组合根。
+- 不变量：组合根仍只做「读配置 → 选实现 → 注入」；阅读浮窗不引入新的服务、后台任务或存储。
+- 后果：本批任务表不含 `CMP-ROOT` 任务；若实现期发现必须让组合根注入第二个窗口的依赖，按 `plan/risks.md` R22 的装配例外
+  单开任务，不在 `T-1124-20` 里夹带。
+
+## 实现（2026-11-24，T-1124-20/21）
+
+- 零改动：`AppComposition` 仍 188/200 行；`ReaderCoordinator.shared` 在 App 层创建，读窗口不经组合根。

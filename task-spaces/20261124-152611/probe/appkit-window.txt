@@ -1,0 +1,3 @@
+PROBE first open: number=464048 frame=480x740 content=480x708 requestedContent=480x707
+PROBE second open: number=464048 sameInstance=true content=520x620 requestedContent=520x620 readerWindows=1
+PROBE done
