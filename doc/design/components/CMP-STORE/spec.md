@@ -23,7 +23,7 @@ component: CMP-STORE
 - 入口：`Sources/MailStore/MailStore.swift#MailStore`、`SyncStoreConformance.swift`（`MailStore: SyncStore`）
 - 依赖：`MailDomain`、GRDB。扇出 2。
 - 冷热：读热、写冷热混合；`DatabaseQueue` 单写。
-- 尺寸预算：硬上限 1000 行；当前 **1008 行**（`MailStore.swift` 763 + `Migrations.swift` 167 + `SyncStoreConformance.swift` 40 + `Values.swift` 38，`wc -l` 2026-11-18）；相对 2026-11-14 的 1000 行多 8 行（v10 迁移与既有小改），属既有超出，登记 `plan/risks.md` R45。本批（REQ-0022）新增 **0 行**、不调预算；下一位改 `MailStore` 的任务必须先拆分或走 P1 预算调整，不得静默继续加行。
+- 尺寸预算：硬上限 1000 行；当前 **1024 行**（`MailStore.swift` 768 + `Migrations.swift` 178 + `SyncStoreConformance.swift` 40 + `Values.swift` 38，`wc -l` 2026-11-24），已超 24 行（既有欠账 R45）。2026-11-24 决定：不调预算，先把 outbox 表物理读写拆到 `CMP-OUTBOX-STORE`（约 −210 行 → 约 814），再加 `meetings` 约 110 行 → 约 924；见文末「outbox 物理读写拆出」增量。
 - 单独运行：`./Scripts/swiftw test --filter MailStoreTests`
 - 删除测试：删掉后场景、同步、搜索各自拼 SQL 并各自维护 SyncKey → 复杂度分散，是真边界。
 
@@ -203,5 +203,21 @@ component: CMP-STORE
   - **列表读**：`messages(folderID:limit:)` 与 `searchLocal` 的 SELECT 左连 `meetings`（按 `folder_id`+`server_id`）填 `Message.meeting`，卡片不再二次查库；连接走 `idx_meetings_range` 之外的 `(account_id, folder_id, server_id)` 主键等值，单页 ≤200 行。
 - **迁移**：`v12_meetings` 建表 + 索引；同时把非 `folders` 的 `sync_key` 置 `"0"`（沿用 v9/v11 机制），升级后首轮按窗口重拉最近 ≤125 封补齐会议行；正文/附件缓存不动。旧邮件不会被伪造会议。
 - **迁移测试**（`MailStoreTests/MigrationTests`）：pre-v12 fixture 打开后可建表、旧邮件可读、游标归零；新库直建；重复 `applySyncBatch` 幂等；迟到旧邀请不覆盖新时间；取消删除行但邮件保留。
-- **预算（P1 变更）**：本组件现 1024 行（`MailStore.swift` 768 + `Migrations.swift` 178 + `SyncStoreConformance.swift` 40 + `Values.swift` 38，2026-11-24 `wc -l`），已超 1000 上限 24 行（既有欠账 R45）。本批新增约 110 行 → 约 1134 行，**超出硬上限**，故随本批把预算调整为 **1250 行**（P1，需人工确认），并把会议读写放 `MailStore+Meetings.swift`（≤120 行）；`MailStore.swift` 主文件保持 ≤800 行。若再造第二张同规模表，先拆组件而不是继续上调。
+- **预算（2026-11-24 人工确认「先拆」）**：本组件现 1024 行（`MailStore.swift` 768 + `Migrations.swift` 178 + `SyncStoreConformance.swift` 40 + `Values.swift` 38），已超 1000 上限 24 行（既有欠账 R45）。本批不调预算，改为**先把 outbox 表物理读写拆到 `CMP-OUTBOX-STORE`**（约 −210 行，见文末增量）：拆分后本组件约 **814 行**，加 `meetings` 约 110 行后约 **924 行**，回到 1000 行以内。会议读写放 `MailStore+Meetings.swift`（≤120 行），`MailStore.swift` 主文件保持 ≤800 行。账号/文件夹拆分另立 `W-REFACTOR-02`（`sync_state` 事务边界需另设计）。
 - **不变量**：`MailStore` 仍是唯一写入口；会议行只随同步事务写；不改 `messages`/`message_bodies`/FTS/附件 schema；不新增第二写入口。
+
+## 设计增量：启用 WAL（2026-11-24，人工确认）
+
+- 现状与文档不一致：`MailStore` 用 `DatabaseQueue(path:)` 的默认配置，2026-11-24 复制库实测 `PRAGMA journal_mode = delete`，而架构与组件规格从 2026-11-09 起一直写「WAL + FTS5」。
+- 决定：`MailStore.init(path:)` 显式配置 `Configuration.journalMode = .wal`（仍用 `DatabaseQueue`，单连接串行；不开 `DatabasePool`）。WAL 模式是持久化在库文件里的，旧库首次打开即切换；`-wal`/`-shm` 副文件出现在库旁边。
+- 影响：崩溃恢复更好、写少阻塞读（单队列下仍串行）；备份必须同时带上 `mail.sqlite`、`mail.sqlite-wal`（如有）、`mail.sqlite-shm`，或改用 `VACUUM INTO` 导出一致副本；关闭连接时 GRDB 默认 checkpoint。
+- 测试：`inMemory()` 库不支持 WAL，配置需按路径分支（内存库保持默认），既有用例不改；新增一条「文件库打开后 `PRAGMA journal_mode` 为 `wal`」的断言。
+- 不改：任何表的 schema、迁移顺序、API 签名；不改 `DatabaseQueue` → `DatabasePool`（读写真并发另立 P1）。
+
+## 设计增量：outbox 物理读写拆出（2026-11-24，P1，人工确认）
+
+- 新组件 `CMP-OUTBOX-STORE`（住 `MailStore` target，`Sources/MailStore/OutboxStore.swift`）接管 `outbox` 表的全部 SQL；`MailStore` 内部持有实例并以 `public var outbox: OutboxStore` 暴露给组合根，`Outbox` 的依赖由 `MailStore` 换成 `OutboxStore`（状态机与 MIME 不动）。
+- 表仍由 `MailStoreMigrations` 建立（v1..v11 的 outbox 迁移不搬），避免两套 migrator 争 `grdb_migrations`；本组件不注册迁移。
+- 同一 SQLite、同一 `DatabaseQueue`：每张表一个写入口，事务不跨表；跨组件不另开连接。
+- 拆分收益：`MailStore` 约 1024 → 814 行，为 `meetings`（约 110 行）腾出空间，预算保持 1000；`OutboxStore` 单独 ≤400 行。
+- 测试迁移：`OutboxTests`/`MailStoreTests` 中 outbox 行级用例平移到 `OutboxStoreTests`，断言逐字保留；`CompositionTests` 只改装配引用。

@@ -93,3 +93,10 @@ component: CMP-OUT
 - 纯文本段来自 `Draft.body`（`ComposeViewModel` 从编辑 HTML 生成），HTML 段来自 `Draft.bodyHTML`；`Outbox.deliver` 从 `OutboxItem.bodyHTML` 重建 `Draft`，不丢 HTML。
 - 不变量：`send` 仍只入队、`ClientId = outboxID`、租约/退避/永久失败/取消状态机不变；`Cc:`/`In-Reply-To`/`References`/`Message-ID` 规则不变；MIME 仍是 opaque 字节交给 `MailGateway.send`。
 - 测试：`OutboxTests/OutboxMimeTests.mimeMultipart`（双段、base64、boundary 闭合）、`.blankHTMLFallsBack`（空白 HTML 回单段）、`OutboxDeliveryTests.deliversHTML`（outbox 行与投递 MIME 带 HTML）；既有 `mimeShape`/`deliversOnce` 不回归。
+
+## 设计增量：outbox 存储依赖改为 OutboxStore（2026-11-24，P1 前置拆分）
+
+- 来源：`REQ-0029` 前置的 `MailStore` 拆分（见 `CMP-OUTBOX-STORE` 规格与 `history/decisions/2026-11-24-calendar-view-scope.md`）。
+- 变更：`Outbox.init(store: MailStore, …)` → `Outbox.init(outboxStore: OutboxStore, …)`；`mailStore` 引用只用于 outbox 行，迁移后全部换成 `outboxStore`。状态机、退避、租约 120s、`ClientId = outboxID`、`flushOnce/flushAll/retry/cancel/state/pending` 签名与语义**一律不变**。
+- 装配：组合根用 `mailStore.outbox` 注入；`Outbox` 仍只依赖 `MailDomain` + `MailStore`（`OutboxStore` 同 target），扇出不变。
+- 测试：`OutboxTests` 的夹具构造改用 `MailStore(...).outbox`；断言行级语义不变（用例不改逻辑）。

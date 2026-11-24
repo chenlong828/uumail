@@ -559,4 +559,4 @@ component: CMP-PRES
 - 冷热与并发：`activate/reload` 在 `@MainActor` 上串行；同一时刻只允许一个刷新任务（新请求取消旧任务），迟到结果按 `anchor`/`mode` 代际丢弃（沿用 `MailboxViewModel+Body` 的代际写法人模式）。
 - 尺寸：`Presentation` 现 1669 行 + 约 440 行 → 约 2109 行；`MailboxViewModel.swift` 388 → 约 400（`meetingCard` 计算属性 ≤12 行），仍在 400 上限；不新增 target/依赖。
 - 测试（L1，`PresentationTests/CalendarViewModelTests` + `CalendarProjectionTests`）：月网格 6×7 与补灰格、周一为首列、3+1 折叠、周时间轴范围与 lane、翻月/翻周不触网（fake scene 计数）、错误文案映射、截断标记、`meetingCard` 的 nil/非 nil 与重复摘要。
-- 定级与确认：**P1**（新 public 视图模型 + 新 public 展示类型 + 依赖新场景组件）；实现前须过 `T-1124-02` 确认门。
+- 定级与确认：**P1**（新 public 视图模型 + 新 public 展示类型 + 依赖新场景组件）；P1 已于 2026-11-24 确认（`history/decisions/2026-11-24-calendar-view-scope.md`）。

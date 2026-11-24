@@ -122,7 +122,7 @@ graph TD
 | Target | 层 | 依赖 | 入口 |
 |---|---|---|---|
 | `MailDomain` | L1 | Foundation | `Sources/MailDomain/{Values,Ports,Errors,Configuration}.swift` |
-| `MailStore` | L1a | `MailDomain`、GRDB | `Sources/MailStore/MailStore.swift#MailStore` |
+| `MailStore` | L1a | `MailDomain`、GRDB | `Sources/MailStore/MailStore.swift#MailStore`、`OutboxStore.swift#OutboxStore`（2026-11-24 起 outbox 表读写） |
 | `SyncEngine` | L1b | `MailDomain` | `Sources/SyncEngine/SyncEngine.swift#SyncEngine` |
 | `Outbox` | L1b | `MailDomain`、`MailStore` | `Sources/Outbox/Outbox.swift#Outbox`、`MimeBuilder.swift#MimeBuilder` |
 | `EASClient` | L0 | Foundation | `Sources/EASClient/EASClient.swift#EASClient`、`WBXML.swift#WBXML` |
@@ -158,6 +158,7 @@ graph TD
 | `CMP-SCN-SYNC` | `design/components/CMP-SCN-SYNC/spec.md` | L2 场景 |
 | `CMP-SCN-READ` | `design/components/CMP-SCN-READ/spec.md` | L2 场景 |
 | `CMP-SCN-COMPOSE` | `design/components/CMP-SCN-COMPOSE/spec.md` | L2 场景 |
+| `CMP-OUTBOX-STORE` | `design/components/CMP-OUTBOX-STORE/spec.md` | L1a 数据（outbox 表） |
 | `CMP-SCN-CALENDAR` | `design/components/CMP-SCN-CALENDAR/spec.md` | L2 场景 |
 | `CMP-PRES` | `design/components/CMP-PRES/spec.md` | L3 表现 |
 | `CMP-APP` | `design/components/CMP-APP/spec.md` | L3 视图 |
@@ -265,7 +266,7 @@ public protocol SyncStore: Sendable {
 | `markOutboxSent/markOutboxFailed/releaseOutbox/cancelOutbox/outboxItem` | 行级状态机写契约 |
 | `applyFolderSnapshot/applySyncBatch/applyBody/body` | 文件夹快照、批次与 key 同事务、正文分表 |
 | `messages/searchLocal/attachments/markAttachmentCached` | 读与附件缓存标记 |
-| `saveDraft/enqueueOutbox/pendingOutbox` | 草稿不入队、发送意图入队 |
+| `saveDraft/enqueueOutbox/pendingOutbox` | 草稿不入队、发送意图入队。**2026-11-24 起 `enqueueOutbox`/`claimOutbox`/`markOutbox*`/`releaseOutbox`/`cancelOutbox`/`outboxItem` 迁至 `CMP-OUTBOX-STORE`**（同一 DB、同一队列；`MailStore.outbox` 暴露实例），本表保留为历史契约摘要 |
 | `markRead/commitMarkRead/commitDelete` | 本地置读；服务器写成功后「delta + 本地效果 + key」同事务（T-1114-10 设计，2026-11-14 已实现；无 schema 变更） |
 
 - schema v8（`v8_outbox_v2`）：`outbox` 增加 `sending_since`、`next_attempt_at`；状态取值 `draft/queued/sending/failed_retryable/failed_permanent/canceled`（旧 `failed` → `failed_retryable`）。
@@ -287,7 +288,7 @@ public actor Outbox {
 }
 ```
 
-- 入队只写本地行并立即返回；投递在 `flush*`；`ClientId = outboxID`；成功即删行。
+- 入队只写本地行并立即返回；投递在 `flush*`；`ClientId = outboxID`；成功即删行。2026-11-24 起行级读写由 `CMP-OUTBOX-STORE`（`OutboxStore`）承担，`Outbox` 依赖由 `MailStore` 换成 `OutboxStore`，状态机不变。
 - 租约 120s，`send` 超时 90s；退避 30s→2m→10m→30m 后翻倍封顶 24h；`offline`/`throttled` 可重试，`authFailed`/`deviceNotRegistered`/`policyBlocked`/`unsupported` 永久失败，手动 `retry` 才再投。
 - 取消：`queued/failed_*` 直接落 `canceled`；`sending` 中只记进程内标记，投递返回后落终态。
 
@@ -336,7 +337,7 @@ public actor Outbox {
 | message_bodies | `MailStore` | `applyBody`（经 `ReadScene`） | `ReadScene` | 强 |
 | attachments | `MailStore` | `markAttachmentCached` + `applySyncBatch` | `ReadScene` | 强 |
 | sync_state | `MailStore` | `applySyncBatch/applyFolderSnapshot/resetCollection`；`commitMarkRead/commitDelete` | `SyncEngine` | 强（与批次/写提交同事务） |
-| outbox | `MailStore`（物理行）/ `Outbox`（状态机） | `enqueueOutbox/claimOutbox/markOutbox*` | `ComposeScene`、`Outbox` | 强（本地） |
+| outbox | `CMP-OUTBOX-STORE`（物理行，2026-11-24 起）/ `Outbox`（状态机） | `OutboxStore.enqueue/claim/mark*` | `ComposeScene`、`Outbox` | 强（本地） |
 | meetings（v12） | `MailStore` | `applySyncBatch`（与信封同事务；按 `UID` upsert、取消删除） | `CalendarScene`、`MailboxViewModel`（经场景） | 强（同事务） |
 | fts | `MailStore` | 随 `applyBody/applySyncBatch` 增量 | `ReadScene.search` | 最终（同事务） |
 | Keychain 凭据 | `CredentialStore` 实现 | `save/delete` | `Composition`、`AccountSetupScene` | 强 |
@@ -494,8 +495,10 @@ D10 的决策记录：`history/decisions/2026-11-13-fetched-body-contract.md`。
 10. **收件人联想为会话内投影**（REQ-0022/SCN-0017，2026-11-18 设计）：不持久、不改 schema；每文件夹最多 500 封、总计最多 5,000 封，超出部分的旧邮件联系人、已清理邮件或未同步文件夹中的联系人不出现，当前已接受；若产品要求持久联系人，另立 v11 `contacts` 需求并先解决 `MailStore` 1008/1000 的预算问题（R45）。
 11. **内联图片已持久化 `ContentId`**（REQ-0025/SCN-0019，2026-11-21，P1）：`attachments` v11 增加 `content_id` 可空列；`Attachment.contentID` 由 `EASClient` 从 `ContentId` 解析、`MailStore` 读回；`InlineImageHTML.matches` 以它优先，名字规则保留为回退。v11 迁移把消息游标置 `"0"`，升级后首轮按窗口重拉 ≤125 封补齐旧行；`IsInline` 仍不解析、不落库。决策 `history/decisions/2026-11-21-inline-image-content-id.md`。
 12. **`Scenes` 组件超过 800 行历史预算**（2026-11-20 实测 1006；本设计 +约 170）：属既有超出，本设计登记不静默调预算；task-split 须写上限（本批新增 ≤170 行）与拆分触发（再改 `Scenes` 使其 >1200 行，或出现第二个 HTML 纯工具时，另立 P1 任务拆 `HTMLText`/`InlineImageHTML` 到纯工具组件）。
-13. **日历只展示「收到的邀请」**（REQ-0029/REQ-0030，2026-11-24 设计）：不同步 Exchange 日历集合（folder type 8），已接受后服务器日历里的预约、别人改期后的预约、自己新建的日程都不出现；不接受/拒绝、不调 `MeetingResponse`（B 方案另立）。`meetings` v12 只覆盖升级后首轮同步窗口的邀请（≤125 封），更早的邀请不出现，空态文案须说明。
+13. **日历只展示「收到的邀请」**（REQ-0029/REQ-0030，2026-11-24 设计）：不同步 Exchange 日历集合（folder type 8），已接受后服务器日历里的预约、别人改期后的预约、自己新建的日程都不出现；不接受/拒绝、不调 `MeetingResponse`（B 方案另立）。
 14. **日历时区按固定偏移展开**（2026-11-24 设计）：只解析 EAS `TimeZone` blob 的 `Bias` 与名称，`StandardDate/DaylightDate` 不解析；重复系列跨夏令时会偏一小时。本部署在 `Asia/Shanghai`（无夏令时），登记为可接受限制（`plan/open-questions.md` Q5、`plan/risks.md` R56）。
+15. **不回填历史邀请**（2026-11-24 人工确认）：`meetings` v12 不重置游标、不回扫历史；升级后日历从空开始，只有升级后新到的邀请出现，升级前的邀请邮件也没有会议卡。用户已确认接受该代价（空态文案必须说明）。
+16. **SQLite 已启用 WAL**（2026-11-24 人工确认）：`MailStore` 由默认 `delete` 改为 `Configuration.journalMode = .wal`（仍单 `DatabaseQueue`）；库旁出现 `mail.sqlite-wal`/`-shm`，备份需一并带走或用 `VACUUM INTO`（`plan/risks.md` R61）。修掉了「文档写 WAL、实现却是 delete」的偏差。
 
 ### 10.3 定级与冻结
 
@@ -508,6 +511,6 @@ D10 的决策记录：`history/decisions/2026-11-13-fetched-body-contract.md`。
 - **2026-11-18 P1 默认确认（未经人工）**：`REQ-0022`/`SCN-0017` 新增 `MailDomain` public 值类型（`ContactAddress`/`ContactEnvelope`/`ContactDirectory`/`RecipientText`，平台级扇入）、`ComposeScene.recipientDirectory(account:)` 与 `ComposeViewModel` 收件人候选 public 面，并新增 `uumail` internal 控件/候选层。记录见 `doc/history/decisions/2026-11-18-recipient-autocomplete.md`；A1–A6 细化的默认确认见 `doc/history/decisions/2026-11-18-recipient-autocomplete-design-addendum.md`；不新增 schema/target/依赖，不改 `MailStore` 与发送链路。评审可独立否决。
 - **2026-11-20 P2 公开面人工确认（A）**：`REQ-0025`/`SCN-0019` 的 `ReadScene.renderInlineImages(for:html:)` 与 `MailboxViewModel.inlineImageHTML` 两个 additive public 面经 `mcp__agentflow__confirm` 人工确认 pass（选项 A：保留 Scenes 规则 + PRES 投影分工，最小改动），记录见 `doc/history/decisions/2026-11-20-inline-image-render-public-surface.md`；D1–D8（匹配 C2/载体 V1/取负载时机/附件条/失败口径/资源 guard/不改 schema·CSP·`baseURL`·`MailDomain` 公开契约）仍为**默认确认（未经人工）**，见 `task-spaces/20261120-111818/design2.md` §8；评审可独立否决。同批新增 internal `InlineImageHTML` 与可取消图片任务、`MessageBodyView` 透传；不改 schema/`MailDomain`/`Attachment`/`MailGateway`/CSP/`baseURL`/远程开关；不新增 target/依赖。
 - **2026-11-20 P2 公开面人工确认（A，REQ-0026/SCN-0020）**：`MailboxViewModel` 新增只读 `attachmentErrorText`（`public internal(set)`；`download` 签名不变）经 `mcp__agentflow__confirm` 人工确认 pass（选项 A），记录见 `doc/history/decisions/2026-11-20-attachment-error-surface.md`。同批设计新增 `SCN-0020`（`mail/read/attachment-access`；2026-11-20 已转 `verified`）、`CMP-APP#AttachmentStripView`/`AttachmentExport` 与 `CMP-PRES` 增量；2026-11-20 已实现并验证（`REQ-0026` `delivered`；`task-spaces/20261120-160446/review7.md` §8）。交互采用 SwiftUI Button + 双击手势 + `.contextMenu` + 聚焦 Return，另存为在 APP 层 `NSSavePanel` + 临时文件原子替换；第 2 轮（方案评审 B1–B4）补：`REQ-0026` 取代 `SCN-0019` 旧「附件条点击=下载/打开」边界口径（`SCN-0019` 保持 `verified`/未编辑）、A1/A8 的既有 L2 回归与生产 `MessageBodyView` 接线计划、`download`/`saveAttachment` 迟到结果选择代际 guard、另存为复制改为 `nonisolated async` 分块复制 + 取消/临时文件清理（主线程不阻塞）。**第 3 轮（方案评审 `review2` B1–B3）补**：APP `AttachmentActionModel` 动作代际（`epoch`）替代「APP 读 Presentation internal 代际」，覆盖 N3 重下/A→B→A/`saveErrorText` 清空；删除自动 `reResolve`（源被 prune 不重下、给可重试文案）；取消入口收窄到面板/复制阶段，下载阶段任务被取消不写错误、不中止共享下载；`T-05` 的 `swiftc` 文件列表加入 `AttachmentStripView.swift`。不改 schema/`MailDomain`/`AttachmentFiles`/`Scenes`/`Composition`/target/依赖；`SCN-0005` 的 25MB/续传/名称回退欠账不变。D1–D15 为默认确认（未经人工，见 `design2.md` §8），D16–D18 为默认确认（未经人工，见 `design3.md` §8）；评审可独立否决。
-- **2026-11-24 P1 待确认（日历视图与会议卡，REQ-0029/REQ-0030）**：新增场景组件 `CMP-SCN-CALENDAR`（仍住 `Scenes` target，不新增 target）；`MailDomain` 新增 public `MeetingInvite`/`RecurrenceRule`/`MeetingOccurrence`/`MeetingTimeZone`/`MeetingMessageType`/`Weekday` 与 `Message.meeting`（平台级扇入契约，additive）；`MailStore` 新增 schema **v12** `meetings` 表与写路径（`applySyncBatch` 同事务，按 `UID` upsert、取消删除），容标与「单写入口」不变；`CMP-PRES` 新增 public `CalendarViewModel` 与展示类型；`CMP-APP` 新增日历页/会议卡与 `.ics` 导出（不引入 EventKit、不申请日历权限）。**同时申请把 `CMP-STORE` 预算由 1000 行调整到 1250 行**（现 1024 行已超 24 行，本批 +约 110 行进 `MailStore+Meetings.swift`）。业务功能树新增领域 `calendar`（候选与否决理由见 `history/decisions/2026-11-24-calendar-view-scope.md`）。确认记录与 D1–D9 默认确认见同文件；**P1 未确认前不写实现代码**。
+- **2026-11-24 P1 已确认（日历视图与会议卡，REQ-0029/REQ-0030）**：新增场景组件 `CMP-SCN-CALENDAR`（仍住 `Scenes` target，不新增 target）；`MailDomain` 新增 public `MeetingInvite`/`RecurrenceRule`/`MeetingOccurrence`/`MeetingTimeZone`/`MeetingMessageType`/`Weekday` 与 `Message.meeting`（平台级扇入契约，additive）；`MailStore` 新增 schema **v12** `meetings` 表与写路径（`applySyncBatch` 同事务，按 `UID` upsert、取消删除），「单写入口」不变；`CMP-PRES` 新增 public `CalendarViewModel` 与展示类型；`CMP-APP` 新增日历页/会议卡与 `.ics` 导出（不引入 EventKit、不申请日历权限）；业务功能树新增领域 `calendar`。**前置拆分（同日确认）**：outbox 表物理读写拆到新组件 `CMP-OUTBOX-STORE`（同一 SQLite、同一 `DatabaseQueue`，`MailStore` 约 1024→814 行，预算保持 1000、不再上调），账号/文件夹拆分另立 `W-REFACTOR-02`；同时把 SQLite 切到 **WAL**（`Configuration.journalMode = .wal`，仍单队列）。范围取舍（不回填历史邀请、固定偏移、例外合并、网关退化）见 `history/decisions/2026-11-24-calendar-view-scope.md` 的确认记录。
 - **2026-11-14 R16 真机与写响应修订**：写命令被接受并返回新 key；写响应携带整页 delta + `Collection/MoreAvailable`，改为与 key 同事务提交（不再拒绝）；not-found 为成功 no-op；删除进入「已删除邮件」。前台信号实测后由 `scenePhase` 改为 `NSApplication` 通知。
 - 后续契约变更走新决策记录（`history/decisions/`），并同步改对应组件规格与 pinning test。
