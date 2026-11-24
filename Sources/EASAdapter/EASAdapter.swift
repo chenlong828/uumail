@@ -210,7 +210,8 @@ public struct EASAdapter: MailGateway, MailWriteGateway {
             timeZone: eas.timeZone.map {
                 MeetingTimeZone(name: $0.name, offsetSeconds: -$0.biasMinutes * 60)
             },
-            recurrence: rule
+            recurrence: rule,
+            exceptionRecurrenceID: eas.instanceType == 3 ? eas.recurrenceId : nil
         )
     }
 

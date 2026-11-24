@@ -14,7 +14,7 @@ public enum MeetingMessageType: Int, Sendable, Equatable {
 }
 
 /// Bit values used by the EAS `DayOfWeek` element (1 = Sunday … 64 = Saturday).
-public enum Weekday: Int, Sendable, Equatable, CaseIterable {
+public enum Weekday: Int, Sendable, Equatable, CaseIterable, Codable {
     case sunday = 1
     case monday = 2
     case tuesday = 4
@@ -70,7 +70,7 @@ public enum Weekday: Int, Sendable, Equatable, CaseIterable {
 }
 
 /// The organizer's fixed zone: name for display, offset for wall-clock expansion.
-public struct MeetingTimeZone: Equatable, Sendable {
+public struct MeetingTimeZone: Equatable, Sendable, Codable {
     public var name: String?
     /// Seconds east of UTC (`Asia/Shanghai` = 28800).
     public var offsetSeconds: Int
@@ -82,8 +82,8 @@ public struct MeetingTimeZone: Equatable, Sendable {
 }
 
 /// A meeting series rule, normalized from the EAS `Recurrence` element.
-public struct RecurrenceRule: Equatable, Sendable {
-    public enum Frequency: Int, Sendable, Equatable {
+public struct RecurrenceRule: Equatable, Sendable, Codable {
+    public enum Frequency: Int, Sendable, Equatable, Codable {
         case daily = 0
         case weekly = 1
         case monthlyDay = 2
@@ -132,7 +132,7 @@ public struct RecurrenceRule: Equatable, Sendable {
 }
 
 /// One overridden or deleted instance of a series (`InstanceType == 3`).
-public struct MeetingException: Equatable, Sendable {
+public struct MeetingException: Equatable, Sendable, Codable {
     /// Original start (UTC) of the instance being replaced.
     public var recurrenceId: Date
     public var start: Date?
@@ -176,6 +176,9 @@ public struct MeetingInvite: Equatable, Sendable {
     public var timeZone: MeetingTimeZone?
     public var recurrence: RecurrenceRule?
     public var exceptions: [MeetingException]
+    /// Set when the request is an exception to a series (`InstanceType == 3`): the
+    /// original start of the instance it overrides.
+    public var exceptionRecurrenceID: Date?
 
     public init(
         uid: String,
@@ -193,7 +196,8 @@ public struct MeetingInvite: Equatable, Sendable {
         dtstamp: Date? = nil,
         timeZone: MeetingTimeZone? = nil,
         recurrence: RecurrenceRule? = nil,
-        exceptions: [MeetingException] = []
+        exceptions: [MeetingException] = [],
+        exceptionRecurrenceID: Date? = nil
     ) {
         self.uid = uid
         self.subject = subject
@@ -211,6 +215,7 @@ public struct MeetingInvite: Equatable, Sendable {
         self.timeZone = timeZone
         self.recurrence = recurrence
         self.exceptions = exceptions
+        self.exceptionRecurrenceID = exceptionRecurrenceID
     }
 
     /// The wall clock the series is expressed in: the organizer's fixed zone, or UTC when
@@ -255,6 +260,21 @@ public struct MeetingOccurrence: Equatable, Sendable {
         self.isRecurringInstance = isRecurringInstance
         self.folderID = folderID
         self.serverID = serverID
+    }
+}
+
+/// A stored meeting plus the mail it came from (needed to jump back to the source).
+public struct MeetingEntry: Equatable, Sendable {
+    public var invite: MeetingInvite
+    public var folderID: String
+    public var serverID: String
+    public var displaySubject: String?
+
+    public init(invite: MeetingInvite, folderID: String, serverID: String, displaySubject: String?) {
+        self.invite = invite
+        self.folderID = folderID
+        self.serverID = serverID
+        self.displaySubject = displaySubject
     }
 }
 

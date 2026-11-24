@@ -174,5 +174,37 @@ enum MailStoreMigrations {
             // untouched (same mechanism as v9).
             try db.execute(sql: "UPDATE sync_state SET sync_key = '0' WHERE collection <> 'folders'")
         }
+        // Meetings (REQ-0029 / REQ-0030, 2026-11-24): one row per UID so create/update/
+        // cancel messages for the same series collapse into one. No cursor rewind: the
+        // confirmed scope does not backfill invitations received before the upgrade.
+        migrator.registerMigration("v12_meetings") { db in
+            try db.execute(sql: """
+                CREATE TABLE meetings (
+                    account_id TEXT NOT NULL,
+                    uid TEXT NOT NULL,
+                    folder_id TEXT NOT NULL,
+                    server_id TEXT NOT NULL,
+                    subject TEXT,
+                    start_utc REAL NOT NULL,
+                    end_utc REAL NOT NULL,
+                    is_all_day INTEGER NOT NULL DEFAULT 0,
+                    location TEXT,
+                    organizer TEXT,
+                    reminder_minutes INTEGER,
+                    response_requested INTEGER NOT NULL DEFAULT 0,
+                    busy_status INTEGER,
+                    message_type INTEGER NOT NULL,
+                    is_cancelled INTEGER NOT NULL DEFAULT 0,
+                    dtstamp REAL,
+                    timezone_name TEXT,
+                    timezone_offset_minutes INTEGER,
+                    recurrence TEXT,
+                    exceptions TEXT,
+                    updated_at REAL NOT NULL,
+                    PRIMARY KEY (account_id, uid)
+                );
+                CREATE INDEX idx_meetings_range ON meetings(account_id, start_utc);
+                """)
+        }
     }
 }

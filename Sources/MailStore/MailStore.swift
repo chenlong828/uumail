@@ -6,7 +6,7 @@ import MailDomain
 /// This slice owns accounts, device profiles, folders and sync state; message tables arrive
 /// with the sync work.
 public final class MailStore: @unchecked Sendable {
-    private let dbQueue: DatabaseQueue
+    let dbQueue: DatabaseQueue
 
     /// The `outbox` table's row store (CMP-OUTBOX-STORE). It shares this store's
     /// `DatabaseQueue`; the table itself is created by `MailStoreMigrations`.
@@ -325,6 +325,7 @@ public final class MailStore: @unchecked Sendable {
                 )
             }
             try Self.reindexMessage(db, account: id, folder: folderID, serverID: message.serverID)
+            try upsertMeeting(db, account: id, folder: folderID, message: message, now: now)
         }
 
         for serverID in delta.removedServerIDs {
@@ -336,6 +337,7 @@ public final class MailStore: @unchecked Sendable {
                 arguments: [now, now, id.raw, folderID, serverID]
             )
         }
+        try deleteMeetings(db, account: id, folder: folderID, serverIDs: delta.removedServerIDs)
 
         switch effect {
         case .none:
@@ -370,7 +372,7 @@ public final class MailStore: @unchecked Sendable {
 
     public func messages(account id: AccountID, folder folderID: String, limit: Int = 50) throws -> [StoredMessage] {
         try dbQueue.read { db in
-            try Row.fetchAll(
+            var page = try Row.fetchAll(
                 db,
                 sql: """
                     SELECT m.server_id, m.folder_id, m.subject, m.sender, m.recipients, m.cc,
@@ -394,6 +396,7 @@ public final class MailStore: @unchecked Sendable {
                     cc: row["cc"]
                 )
             }
+            return try attachMeetings(db, account: id, messages: page)
         }
     }
 
@@ -494,7 +497,7 @@ public final class MailStore: @unchecked Sendable {
         // FTS5 trigram needs at least three characters; short CJK queries fall back to LIKE.
         if trimmed.count < 3 {
             return try dbQueue.read { db in
-                try Row.fetchAll(
+                let page = try Row.fetchAll(
                     db,
                     sql: """
                         SELECT m.server_id, m.folder_id, m.subject, m.sender, m.recipients, m.cc,
@@ -517,10 +520,11 @@ public final class MailStore: @unchecked Sendable {
                         bodyPreview: row["preview"], folderID: row["folder_id"], cc: row["cc"]
                     )
                 }
+                return try attachMeetings(db, account: id, messages: page)
             }
         }
         return try dbQueue.read { db in
-            try Row.fetchAll(
+            let page = try Row.fetchAll(
                 db,
                 sql: """
                     SELECT m.server_id, m.folder_id, m.subject, m.sender, m.recipients, m.cc,
@@ -543,6 +547,7 @@ public final class MailStore: @unchecked Sendable {
                     bodyPreview: row["preview"], folderID: row["folder_id"], cc: row["cc"]
                 )
             }
+            return try attachMeetings(db, account: id, messages: page)
         }
     }
 

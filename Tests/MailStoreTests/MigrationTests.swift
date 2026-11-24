@@ -131,6 +131,47 @@ struct MigrationTests {
         )
         #expect(try store.attachments(account: account, folder: "13", messageID: "101").first?.contentID == "a@corp.test")
     }
+
+    @Test("an old database gains the v12 meetings table without backfilling")
+    func v12MeetingsMigration() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("uumail-migration-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let path = directory.appendingPathComponent("pre-v12.sqlite").path
+
+        try makePreV9Database(at: path)
+        let store = try MailStore(path: path)
+        let account = AccountID("account-1")
+
+        // The table exists and is empty: old mail never carried MeetingRequest, and the
+        // confirmed scope does not backfill.
+        #expect(try store.meetings(
+            account: account,
+            from: Date(timeIntervalSince1970: 0),
+            to: Date(timeIntervalSince1970: 4_000_000_000)
+        ).isEmpty)
+        #expect(try store.meetingInvite(account: account, uid: "u-1") == nil)
+
+        try store.applySyncBatch(
+            account: account,
+            folder: "13",
+            added: [MailMessage(
+                serverID: "m-new",
+                subject: "会议",
+                receivedRaw: "2026-11-24T00:00:00Z",
+                meeting: MeetingInvite(
+                    uid: "u-1",
+                    start: Date(timeIntervalSince1970: 1_800_000_000),
+                    end: Date(timeIntervalSince1970: 1_800_003_600)
+                )
+            )],
+            changed: [],
+            removedServerIDs: [],
+            syncKey: "1"
+        )
+        #expect(try store.meetingInvite(account: account, uid: "u-1") != nil)
+    }
 }
 
 // MARK: - Fixture
