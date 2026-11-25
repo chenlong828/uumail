@@ -73,9 +73,9 @@ scenario: SCN-0024
 本增量**替换**「切到日历后整窗只显示日历」的旧口径，窗口结构与收件箱/发件箱保持一致。
 
 - 布局：`MailboxView` 始终使用同一个 `NavigationSplitView`；左列日历 section = `CalendarMailListView`、邮件 section = 消息列表，宽度 `min 320 / ideal 480`；右详情日历 = `CalendarView`、邮件 = 阅读区。
-- 左列数据：`CalendarViewModel.invitationMails` 由当前 occurrences 按 `(folderID, serverID)` 去重；`CalendarScene.message(ref)` 取来源邮件 envelope。来源邮件已删除/移走时行仍显示，回退会议主题/组织者/会议时间，不丢行。
+- 左列数据：`CalendarViewModel.invitationMails` 由当前 occurrences 按 `(folderID, serverID)` 去重，**只保留本机仍有来源邮件的邀请**；`CalendarScene.message(ref)` 取来源邮件 envelope。来源邮件已删除/移走/超出本地保留范围的会议只在右侧日历显示，底部状态栏「另有 N 场会议的来源邮件不在本机」计数，不再做成打不开的假邮件行。列表按会议开始时间倒序（最新在前）。
 - 行内容：主题、发件人（缺失时组织者/「来源邮件不在本机」）、会议开始时间（全天显示「全天」）；重复会议只一行（范围里的第一次）。
-- 选中：左列与日历块共享 `CalendarViewModel.selectedOccurrence`；单击左列/块选中并高亮，双击/Enter/空格打开同一浮窗，Esc 取消。`CalendarReader` 是两个入口的共同打开路径。
+- 选中：左列与日历块共享 `CalendarViewModel.selectedOccurrence`；单击左列/块选中并高亮，双击/Enter/空格打开同一浮窗，Esc 取消。`CalendarReader` 是两个入口的共同打开路径。双击**没有来源邮件**的日历块改为中文提示「来源邮件不在本机」，不打开空阅读窗。
 - 不改：月/周投影、会议块定位/lane、全天条、ICS、浮窗内容、EAS/同步/Outbox。
 
 ## 不可变引用
@@ -102,8 +102,8 @@ scenario: SCN-0024
 | `T-SCN-0024-08` | 反 | 来源邮件已被删除（`message(ref)` 返回 nil）→ 窗内「找不到这封邀请邮件」，工具栏导出仍可用；`ReaderRouter` 处于撰写态时双击另一会议 → 内容不变 + 提示（复用 `SCN-0025` 规则）（L1 + L2） |
 | `T-SCN-0024-09` | 正 | 固定范围 + 虚线：库里只有一场 09:30–12:00 的会议 → `CalendarProjection.week` 的 `startHour == 8`、`endHour == 24`（L1 `CalendarViewModelTests` / `CalendarScenarioTests`）；周视图渲染 16 小时网格、每列 17 条灰色虚线（含 08:00 与 24:00 两条边界），会议块仍在 09:30–12:00 位置且 lane 不变；预览截图 `task-spaces/20261124-233500-feedback5/probe/hour-grid.png`（生产 `CalendarHourGrid` 预览，17 条虚线可见），预览源 `HourGridPreview.swift`，命令 `./hour-grid-preview`。像素级全量视觉在发布前人工项 |
 
-| `T-SCN-0024-10` | 正 | 左列邀请列表：11 月两场邀请（其中一场每周重复）→ `invitationMails.count == 2`、主题集合正确、重复系列只一行、每行 `occurrence.folderID == "13"`、来源发件人可见（L1 `CalendarGridScenarioTests.invitationList`） |
-| `T-SCN-0024-11` | 正 | 切到日历 → 窗口仍是左列表 + 右日历两栏（左列宽 320/480、日历取剩余）；左列显示 44 封邀请、右月视图完整；点左列/块选中同一会议并高亮，双击打开浮窗（L2/真实窗口截图 `task-spaces/20261125-120000-calendar-list/calendar-list.png`；真实点击为发布前人工项） |
+| `T-SCN-0024-10` | 正 | 左列邀请列表：11 月两场邀请（其中一场每周重复）+ 一场无来源邮件的会议 → `invitationMails.count == 2`、按会议开始时间倒序、重复系列只一行、每行 `occurrence.folderID == "13"`、来源发件人可见、`omittedInvitationCount == 1`、`hasSourceMail(for: orphan) == false`（L1 `CalendarGridScenarioTests.invitationList`） |
+| `T-SCN-0024-11` | 正 | 切到日历 → 窗口仍是左列表 + 右日历两栏（左列宽 320/480、日历取剩余）；左列显示可打开的邀请、底部给出缺失来源计数、右月视图完整；点左列/块选中同一会议并高亮，双击有来源的行打开浮窗，双击缺失来源的块给「来源邮件不在本机」提示（L2/真实窗口截图 `task-spaces/20261125-120000-calendar-list/calendar-list.png`；真实点击为发布前人工项） |
 
 ## 状态
 

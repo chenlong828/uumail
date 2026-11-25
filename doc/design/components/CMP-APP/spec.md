@@ -567,28 +567,29 @@ component: CMP-APP
 
 ## 设计增量：日历页两栏与邀请邮件列表（REQ-0040，2026-11-25，P3，已实现）
 
-- 来源：`REQ-0040` / `SCN-0024` 增量。口径于 2026-11-25 人工确认（左列是会议邀请邮件而非会议场次；单击选中、双击打开；宽度沿用邮件页）；默认项（来源邮件缺失时回退会议元数据、行尾显示会议时间、不做搜索/筛选）见需求卡与 `task-spaces/20261125-120000-calendar-list/`。本增量只动视图与打开入口；展示值、去重与排序在 `CMP-PRES` 同日增量，按引用取来源邮件在 `CMP-SCN-CALENDAR` 同日增量。不改同步、schema、target、依赖，不改月/周投影、lane、全天条与 `.ics` 导出。
+- 来源：`REQ-0040` / `SCN-0024` 增量。口径于 2026-11-25 人工确认（左列是会议邀请邮件而非会议场次；单击选中、双击打开；宽度沿用邮件页）；行尾显示会议时间、不做搜索/筛选。当天用户反馈后修正：列表按日期倒序、只显示仍有来源邮件的邀请、缺失来源只在日历并在底部计数、缺失来源的块双击给提示（见本节末尾）。本增量只动视图与打开入口；展示值、去重与排序在 `CMP-PRES` 同日增量，按引用取来源邮件在 `CMP-SCN-CALENDAR` 同日增量。不改同步、schema、target、依赖，不改月/周投影、lane、全天条与 `.ics` 导出。
 - 共用两栏（`MailboxView`，297 行）：
   - `mailSplit` 始终是一个 `NavigationSplitView`；左列 `Group` 按 section 切 `CalendarMailListView` / `mailListColumn`，右详情切 `CalendarView` / `mailReadingPane`，不再按 section 整块替换根内容。
-  - `.navigationSplitViewColumnWidth(min: 320, ideal: 480)` 挂在左列 `Group` 上，日历页与邮件页共用同一列宽语义；窗口变窄时先压右侧日历，左列不窄于 320pt。
+  - `.navigationSplitViewColumnWidth(min: 320, ideal: 480)` 分别挂在两个左列分支（`CalendarMailListView` 与 `mailListColumn`）上；窗口变窄时先压右侧日历，左列不窄于 320pt。
   - 顶部三段 Picker、窗口 toolbar、`ReaderCoordinator.attach` 留在根视图，切换日历不重建它们；邮件工具栏、搜索与撰写 sheet 只在 `mailListColumn` 内，日历页不出现。
   - `switchSection` 的三段语义、发件箱迟到保护与刷新分派不变。
 - 新增 `Sources/uumail/CalendarMailListView.swift`（110 行，internal）：
   - `@Bindable var model: CalendarViewModel`；`List` + `listRowBackground` 做选中高亮（accent 0.22），行 overlay 复用 `MessageRowClick`：单击 `model.select(item.occurrence)`，双击 `CalendarReader.open`。列表与日历块读写同一份 `selectedOccurrence`，点哪边另一边都高亮。
   - 行显示 `item.title`、`item.senderText` 与行尾会议时间（`MM-dd HH:mm`；全天「MM-dd 全天」），字体沿用 `scaledInheritedFont`/`scaledFont` 档位。
-  - 底部状态栏「N 封会议邀请」；`errorText` 非空时改为警告图标 + 单行错误，不新造第二套文案。
-  - 空态：加载中「正在加载日历…」；范围内无会议「本期没有会议邀请」；有会议但没有可显示来源行「没有可显示的邀请邮件」。
+  - 底部状态栏「N 封会议邀请」；有来源缺失时追加「· 另有 N 场会议的来源邮件不在本机」；`errorText` 非空时改为警告图标 + 单行错误，不新造第二套文案。
+  - 只渲染 `model.invitationMails`（已过滤掉无来源邮件的会议）；空态：加载中「正在加载日历…」；范围内无会议「本期没有会议邀请」；有会议但没有可显示来源行「没有可显示的邀请邮件」。
   - 选中变化时用 `ScrollViewReader` 滚到当前行；行身份用 `(folderID, serverID)`，与 `CalendarMailItem.id` 一致。
 - 新增 `Sources/uumail/CalendarReader.swift`（32 行，internal）：列表与月/周块共用唯一打开入口，调 `ReaderCoordinator.shared.show(folderID:serverID:geometry:style:.calendar, openInCalendar:)`；导出失败经 `onExportFailure` 回调，`CalendarView` 用它弹「无法生成日历文件」。
 - `CalendarView`（276 行）：
   - 删除私有 `selectedKey` 状态；`selectedKey` 改为按 `model.selectedOccurrence`（uid + start）计算，列表与日历共享同一权威选中。
   - 单击块/月 chip → `model.select`；Esc → `model.clearSelection()`；Enter/空格 → 用 `model.selectedOccurrence` 打开；`open` 统一走 `CalendarReader.open`，旧的私有 `openInCalendar` 删除。
   - 月/周投影、事件块定位、lane、全天条、小时虚线、翻页/今天、截断提示均不变。
-- 行预算：`MailboxView` 297、`CalendarView` 276、`CalendarMailListView` 110、`CalendarReader` 32，均 ≤300；`Sources/uumail` 共 3956 行；不新增 target/依赖。
+- 行预算：`MailboxView` 296、`CalendarView` 297、`CalendarMailListView` 114、`CalendarReader` 32，均 ≤300；`Sources/uumail` 约 3960 行；不新增 target/依赖。
 - 验证：
-  - L2 真实窗口截图 `task-spaces/20261125-120000-calendar-list/calendar-list.png`：同一窗框内左列 44 封邀请 + 右侧月视图，左列宽度与邮件页一致（`T-SCN-0024-11` 的布局段）。
+  - L2 真实窗口截图 `task-spaces/20261125-120000-calendar-list/calendar-list.png`：同一窗框内左列可打开的邀请 + 底部缺失来源计数 + 右侧月视图（`T-SCN-0024-11` 的布局段）。
   - 去重、主题、首个 occurrence 与来源发件人的 L1 断言在 `CMP-PRES` 同日增量（`T-SCN-0024-10`），本组件不复述；全量 466 tests / 77 suites、架构 4/4。
   - 发布构建由收口执行（`make-app.sh` 尚未在本节点运行），不写成已通过。
 - 人工项（发布前）：真实点击左列/块验证共享选中、双击打开浮窗、窗口分隔条拖拽、深色主题整窗像素；列表滚动到选中项与键盘焦点未做自动断言。
+- 2026-11-25 反馈修正：列表按 `occurrence.start` 倒序；`CalendarView.open` 先查 `model.hasSourceMail(for:)`，无来源时只选中并弹「来源邮件不在本机」，不再打开空阅读窗；`CalendarView` 的导出/来源缺失统一用一个 `CalendarAlert` 枚举，避免两个 `.alert` 互斥。
 - 定级：**P3**（同组件内视图拆分与共用 split；无 schema/依赖/公开契约语义变化；新增文件均为 `uumail` internal）。
 - 不做：左列搜索/筛选、收信时间列、未读/已读语义、日历事件的建/改/拖拽、接受/拒绝邀请、日视图/年视图。

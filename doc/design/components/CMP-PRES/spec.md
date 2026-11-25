@@ -703,19 +703,20 @@ component: CMP-PRES
 
 - 来源：`REQ-0040` / `SCN-0024` 增量。本增量为视图模型与展示值；左列视图见 `CMP-APP` 同日增量，按引用取来源邮件见 `CMP-SCN-CALENDAR` 同日增量。不改 `CalendarScene` 既有 `events`/`meeting`/`ics` 的签名与语义，不改 schema/依赖/target。
 - 新增 public `CalendarMailItem`（`Sources/Presentation/CalendarPresentation.swift`，145 行）：`Equatable, Identifiable, Sendable`。
-  - `message: Message?`：来源邮件仍在本地库时为信封，缺失为 nil；行不因缺失被丢掉。
+  - `message: Message?`：来源邮件仍在本地库时为信封；缺失为 nil，`invitationMails` 会把它过滤掉，只在 `omittedInvitationCount` 计数。
   - `occurrence: MeetingOccurrence`：该来源邮件在当前范围内最早的可见场次，用于选中与行尾时间。
   - `id`：`occurrence` 的 folder + serverID 复合键；重复系列的多场共享同一 id，落到一行。
   - `title`：邮件主题 → 会议主题 → 「会议」。
   - `senderText`：邮件发件人（`DisplayFormat.senderName`）→ 组织者 → 「来源邮件不在本机」。
   - 行尾会议时间的格式化留在视图，不进入本类型；本类型不做 I/O、不读 `MailStore`。
 - `CalendarViewModel`（200 行）新增 `public private(set) var invitationMails: [CalendarMailItem]`（additive，只读）：
-  - `reload` 成功分支由 `occurrences` 构建：按 `(folderID, serverID)` 去重（重复系列只留一行，取范围内第一个 occurrence）→ 每条 `try? scene.message(ref)` 取信封，取不到也保留 → 最终按 `occurrence.start` 升序。
+  - `reload` 成功分支由 `occurrences` 构建：按 `(folderID, serverID)` 去重（重复系列只留一行，取范围内第一个 occurrence）→ 每条 `try? scene.message(ref)` 取信封 → 有信封的按 `occurrence.start` **倒序**进入 `invitationMails`，无信封的只计入 `omittedInvitationCount` 与 `calendarOnlyKeys`。
+  - 新增 `public func hasSourceMail(for:)` 供 `CalendarView` 判断双击是否能打开阅读窗；`calendarOnlyKeys` 是内部派生集合，不持久化。
   - 失败分支保留上一次的 `invitationMails` 与 `errorText`，不清空成假空态；`occurrences`/`isTruncated`/`errorText` 的既有语义不变。
   - 去重与排序在每次 `reload` 重算，不新增缓存；每条来源邮件最多一次本地 `message(ref)` 读，不发网络、不遍历邮件全表。
   - 迟到查询沿用 `generation` 丢弃规则，`invitationMails` 与 `occurrences` 同代际更新。
 - 唯一选中：`selectedOccurrence` 是列表与日历共享的唯一权威选中；`select(_:)`/`clearSelection()` 语义不变，不新增第二份选中状态，也不为列表另加「选中邮件」。
-- 尺寸：`CalendarViewModel` 172 → 200、`CalendarPresentation` 145（`CalendarMailItem` 约 26 行）；单文件 ≤400，不新增文件/target/依赖。
-- 测试（L1）：`T-SCN-0024-10`（`CalendarGridScenarioTests.invitationList`）覆盖去重、主题、首个 occurrence 与来源发件人，具体断言以场景卡为准；全量 466 tests / 77 suites、架构 4/4。列表布局与真实点击不在本层。
+- 尺寸：`CalendarViewModel` 172 → 214、`CalendarPresentation` 145（`CalendarMailItem` 约 26 行）；单文件 ≤400，不新增文件/target/依赖。
+- 测试（L1）：`T-SCN-0024-10`（`CalendarGridScenarioTests.invitationList`）覆盖去重、倒序、首个 occurrence、来源发件人、`omittedInvitationCount` 与 `hasSourceMail`，具体断言以场景卡为准；全量 466 tests / 77 suites、架构 4/4。列表布局与真实点击不在本层。
 - 定级：**P3**（`Presentation` 内 additive public 展示值与只读属性；无 schema/依赖/场景契约语义变化）。
 

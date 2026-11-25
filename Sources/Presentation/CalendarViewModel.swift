@@ -22,6 +22,10 @@ public final class CalendarViewModel {
     /// (REQ-0040). Recurring series contribute one row; `occurrence` is the first visible
     /// instance used for selection.
     public private(set) var invitationMails: [CalendarMailItem] = []
+    /// Unique meetings whose source email is no longer in the local store; they stay
+    /// visible on the calendar grid but cannot be opened as mail (REQ-0040).
+    public private(set) var omittedInvitationCount = 0
+    private var calendarOnlyKeys: Set<String> = []
     public private(set) var isLoading = false
     public private(set) var errorText: String?
     public private(set) var isTruncated = false
@@ -89,7 +93,11 @@ public final class CalendarViewModel {
             let result = try scene.events(from: range.lowerBound, to: range.upperBound)
             guard request == generation else { return }
             occurrences = result.occurrences
-            invitationMails = Self.invitationMails(from: result.occurrences, scene: scene)
+            let allInvitations = Self.invitationMails(from: result.occurrences, scene: scene)
+            invitationMails = allInvitations.filter { $0.message != nil }
+            let omitted = allInvitations.filter { $0.message == nil }
+            calendarOnlyKeys = Set(omitted.map(\.id))
+            omittedInvitationCount = omitted.count
             isTruncated = result.truncated
             errorText = nil
         } catch {
@@ -122,6 +130,12 @@ public final class CalendarViewModel {
 
     public func select(_ occurrence: MeetingOccurrence) {
         selectedOccurrence = occurrence
+    }
+
+    /// Whether the occurrence still has its source invitation mail locally. Calendar-only
+    /// occurrences stay visible on the grid but cannot open the reader (REQ-0040).
+    public func hasSourceMail(for occurrence: MeetingOccurrence) -> Bool {
+        !calendarOnlyKeys.contains("\(occurrence.folderID)\u{1F}\(occurrence.serverID)")
     }
 
     public func clearSelection() {
@@ -169,7 +183,7 @@ public final class CalendarViewModel {
                 )
             )
         }
-        return items.sorted { $0.occurrence.start < $1.occurrence.start }
+        return items.sorted { $0.occurrence.start > $1.occurrence.start }
     }
 
     private func shift(by value: Int, component: Calendar.Component) {

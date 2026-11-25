@@ -34,14 +34,14 @@ updated: 2026-11-25
 - `CalendarScene.message(ref)`：按 source folder + serverID 从本地 `messages` 表取 `Message?`（additive，只读）。
 - `CalendarViewModel.invitationMails`: 由当前 occurrences 按 `(folderID, serverID)` 去重，每个来源一封；`try? scene.message(ref)` 取到则带 envelope，取不到则 `message == nil`。
 - `CalendarMailItem`：`message: Message?`、`occurrence`；`title` 取邮件主题/会议主题，`senderText` 取发件人/组织者/「来源邮件不在本机」；`id` 用 folder + serverID。
-- 排序按会议开始时间（日历页语义），行尾显示会议时间（`MM-dd HH:mm`，全天显示「MM-dd 全天」）；重复会议只显示范围里第一次。
+- 排序按会议开始时间**倒序**（最新在前）；行尾显示会议时间（`MM-dd HH:mm`，全天显示「MM-dd 全天」）；重复会议只显示范围里第一次。
 - 左列 `CalendarMailListView`：`List` + `listRowBackground` 选中高亮；行 overlay 复用 `MessageRowClick`（单击选中、双击打开）；底部状态显示「N 封会议邀请」与日历错误。
 
 ### 3.3 共享选中与打开
 
 - `CalendarView` 删除私有 `selectedKey`，改用 `model.selectedOccurrence`；单击块 → `model.select`，Esc → `model.clearSelection()`，Enter/空格 → `openSelectedOccurrence()`。
 - 新 `CalendarReader.open(occurrence, model, onExportFailure)`：列表与块共用同一条 `ReaderCoordinator.show(style: .calendar)` 路径（工具栏转发 + 在日历中打开）。
-- 列表单击 → `model.select(item.occurrence)` → `CalendarView` 的块高亮；块单击 → 模型选中 → 列表按 `selectedID` 高亮并滚动。
+- 列表单击 → `model.select(item.occurrence)` → `CalendarView` 的块高亮；块单击 → 模型选中 → 列表按 `selectedID` 高亮并滚动。双击没有来源邮件的块 → `model.hasSourceMail(for:)` 为 false，只选中并弹「来源邮件不在本机」，不打开空阅读窗。
 - 列表双击 → `CalendarReader.open`。
 
 ## 4. 场景走查

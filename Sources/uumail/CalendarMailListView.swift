@@ -63,6 +63,10 @@ struct CalendarMailListView: View {
                 Text(error).lineLimit(1)
             } else {
                 Text("\(model.invitationMails.count) 封会议邀请")
+                if model.omittedInvitationCount > 0 {
+                    Text(" · 另有 \(model.omittedInvitationCount) 场会议的来源邮件不在本机")
+                        .lineLimit(1)
+                }
             }
             Spacer()
         }

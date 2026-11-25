@@ -17,11 +17,11 @@ updated: 2026-11-25
 | 项 | 结果 | 证据 |
 |---|---|---|
 | 两栏结构 | 左列 480（min 320）+ 右日历；同一 `NavigationSplitView` | 真实窗口截图 `calendar-list.png` |
-| 邀请列表完整 | 44 封邀请（当前月范围去重），右月视图完整 | 截图；`CalendarGridScenarioTests.invitationList` |
-| 来源缺失回退 | 行仍显示，回退会议主题/组织者/会议时间 | 实现走查 + 截图（部分行「来源邮件不在本机」/组织者） |
+| 邀请列表可打开 | 只列仍有来源邮件的邀请；缺失来源的会议只在日历显示，底部计数；按会议时间倒序 | 截图；`CalendarGridScenarioTests.invitationList` |
+| 来源缺失处理 | 不进入左列，只在右侧日历；双击块给「来源邮件不在本机」提示，不再弹「找不到这封邮件」空阅读窗 | 实现走查 + 截图底部计数 |
 | 选中共享 | 左列/块共用 `CalendarViewModel.selectedOccurrence`；单击高亮、双击浮窗 | L1 模型选中 + 真实窗口（点击为人工项） |
 | 测试/架构/发布 | 466 tests / 77 suites、架构 4/4、`make-app.sh` 成功 | `dist/build-info.txt` |
-| 行预算 | `MailboxView` 297、`CalendarView` 276、`CalendarMailListView` 110、`CalendarReader` 32、`CalendarViewModel` 200 | `wc -l` |
+| 行预算 | `MailboxView` 296、`CalendarView` 297、`CalendarMailListView` 114、`CalendarReader` 32、`CalendarViewModel` 214 | `wc -l` |
 
 ## 残余（发布前人工项）
 

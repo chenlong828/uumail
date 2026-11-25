@@ -123,10 +123,32 @@ struct CalendarGridScenarioTests {
                 rule: RecurrenceRule(frequency: .weekly, weekdays: [.monday], firstDayOfWeek: .monday)
             ),
         ])
+        // A meeting whose source mail is not in the store: it must stay on the grid but
+        // not appear as an openable email row.
+        try store.applySyncBatch(
+            account: account,
+            folder: "13",
+            added: [],
+            changed: [],
+            removedServerIDs: [],
+            syncKey: "3",
+            meetings: [
+                MeetingDeltaEntry(
+                    serverID: "orphan",
+                    subject: "会议 orphan",
+                    invite: invite("orphan", "2026-11-25T01:00:00Z", "2026-11-25T02:00:00Z")
+                )
+            ]
+        )
         await model.activate()
 
         #expect(model.invitationMails.count == 2, "the recurring series contributes one source mail")
-        #expect(Set(model.invitationMails.map(\.title)) == ["会议 a", "会议 weekly"])
+        #expect(model.invitationMails.map(\.title) == ["会议 a", "会议 weekly"], "newest meeting first")
+        #expect(model.omittedInvitationCount == 1, "the orphan meeting is calendar-only")
+        let orphan = try #require(model.occurrences.first { $0.uid == "orphan" })
+        #expect(model.hasSourceMail(for: orphan) == false)
+        let sourced = try #require(model.occurrences.first { $0.uid == "a" })
+        #expect(model.hasSourceMail(for: sourced) == true)
         let weekly = model.invitationMails.first { $0.title == "会议 weekly" }
         #expect(weekly?.occurrence.start == date("2026-11-02T08:00:00Z"))
         #expect(model.invitationMails.allSatisfy { $0.occurrence.folderID == "13" })

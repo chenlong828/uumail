@@ -80,14 +80,13 @@ struct MailboxView: View {
 
     private var mailSplit: some View {
         NavigationSplitView {
-            Group {
-                if section == .calendar, let calendarModel {
-                    CalendarMailListView(model: calendarModel)
-                } else {
-                    mailListColumn
-                }
+            if section == .calendar, let calendarModel {
+                CalendarMailListView(model: calendarModel)
+                    .navigationSplitViewColumnWidth(min: 320, ideal: 480)
+            } else {
+                mailListColumn
+                    .navigationSplitViewColumnWidth(min: 320, ideal: 480)
             }
-            .navigationSplitViewColumnWidth(min: 320, ideal: 480)
         } detail: {
             if section == .calendar, let calendarModel {
                 CalendarView(model: calendarModel)

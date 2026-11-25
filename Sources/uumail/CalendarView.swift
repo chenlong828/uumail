@@ -12,7 +12,7 @@ import MeetingDomain
 struct CalendarView: View {
     @Bindable var model: CalendarViewModel
 
-    @State private var exportFailed = false
+    @State private var alert: CalendarAlert?
 
     /// Shared with the invitation list on the left (REQ-0040): the calendar view no longer
     /// owns a private selection, so a list click and a block click highlight the same item.
@@ -39,11 +39,28 @@ struct CalendarView: View {
             model.clearSelection()
             return .handled
         }
-        .alert("无法生成日历文件", isPresented: $exportFailed) {
-            Button("好", role: .cancel) {}
-        } message: {
-            Text("请稍后重试，或先打开来源邮件。")
+        .alert(item: $alert) { value in
+            switch value {
+            case .exportFailed:
+                Alert(
+                    title: Text("无法生成日历文件"),
+                    message: Text("请稍后重试，或先打开来源邮件。"),
+                    dismissButton: .cancel(Text("好"))
+                )
+            case .sourceMissing:
+                Alert(
+                    title: Text("来源邮件不在本机"),
+                    message: Text("这封会议邀请邮件已不在本机（可能已删除或超出本地保留范围）；右侧日历仍保留会议信息。"),
+                    dismissButton: .cancel(Text("好"))
+                )
+            }
         }
+    }
+
+    private enum CalendarAlert: Identifiable {
+        case exportFailed
+        case sourceMissing
+        var id: Int { self == .exportFailed ? 0 : 1 }
     }
 
     // MARK: - Chrome
@@ -262,8 +279,12 @@ struct CalendarView: View {
 
     private func open(_ occurrence: MeetingOccurrence) {
         model.select(occurrence)
+        guard model.hasSourceMail(for: occurrence) else {
+            alert = .sourceMissing
+            return
+        }
         CalendarReader.open(occurrence, model: model) {
-            exportFailed = true
+            alert = .exportFailed
         }
     }
 
