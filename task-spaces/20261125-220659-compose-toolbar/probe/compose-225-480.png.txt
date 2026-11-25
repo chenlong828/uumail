@@ -1,0 +1,2 @@
+PROBE window=474957 size=480.0x760.0 font=225%
+PROBE final-content=480x760

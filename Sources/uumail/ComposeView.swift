@@ -2,8 +2,9 @@ import Presentation
 import SwiftUI
 
 /// Reply/new-mail sheet: address fields, a format bar, an editable WebView and the
-/// explicit close entry. The sheet width follows the reading pane (REQ-0021); the two
-/// editor callbacks push captured HTML back into the view model before any action.
+/// compose actions in the title bar (macOS Mail idiom: send at the top right). The sheet
+/// width follows the reading pane (REQ-0021); the editor callbacks push captured HTML
+/// back into the view model before any action.
 struct ComposeView: View {
     @Bindable var viewModel: ComposeViewModel
     let preferredWidth: CGFloat
@@ -28,6 +29,9 @@ struct ComposeView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
+            if let statusText = viewModel.statusText {
+                statusRow(statusText)
+            }
             Divider()
             ComposeRecipientForm(
                 viewModel: viewModel,
@@ -48,77 +52,86 @@ struct ComposeView: View {
                 onReady: { viewModel.editorDidLoad($0) }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            Divider()
-            footer
         }
         .frame(width: width, height: height)
         .interactiveDismissDisabled()
         .confirmationDialog(
-            "放弃这封邮件？",
+            "存储草稿？",
             isPresented: $showingDiscard,
             titleVisibility: .visible
         ) {
+            Button("存草稿") { saveAndClose() }
             Button("放弃", role: .destructive) { onClose() }
             Button("继续编辑", role: .cancel) {}
         } message: {
-            Text("已输入的内容不会保存。")
+            Text("已输入的内容可以存为草稿，或直接放弃。")
         }
     }
 
+    /// macOS Mail idiom: a red close control on the left, the mode title centred and one
+    /// prominent blue Send button at the top right. Sending is the only toolbar action;
+    /// closing asks whether to keep the draft.
     private var header: some View {
-        HStack {
+        ZStack {
+            HStack {
+                closeControl
+                Spacer()
+                composeButton("发送") { send() }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!viewModel.canSend)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .help("发送（Return）")
+            }
             Text(title)
                 .scaledFont(.headline)
-            Spacer()
-            Button {
-                requestClose()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 12, weight: .semibold))
-                    .frame(width: 24, height: 24)
-            }
-            .buttonStyle(.borderless)
-            .focusable(false)
-            .help("取消并关闭")
-            .accessibilityLabel("取消并关闭")
+                .lineLimit(1)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
     }
 
-    private var footer: some View {
-        HStack(spacing: 10) {
-            composeButton("取消") { requestClose() }
-                .keyboardShortcut(.cancelAction)
-                .disabled(viewModel.isSending)
-            if let statusText = viewModel.statusText {
-                Label(statusText, systemImage: statusSymbol)
-                    .scaledFont(.caption)
-                    .foregroundStyle(statusColor)
-                    .lineLimit(1)
-            }
-            Spacer()
-            composeButton("存草稿") {
-                Task {
-                    if let html = await editor.capture() {
-                        viewModel.setEditorHTML(html)
-                    }
-                    if viewModel.saveDraft() { onClose() }
-                }
-            }
-            .disabled(viewModel.isSending)
-            composeButton("发送") {
-                Task {
-                    if let html = await editor.capture() {
-                        viewModel.setEditorHTML(html)
-                    }
-                    if await viewModel.send() { onClose() }
-                }
-            }
-            .keyboardShortcut(.defaultAction)
-            .disabled(!viewModel.canSend)
+    private var closeControl: some View {
+        Button {
+            requestClose()
+        } label: {
+            Image(systemName: "xmark")
+                .font(.system(size: 8, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 13, height: 13)
+                .background(Circle().fill(Color(nsColor: .systemRed)))
         }
-        .padding(12)
+        .buttonStyle(.plain)
+        .keyboardShortcut(.cancelAction)
+        .focusable(false)
+        .disabled(viewModel.isSending)
+        .help("关闭（Esc）")
+        .accessibilityLabel("关闭")
+    }
+
+    private func statusRow(_ text: String) -> some View {
+        HStack(spacing: 4) {
+            Label(text, systemImage: statusSymbol)
+                .scaledFont(.caption)
+                .foregroundStyle(statusColor)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.bottom, 6)
+    }
+
+    private func send() {
+        Task {
+            if let html = await editor.capture() {
+                viewModel.setEditorHTML(html)
+            }
+            if await viewModel.send() { onClose() }
+        }
+    }
+
+    private func saveAndClose() {
+        if viewModel.saveDraft() { onClose() }
     }
 
     /// String-title buttons ignore the environment font; 100% keeps the original title
