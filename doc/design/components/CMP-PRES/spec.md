@@ -27,7 +27,7 @@ component: CMP-PRES
 - 入口：`Sources/Presentation/MailboxViewModel.swift#MailboxViewModel`、`ComposeViewModel.swift#ComposeViewModel`（2026-11-18 新增收件人联想成员）、`AccountSetupViewModel.swift#AccountSetupViewModel`、`ErrorText.swift#ErrorText`、`PresentationTypes.swift#BodyPresentation`、`ThemePreference.swift#ThemePreference/#ThemePreferenceStore`、`FontSizePreference.swift#FontSizePreference/#FontSizePreferenceStore`（2026-11-17 设计新增）、`MessageHeaderPresentation.swift#MessageHeaderPresentation`（2026-11-16 新增）
 - 依赖：`Scenes`、`MailDomain`、`Observation`、`Foundation`（`UserDefaults`；不算新组件依赖）。扇出 1。
 - 冷热：热（主线程）；主题与字号偏好的读/写都是低频冷路径（启动一次 + 选择一次），不与 VM 热路径共享状态；收件人候选是撰写页主线程内存过滤，不查库、不触网。
-- 尺寸预算：单文件 ≤400 行；当前（2026-11-24 实测）`MailboxViewModel` **391**、`MailboxViewModel+List` **89**、`CalendarViewModel` **172**、`CalendarProjection` **254**、`ReaderViewModel` 225、`ReaderRouter` 139、`ComposeViewModel` 284；`Presentation` 共 **2788** 行。2026-11-24 预算拆分后所有单文件 ≤400（此前 `MailboxViewModel` 424、`CalendarViewModel` 424）。
+- 尺寸预算：单文件 ≤400 行；当前（2026-11-25 实测）`MailboxViewModel` **391**、`MailboxViewModel+List` **89**、`CalendarViewModel` **200**、`CalendarProjection` **254**、`ReaderViewModel` 225、`ReaderRouter` 139、`ComposeViewModel` 284；`Presentation` 共 **2846** 行。2026-11-24 预算拆分后所有单文件 ≤400（此前 `MailboxViewModel` 424、`CalendarViewModel` 424）。
 - 单独运行：`./Scripts/swiftw test --filter PresentationTests`
 - 删除测试：删掉后视图直接持有场景并写展示逻辑，测试无法覆盖状态机 → 复杂度集中，是真边界。
 
@@ -698,4 +698,24 @@ component: CMP-PRES
 - 视图绑定与占位文案见 `CMP-APP` 同日增量；场景侧的地址规则与迁移见 `CMP-SCN-ACCOUNT`。
 - 不变量：视图模型只做字段搬运，不判断地址有效性、不比较已存地址、不调用 `MailStore`；错误仍由 `connect`/`validate` 返回并经既有 `ErrorText` 呈现。无新增 public 类型/target/依赖，不改 schema。
 - 尺寸：`AccountSetupViewModel.swift` **104 行**。本增量未新增 Presentation 测试；既有设置页用例不回归，场景行为由 `AccountSetupSceneTests` 覆盖。
+
+## 设计增量：日历邀请邮件列表（REQ-0040，2026-11-25，P3，已实现）
+
+- 来源：`REQ-0040` / `SCN-0024` 增量。本增量为视图模型与展示值；左列视图见 `CMP-APP` 同日增量，按引用取来源邮件见 `CMP-SCN-CALENDAR` 同日增量。不改 `CalendarScene` 既有 `events`/`meeting`/`ics` 的签名与语义，不改 schema/依赖/target。
+- 新增 public `CalendarMailItem`（`Sources/Presentation/CalendarPresentation.swift`，145 行）：`Equatable, Identifiable, Sendable`。
+  - `message: Message?`：来源邮件仍在本地库时为信封，缺失为 nil；行不因缺失被丢掉。
+  - `occurrence: MeetingOccurrence`：该来源邮件在当前范围内最早的可见场次，用于选中与行尾时间。
+  - `id`：`occurrence` 的 folder + serverID 复合键；重复系列的多场共享同一 id，落到一行。
+  - `title`：邮件主题 → 会议主题 → 「会议」。
+  - `senderText`：邮件发件人（`DisplayFormat.senderName`）→ 组织者 → 「来源邮件不在本机」。
+  - 行尾会议时间的格式化留在视图，不进入本类型；本类型不做 I/O、不读 `MailStore`。
+- `CalendarViewModel`（200 行）新增 `public private(set) var invitationMails: [CalendarMailItem]`（additive，只读）：
+  - `reload` 成功分支由 `occurrences` 构建：按 `(folderID, serverID)` 去重（重复系列只留一行，取范围内第一个 occurrence）→ 每条 `try? scene.message(ref)` 取信封，取不到也保留 → 最终按 `occurrence.start` 升序。
+  - 失败分支保留上一次的 `invitationMails` 与 `errorText`，不清空成假空态；`occurrences`/`isTruncated`/`errorText` 的既有语义不变。
+  - 去重与排序在每次 `reload` 重算，不新增缓存；每条来源邮件最多一次本地 `message(ref)` 读，不发网络、不遍历邮件全表。
+  - 迟到查询沿用 `generation` 丢弃规则，`invitationMails` 与 `occurrences` 同代际更新。
+- 唯一选中：`selectedOccurrence` 是列表与日历共享的唯一权威选中；`select(_:)`/`clearSelection()` 语义不变，不新增第二份选中状态，也不为列表另加「选中邮件」。
+- 尺寸：`CalendarViewModel` 172 → 200、`CalendarPresentation` 145（`CalendarMailItem` 约 26 行）；单文件 ≤400，不新增文件/target/依赖。
+- 测试（L1）：`T-SCN-0024-10`（`CalendarGridScenarioTests.invitationList`）覆盖去重、主题、首个 occurrence 与来源发件人，具体断言以场景卡为准；全量 466 tests / 77 suites、架构 4/4。列表布局与真实点击不在本层。
+- 定级：**P3**（`Presentation` 内 additive public 展示值与只读属性；无 schema/依赖/场景契约语义变化）。
 

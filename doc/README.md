@@ -26,6 +26,8 @@ macOS 原生邮件客户端，只走 Exchange ActiveSync（以「一台已登记
 
 2026-11-24 追加并交付（W-M3-19，用户反馈的导航、发件箱与其他文件夹三项口径）：移除左侧文件夹栏，根视图 toolbar 的 leading 位改为「收件箱 / 发件箱 / 日历」三段 segmented Picker，默认收件箱；邮件页改两栏 `NavigationSplitView`（列表 `min 320 / ideal 480`，1440 下 list 480 / reading 952，900 下 list 480 / reading 412），日历页占满内容区且顶部切换仍在；草稿/已删除/垃圾邮件等其他文件夹全部隐藏、不提供入口。发件箱显示服务器 Sent Items（type 5），打开时按需同步最近 30 天；`SendMail` 既有 `SaveInSentItems` 让服务器保存发送副本，下次打开发件箱时拉回；无 Sent 给「没有发件邮件」空态，失败保留缓存 + 中文错误，且不动收件箱 key。新增 `REQ-0037`/`REQ-0038`（均 `delivered`），新建 `SCN-0028`（`mail/receive/mailbox-sections`）与 `SCN-0029`（`mail/send/sent-items`）（均 `verified`）；465 tests / 77 suites、架构 4/4；`make-app.sh` 成功（release）。真实发信冒烟已执行：第一次因账号存的 `From` 是 `账号@mail.hundsun.com` 被网关 502；按 `REQ-0039` 改用 `EAS_EMAIL` 后同一封测试信发送成功，`uumailctl sync-sent` 从服务器 Sent Items 拉到 12 封（含测试信）。由此同日补 `REQ-0039`（设置页「邮箱地址」、`ServerConfiguration.email`/`resolvedEmail`、`accounts.address` 迁移）与 `SCN-0030`（`settings/account/mail-address`）；465 tests / 77 suites。App 内点击发件箱/设置页的整窗冒烟仍为发布前人工项；不做本地 Sent 镜像、不做发送成功即时同步。
 
+2026-11-25 追加并交付（W-M3-20，日历页两栏）：切到「日历」不再整窗换成日历，而是与收件箱/发件箱共用同一个两栏 `NavigationSplitView`——左列是当前月/周的**会议邀请邮件**（主题、发件人/组织者、会议时间；重复会议只一行；来源邮件缺失时回退会议元数据），右侧是原月/周网格；单击左列/块选中同一会议，双击左键打开同一浮窗，选中以 `CalendarViewModel.selectedOccurrence` 为唯一权威；新增 `CalendarScene.message(ref)`、`CalendarMailItem`/`invitationMails`、`CalendarMailListView`/`CalendarReader`。`REQ-0040` `delivered`，`SCN-0024` 增量重验（`T-SCN-0024-10/11`）；466 tests / 77 suites、架构 4/4、`make-app.sh` 成功；真实点击/双击/分隔条/深色像素仍为发布前人工项。需求索引改为 REQ-0001…0040。
+
 ## 阅读顺序
 
 1. [architecture.md](design/architecture.md) — 现行分层、target、九条核心契约、冷热路径、组合根规则、D1–D10 决策与实施阶段。先读这一篇。
@@ -33,7 +35,7 @@ macOS 原生邮件客户端，只走 Exchange ActiveSync（以「一台已登记
 3. 组件规格（`design/components/`）：`CMP-DOMAIN`（值类型/端口）、`CMP-STORE`（数据）、`CMP-SYNC`、`CMP-OUT`、`CMP-EASADAPTER`、`CMP-SCN-{ACCOUNT,SYNC,READ,COMPOSE}`、`CMP-PRES`、`CMP-ROOT`、`CMP-CLI`、`CMP-APP`。
 4. [design/scenarios/](design/scenarios/) — 业务功能树 `mail/{access,receive,read,send}/<场景>` 与 `settings/appearance/<场景>`，运行序、入口与测试证据。
 5. [roadmap.md](plan/roadmap.md)、[risks.md](plan/risks.md)、[open-questions.md](plan/open-questions.md) — 里程碑、风险、待拍板项。
-6. [requirements/](requirements/) — 每个用户可感知动作一张卡（REQ-0001…0039）。
+6. [requirements/](requirements/) — 每个用户可感知动作一张卡（REQ-0001…0040）。
 7. [history/](history/) — 已归档的[范围与关键决策](history/decisions/2026-11-09-scope-baseline.md)、[附件缓存上限](history/decisions/2026-11-09-attachment-cache-cap.md)、[正文契约 D10](history/decisions/2026-11-13-fetched-body-contract.md)、[EAS 探针](history/works/2026-11-09-eas-probe/result.md)、[M1 账号接入](history/works/2026-11-09-m1-account-access/result.md)、[M4 加固](history/works/2026-11-09-m4-hardening/result.md)、[场景重构收口](history/works/2026-11-10-scene-refactor/result.md)、[HTML 回复](history/works/2026-11-17-html-reply/result.md)、[同步状态误判](history/works/2026-11-17-sync-state/result.md)、[附件下载修复](history/works/2026-11-21-attachment-fetch/result.md)、[内联图 ContentId](history/works/2026-11-21-inline-image-content-id/result.md)、[正文宽表适配与附件条过滤](history/works/2026-11-23-table-adapt/result.md)、[开发凭据文件](history/works/2026-11-21-dev-dotenv/result.md)、[风险收口与登记复核](history/decisions/2026-11-24-risk-closeout.md)、[风险与开放问题拍板](history/decisions/2026-11-24-risk-review-decisions.md)。只作记忆，不作设计依据。
 
 ## 入口

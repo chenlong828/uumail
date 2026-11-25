@@ -18,6 +18,33 @@ public struct CalendarChip: Equatable, Sendable {
     }
 }
 
+/// One calendar invitation email in the calendar page's left list (REQ-0040). Recurring
+/// meetings share one source mail, so the row carries the first visible occurrence for
+/// selection while the identity stays the mail's folder + server id.
+public struct CalendarMailItem: Equatable, Identifiable, Sendable {
+    /// The source mail when it is still in the local store. Nil for invites whose message
+    /// was deleted/moved after the meeting row was written; the row then shows the meeting
+    /// metadata so the calendar list stays complete.
+    public var message: Message?
+    public var occurrence: MeetingOccurrence
+
+    public init(message: Message?, occurrence: MeetingOccurrence) {
+        self.message = message
+        self.occurrence = occurrence
+    }
+
+    public var id: String { "\(occurrence.folderID)\u{1F}\(occurrence.serverID)" }
+
+    public var title: String {
+        message?.subject ?? occurrence.subject ?? "会议"
+    }
+
+    public var senderText: String {
+        if let message { return DisplayFormat.senderName(message.sender) }
+        return occurrence.organizer ?? "来源邮件不在本机"
+    }
+}
+
 public struct MonthDay: Equatable, Sendable {
     public var date: Date
     public var isInMonth: Bool

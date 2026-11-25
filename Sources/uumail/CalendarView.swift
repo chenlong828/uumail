@@ -12,8 +12,13 @@ import MeetingDomain
 struct CalendarView: View {
     @Bindable var model: CalendarViewModel
 
-    @State private var selectedKey: String?
     @State private var exportFailed = false
+
+    /// Shared with the invitation list on the left (REQ-0040): the calendar view no longer
+    /// owns a private selection, so a list click and a block click highlight the same item.
+    private var selectedKey: String? {
+        model.selectedOccurrence.map { key(for: $0) }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -30,8 +35,8 @@ struct CalendarView: View {
         .onKeyPress(.return) { openSelectedOccurrence() }
         .onKeyPress(.space) { openSelectedOccurrence() }
         .onKeyPress(.escape) {
-            guard selectedKey != nil else { return .ignored }
-            selectedKey = nil
+            guard model.selectedOccurrence != nil else { return .ignored }
+            model.clearSelection()
             return .handled
         }
         .alert("无法生成日历文件", isPresented: $exportFailed) {
@@ -157,7 +162,7 @@ struct CalendarView: View {
         CalendarChipView(
             chip: chip,
             isSelected: isSelected,
-            onSelect: { selectedKey = key(for: chip.occurrence) },
+            onSelect: { model.select(chip.occurrence) },
             onOpen: { open(chip.occurrence) }
         )
     }
@@ -224,7 +229,7 @@ struct CalendarView: View {
                                         startHour: model.week.startHour,
                                         columnWidth: columnWidth,
                                         hourHeight: hourHeight,
-                                        onSelect: { selectedKey = key(for: block.occurrence) },
+                                        onSelect: { model.select(block.occurrence) },
                                         onOpen: { open(block.occurrence) }
                                     )
                                 }
@@ -256,38 +261,16 @@ struct CalendarView: View {
     }
 
     private func open(_ occurrence: MeetingOccurrence) {
-        selectedKey = key(for: occurrence)
-        let coordinator = ReaderCoordinator.shared
-        coordinator.show(
-            folderID: occurrence.folderID,
-            serverID: occurrence.serverID,
-            geometry: coordinator.geometry(readingPaneWidth: nil),
-            style: .calendar,
-            openInCalendar: { openInCalendar(occurrence) }
-        )
+        model.select(occurrence)
+        CalendarReader.open(occurrence, model: model) {
+            exportFailed = true
+        }
     }
 
     /// Return / Space act on the selected block, mirroring the list's Enter/Space.
     private func openSelectedOccurrence() -> KeyPress.Result {
-        guard let key = selectedKey, let occurrence = occurrence(withKey: key) else { return .ignored }
+        guard let occurrence = model.selectedOccurrence else { return .ignored }
         open(occurrence)
         return .handled
-    }
-
-    private func occurrence(withKey key: String) -> MeetingOccurrence? {
-        let candidates = model.mode == .month
-            ? model.month.weeks.flatMap { $0.days.flatMap { $0.chips.map(\.occurrence) } }
-            : model.week.days.flatMap { $0.blocks.map(\.occurrence) }
-        return candidates.first { self.key(for: $0) == key }
-    }
-
-    private func openInCalendar(_ occurrence: MeetingOccurrence) {
-        guard let text = model.icsText(for: occurrence) else {
-            exportFailed = true
-            return
-        }
-        if !CalendarExport.present(text, uid: occurrence.uid) {
-            exportFailed = true
-        }
     }
 }

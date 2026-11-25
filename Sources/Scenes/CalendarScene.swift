@@ -83,6 +83,12 @@ public struct CalendarScene: Sendable {
         try store.meetingInvite(account: account, uid: uid)
     }
 
+    /// Source mail for one occurrence (REQ-0040): the calendar page lists invitation
+    /// emails on the left, so it needs the message envelope, not just the meeting.
+    public func message(_ ref: MessageRef) throws -> Message? {
+        try store.message(account: account, folder: ref.folderID, serverID: ref.serverID)
+    }
+
     public func ics(uid: String, now: Date = Date()) throws -> String {
         guard let invite = try store.meetingInvite(account: account, uid: uid) else {
             throw CalendarSceneError.meetingNotFound(uid: uid)

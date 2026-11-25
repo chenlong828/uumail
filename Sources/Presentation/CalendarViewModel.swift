@@ -18,6 +18,10 @@ public final class CalendarViewModel {
     public private(set) var mode: Mode = .month
     public private(set) var anchor: Date
     public private(set) var occurrences: [MeetingOccurrence] = []
+    /// One row per source invitation email in the visible range, newest received first
+    /// (REQ-0040). Recurring series contribute one row; `occurrence` is the first visible
+    /// instance used for selection.
+    public private(set) var invitationMails: [CalendarMailItem] = []
     public private(set) var isLoading = false
     public private(set) var errorText: String?
     public private(set) var isTruncated = false
@@ -85,6 +89,7 @@ public final class CalendarViewModel {
             let result = try scene.events(from: range.lowerBound, to: range.upperBound)
             guard request == generation else { return }
             occurrences = result.occurrences
+            invitationMails = Self.invitationMails(from: result.occurrences, scene: scene)
             isTruncated = result.truncated
             errorText = nil
         } catch {
@@ -144,6 +149,28 @@ public final class CalendarViewModel {
     }
 
     // MARK: - Helpers
+
+    /// Deduplicate an occurrence list to its source mails. The query already sorted by
+    /// start, so the first occurrence of a series is the one used for selection.
+    private static func invitationMails(
+        from occurrences: [MeetingOccurrence],
+        scene: CalendarScene
+    ) -> [CalendarMailItem] {
+        var seen: Set<String> = []
+        var items: [CalendarMailItem] = []
+        for occurrence in occurrences {
+            let ref = MessageRef(folderID: occurrence.folderID, serverID: occurrence.serverID)
+            let key = "\(ref.folderID)\u{1F}\(ref.serverID)"
+            guard seen.insert(key).inserted else { continue }
+            items.append(
+                CalendarMailItem(
+                    message: try? scene.message(ref),
+                    occurrence: occurrence
+                )
+            )
+        }
+        return items.sorted { $0.occurrence.start < $1.occurrence.start }
+    }
 
     private func shift(by value: Int, component: Calendar.Component) {
         anchor = calendar.date(byAdding: component, value: value, to: anchor) ?? anchor

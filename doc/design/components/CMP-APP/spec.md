@@ -26,7 +26,7 @@ component: CMP-APP
 - 入口：`Sources/uumail/UumailApp.swift#UumailApp`、`MailboxView.swift#MailboxView`、`AttachmentStripView.swift#AttachmentStripView`（2026-11-20 设计新增，internal；双击/右键/选中/键盘/错误 banner）、`AttachmentExport.swift#SystemSavePanel`/`#AttachmentFileCopy`/`#AttachmentSaveFlow`/`#AttachmentActionGate`/`#AttachmentActionModel`（2026-11-20 设计新增，internal；`AttachmentActionModel` 为第 3 轮 APP 动作代际协调者）、`MailboxToolbar.swift#MailboxToolbar`（2026-11-16 设计新增）、`MessageBodyView.swift#MessageBodyView`、`ComposeView.swift#ComposeView`、`RecipientForm.swift#ComposeRecipientForm`（2026-11-18 设计新增，internal；方案设计复核从 `ComposeView.swift` 拆出，供 L2 探针单独编译）、`RecipientTextField.swift#RecipientTextField`/`#RecipientSuggestionList`（2026-11-18 设计新增，internal）、`AccountSetupView.swift#AccountSetupView`、`FontSizeStyle.swift#EnvironmentValues.fontSizePreference`/`#View.scaledFont(_:)`/`#View.scaledInheritedFont(_:)`/`#FontSizePreference.font(for:)`、`FontSizeCommands.swift#FontSizeCommands`、`EmptyState.swift#EmptyState`（2026-11-17 设计新增，internal；第 2 轮修正入口符号）
 - 依赖：`Presentation`、`Composition`（仅 `UumailApp.swift`）、SwiftUI/AppKit/WebKit。扇出 2。
 - 冷热：热（读本地库）；收件人候选只读 VM 内存状态，不触网、不查库。
-- 尺寸预算：单文件 ≤300 行；当前 `Sources/uumail` 共 **3813 行**（2026-11-24 `wc -l`；`MailboxView` **293**、`CalendarView` 293、`MessageBodyView` 267，其余见文末增量）；单文件均 ≤300，不新增 target/依赖。
+- 尺寸预算：单文件 ≤300 行；当前 `Sources/uumail` 共 **3956 行**（2026-11-25 `wc -l`；`MailboxView` **297**、`CalendarView` **276**、`MessageBodyView` 267，其余见文末增量）；单文件均 ≤300，不新增 target/依赖。
 - 单独运行：`./Scripts/make-app.sh && open dist/uumail.app`（release 构建，产物不入库）；`swift run` 为无 bundle `Info.plist` 的可执行，**没有 ATS 域策略**，明文 http 图片本来即可加载（REQ-0024 L2 实测，见文末 2026-11-19 增量）
 - 删除测试：删掉则只能命令行看信，对终端用户等于没有产品。
 
@@ -564,3 +564,31 @@ component: CMP-APP
   - 文案同时给出示例与留空回退，避免用户把 Exchange 主机地址误填成邮箱地址。
 - 视图只绑定 `AccountSetupViewModel.email`，不读配置、不比较已存地址、不直接调 `updateAccountAddress`；提交仍走既有 `onConnect` → `connect()`。
 - 尺寸：`AccountSetupView.swift` **71 行**；不新增文件/target/依赖，不改 schema 或其他表单字段。本增量未新增 APP 层测试；连接与迁移行为由 `AccountSetupSceneTests` 覆盖。
+
+## 设计增量：日历页两栏与邀请邮件列表（REQ-0040，2026-11-25，P3，已实现）
+
+- 来源：`REQ-0040` / `SCN-0024` 增量。口径于 2026-11-25 人工确认（左列是会议邀请邮件而非会议场次；单击选中、双击打开；宽度沿用邮件页）；默认项（来源邮件缺失时回退会议元数据、行尾显示会议时间、不做搜索/筛选）见需求卡与 `task-spaces/20261125-120000-calendar-list/`。本增量只动视图与打开入口；展示值、去重与排序在 `CMP-PRES` 同日增量，按引用取来源邮件在 `CMP-SCN-CALENDAR` 同日增量。不改同步、schema、target、依赖，不改月/周投影、lane、全天条与 `.ics` 导出。
+- 共用两栏（`MailboxView`，297 行）：
+  - `mailSplit` 始终是一个 `NavigationSplitView`；左列 `Group` 按 section 切 `CalendarMailListView` / `mailListColumn`，右详情切 `CalendarView` / `mailReadingPane`，不再按 section 整块替换根内容。
+  - `.navigationSplitViewColumnWidth(min: 320, ideal: 480)` 挂在左列 `Group` 上，日历页与邮件页共用同一列宽语义；窗口变窄时先压右侧日历，左列不窄于 320pt。
+  - 顶部三段 Picker、窗口 toolbar、`ReaderCoordinator.attach` 留在根视图，切换日历不重建它们；邮件工具栏、搜索与撰写 sheet 只在 `mailListColumn` 内，日历页不出现。
+  - `switchSection` 的三段语义、发件箱迟到保护与刷新分派不变。
+- 新增 `Sources/uumail/CalendarMailListView.swift`（110 行，internal）：
+  - `@Bindable var model: CalendarViewModel`；`List` + `listRowBackground` 做选中高亮（accent 0.22），行 overlay 复用 `MessageRowClick`：单击 `model.select(item.occurrence)`，双击 `CalendarReader.open`。列表与日历块读写同一份 `selectedOccurrence`，点哪边另一边都高亮。
+  - 行显示 `item.title`、`item.senderText` 与行尾会议时间（`MM-dd HH:mm`；全天「MM-dd 全天」），字体沿用 `scaledInheritedFont`/`scaledFont` 档位。
+  - 底部状态栏「N 封会议邀请」；`errorText` 非空时改为警告图标 + 单行错误，不新造第二套文案。
+  - 空态：加载中「正在加载日历…」；范围内无会议「本期没有会议邀请」；有会议但没有可显示来源行「没有可显示的邀请邮件」。
+  - 选中变化时用 `ScrollViewReader` 滚到当前行；行身份用 `(folderID, serverID)`，与 `CalendarMailItem.id` 一致。
+- 新增 `Sources/uumail/CalendarReader.swift`（32 行，internal）：列表与月/周块共用唯一打开入口，调 `ReaderCoordinator.shared.show(folderID:serverID:geometry:style:.calendar, openInCalendar:)`；导出失败经 `onExportFailure` 回调，`CalendarView` 用它弹「无法生成日历文件」。
+- `CalendarView`（276 行）：
+  - 删除私有 `selectedKey` 状态；`selectedKey` 改为按 `model.selectedOccurrence`（uid + start）计算，列表与日历共享同一权威选中。
+  - 单击块/月 chip → `model.select`；Esc → `model.clearSelection()`；Enter/空格 → 用 `model.selectedOccurrence` 打开；`open` 统一走 `CalendarReader.open`，旧的私有 `openInCalendar` 删除。
+  - 月/周投影、事件块定位、lane、全天条、小时虚线、翻页/今天、截断提示均不变。
+- 行预算：`MailboxView` 297、`CalendarView` 276、`CalendarMailListView` 110、`CalendarReader` 32，均 ≤300；`Sources/uumail` 共 3956 行；不新增 target/依赖。
+- 验证：
+  - L2 真实窗口截图 `task-spaces/20261125-120000-calendar-list/calendar-list.png`：同一窗框内左列 44 封邀请 + 右侧月视图，左列宽度与邮件页一致（`T-SCN-0024-11` 的布局段）。
+  - 去重、主题、首个 occurrence 与来源发件人的 L1 断言在 `CMP-PRES` 同日增量（`T-SCN-0024-10`），本组件不复述；全量 466 tests / 77 suites、架构 4/4。
+  - 发布构建由收口执行（`make-app.sh` 尚未在本节点运行），不写成已通过。
+- 人工项（发布前）：真实点击左列/块验证共享选中、双击打开浮窗、窗口分隔条拖拽、深色主题整窗像素；列表滚动到选中项与键盘焦点未做自动断言。
+- 定级：**P3**（同组件内视图拆分与共用 split；无 schema/依赖/公开契约语义变化；新增文件均为 `uumail` internal）。
+- 不做：左列搜索/筛选、收信时间列、未读/已读语义、日历事件的建/改/拖拽、接受/拒绝邀请、日视图/年视图。

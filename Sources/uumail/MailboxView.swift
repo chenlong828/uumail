@@ -29,13 +29,7 @@ struct MailboxView: View {
     }
 
     var body: some View {
-        Group {
-            if section == .calendar, let calendarModel {
-                CalendarView(model: calendarModel)
-            } else {
-                mailSplit
-            }
-        }
+        mailSplit
         .toolbar(removing: .sidebarToggle)
         .toolbar {
             ToolbarItem(placement: .navigation) {
@@ -65,14 +59,6 @@ struct MailboxView: View {
         }
     }
 
-    /// Top switch (REQ-0037): the server's default folder list is not rendered; only the
-    /// inbox, Sent Items and the calendar are user-reachable.
-    private enum MailboxSection: Hashable {
-        case inbox
-        case sent
-        case calendar
-    }
-
     private func switchSection(to value: MailboxSection) {
         switch value {
         case .inbox:
@@ -94,87 +80,105 @@ struct MailboxView: View {
 
     private var mailSplit: some View {
         NavigationSplitView {
-            VStack(spacing: 0) {
-                messageList
-                Divider()
-                statusBar
+            Group {
+                if section == .calendar, let calendarModel {
+                    CalendarMailListView(model: calendarModel)
+                } else {
+                    mailListColumn
+                }
             }
-            .navigationTitle(currentFolderName)
             .navigationSplitViewColumnWidth(min: 320, ideal: 480)
-            .searchable(text: $searchText, placement: .toolbar, prompt: "搜索邮件")
-            .onChange(of: searchText) { _, query in
-                Task { await viewModel.search(query) }
-            }
-            .onChange(of: viewModel.selection.searchQuery) { _, query in
-                if searchText != query { searchText = query }
-            }
-            .background(ToolbarTooltipInstaller().frame(width: 0, height: 0))
-            .toolbar {
-                MailboxToolbar(
-                    state: MailboxToolbar.State(
-                        hasSelection: viewModel.selectedMessage != nil,
-                        allowsRemoteContent: viewModel.allowsRemoteContent,
-                        canAllowRemoteContent: viewModel.canAllowRemoteContent,
-                        canMarkSelectedRead: viewModel.canMarkSelectedRead,
-                        isSyncing: viewModel.sync.phase == .syncing
-                    ),
-                    actions: MailboxToolbar.Actions(
-                        newMessage: { compose = viewModel.composeNew() },
-                        reply: { compose = viewModel.composeReply() },
-                        replyAll: { compose = viewModel.composeReplyAll() },
-                        forward: { compose = viewModel.composeForward() },
-                        setAllowRemoteContent: { viewModel.setAllowsRemoteContent($0) },
-                        markSelectedRead: { viewModel.markSelectedRead() },
-                        refresh: {
-                            Task {
-                                if section == .sent {
-                                    await viewModel.refreshSent()
-                                } else {
-                                    await viewModel.refresh()
-                                }
-                            }
-                        }
-                    )
-                )
-            }
-            .sheet(item: $compose) { draft in
-                ComposeView(
-                    viewModel: draft,
-                    preferredWidth: readingPaneSize.width,
-                    preferredHeight: readingPaneSize.height,
-                    allowRemoteContent: viewModel.allowsRemoteContent,
-                    onClose: { compose = nil }
-                )
-            }
         } detail: {
-            GeometryReader { proxy in
-                MessageBodyView(
-                    header: viewModel.headerPresentation,
-                    meetingCard: viewModel.meetingCard,
-                    onOpenInCalendar: openMeetingInCalendar,
-                    bodyPresentation: viewModel.body,
-                    inlineImageHTML: viewModel.inlineImageHTML,
-                    notice: viewModel.bodyNotice,
-                    attachments: viewModel.attachments,
-                    allowRemoteContent: viewModel.allowsRemoteContent,
-                    onRetry: { Task { await viewModel.openSelected() } },
-                    attachmentErrorText: attachmentActions.saveErrorText
-                        ?? viewModel.attachmentErrorText,
-                    savingAttachmentID: attachmentActions.visibleSavingID,
-                    onOpenAttachment: { await attachmentActions.open($0) },
-                    onSaveAttachment: { attachment in attachmentActions.startSave(attachment) },
-                    onCancelSave: { attachmentActions.cancelSave() }
-                )
-                .onAppear { readingPaneSize = proxy.size }
-                .onChange(of: proxy.size) { _, size in readingPaneSize = size }
+            if section == .calendar, let calendarModel {
+                CalendarView(model: calendarModel)
+            } else {
+                mailReadingPane
             }
-            .navigationTitle("阅读")
         }
         // Covers internal selection changes (refresh auto-select, delete, clear); the list
         // binding setter covers the user click synchronously. Both are idempotent.
         .onChange(of: viewModel.selectedListKey) { _, _ in
             attachmentActions.syncSelection()
         }
+    }
+
+    private var mailListColumn: some View {
+        VStack(spacing: 0) {
+            messageList
+            Divider()
+            statusBar
+        }
+        .navigationTitle(currentFolderName)
+        .searchable(text: $searchText, placement: .toolbar, prompt: "搜索邮件")
+        .onChange(of: searchText) { _, query in
+            Task { await viewModel.search(query) }
+        }
+        .onChange(of: viewModel.selection.searchQuery) { _, query in
+            if searchText != query { searchText = query }
+        }
+        .background(ToolbarTooltipInstaller().frame(width: 0, height: 0))
+        .toolbar {
+            MailboxToolbar(
+                state: MailboxToolbar.State(
+                    hasSelection: viewModel.selectedMessage != nil,
+                    allowsRemoteContent: viewModel.allowsRemoteContent,
+                    canAllowRemoteContent: viewModel.canAllowRemoteContent,
+                    canMarkSelectedRead: viewModel.canMarkSelectedRead,
+                    isSyncing: viewModel.sync.phase == .syncing
+                ),
+                actions: MailboxToolbar.Actions(
+                    newMessage: { compose = viewModel.composeNew() },
+                    reply: { compose = viewModel.composeReply() },
+                    replyAll: { compose = viewModel.composeReplyAll() },
+                    forward: { compose = viewModel.composeForward() },
+                    setAllowRemoteContent: { viewModel.setAllowsRemoteContent($0) },
+                    markSelectedRead: { viewModel.markSelectedRead() },
+                    refresh: {
+                        Task {
+                            if section == .sent {
+                                await viewModel.refreshSent()
+                            } else {
+                                await viewModel.refresh()
+                            }
+                        }
+                    }
+                )
+            )
+        }
+        .sheet(item: $compose) { draft in
+            ComposeView(
+                viewModel: draft,
+                preferredWidth: readingPaneSize.width,
+                preferredHeight: readingPaneSize.height,
+                allowRemoteContent: viewModel.allowsRemoteContent,
+                onClose: { compose = nil }
+            )
+        }
+    }
+
+    private var mailReadingPane: some View {
+        GeometryReader { proxy in
+            MessageBodyView(
+                header: viewModel.headerPresentation,
+                meetingCard: viewModel.meetingCard,
+                onOpenInCalendar: openMeetingInCalendar,
+                bodyPresentation: viewModel.body,
+                inlineImageHTML: viewModel.inlineImageHTML,
+                notice: viewModel.bodyNotice,
+                attachments: viewModel.attachments,
+                allowRemoteContent: viewModel.allowsRemoteContent,
+                onRetry: { Task { await viewModel.openSelected() } },
+                attachmentErrorText: attachmentActions.saveErrorText
+                    ?? viewModel.attachmentErrorText,
+                savingAttachmentID: attachmentActions.visibleSavingID,
+                onOpenAttachment: { await attachmentActions.open($0) },
+                onSaveAttachment: { attachment in attachmentActions.startSave(attachment) },
+                onCancelSave: { attachmentActions.cancelSave() }
+            )
+            .onAppear { readingPaneSize = proxy.size }
+            .onChange(of: proxy.size) { _, size in readingPaneSize = size }
+        }
+        .navigationTitle("阅读")
     }
 
     private func openMeetingInCalendar() {

@@ -2,7 +2,7 @@
 layer: design
 module: scenes
 status: active
-updated: 2026-11-24
+updated: 2026-11-25
 component: CMP-SCN-CALENDAR
 ---
 
@@ -10,7 +10,7 @@ component: CMP-SCN-CALENDAR
 
 ## 模块卡
 
-- 状态：`planned`（只有契约与验证计划，无代码；`T-1124-07` 落地后转 `active`）
+- 状态：`active`（`CalendarScene` 已实现，2026-11-24 `T-1124-09`；2026-11-25 增量补 `message(_:)` 只读读面，见文末）
 - 单元：组件（场景，`Sendable` 值类型）
 - 层 / 类型：L2；日程浏览与 iCalendar 导出
 - 业务价值：把「按可见范围取会议 → 过滤取消/过期 → 展开重复 → 有界截断 → 生成 iCalendar」收在一处；没有它，网格视图会自己查库、自己展开重复、自己拼 `.ics`，规则散落且无法纯函数化测试。
@@ -22,7 +22,7 @@ component: CMP-SCN-CALENDAR
   - 全部方法**零网络**；读失败直接抛 `MailStoreError`，不包装、不重试。
 - 拥有的数据：无持久数据；只读 `meetings` 与 `messages`（主题 join）。
 - 变化轴：日历视图形态（月/周 → 日/列表）、是否扩展到 Exchange 日历集合、是否支持接受/拒绝（后续 B 方案）。
-- 公开契约：`CMP-SCN-CALENDAR#events`、`#meeting`、`#ics`
+- 公开契约：`CMP-SCN-CALENDAR#events`、`#meeting`、`#ics`、`#message`（2026-11-25 新增，REQ-0040）
 - 入口：`Sources/Scenes/CalendarScene.swift#CalendarScene`
 - 依赖：`MailStore`、`MailDomain`（`MeetingInvite`/`MeetingOccurrence`/`RecurrenceRule`）。扇出 2（与 `ReadScene` 的 3 不同，不新增端口）。
 - 冷热：热（打开日历页、翻月/翻周均为本地读，主线程外一次查询）。
@@ -91,3 +91,22 @@ component: CMP-SCN-CALENDAR
   查询多取一行以识别截断，单系列上限 200，范围上限 400 天。
 - 测试：`Tests/ScenesTests/CalendarSceneTests.swift` 5 例（范围/排序、重复展开与截断、取消隐藏、ICS 与缺失、非法范围）。
 - 零网络：不 import `EASClient`/`SyncEngine`；`Scenes` 总量未新增 target。
+
+## 设计增量：按引用取来源邮件（REQ-0040，2026-11-25，P3，已实现）
+
+- 来源：`REQ-0040` / `SCN-0024` 增量。日历页左列要显示邀请邮件的主题与发件人，`MeetingOccurrence` 只有 folder + serverID 与会议字段，读不到信封；本增量给场景补一条按引用取邮件的只读入口。消费方是 `CMP-PRES` 的 `CalendarViewModel`（去重后逐条取信封），视图见 `CMP-APP` 同日增量。
+- 新增 public 方法：
+
+  ```swift
+  public func message(_ ref: MessageRef) throws -> Message?
+  ```
+
+  - 只读：转调 `MailStore.message(account:folder:serverID:)`，不改会议行/邮件行、不推进游标、不触发同步、不写已读。
+  - 缺失返回 nil：邮件已删除、被移走或从未落库时不抛业务错误，调用方照常保留该行（回退用会议元数据）。
+  - 存储错误原样上抛（`MailStoreError`），不在场景内包装或重试；`CMP-PRES` 用 `try?` 收口为 nil。
+  - 复合键语义：folder + serverID 一起定位，同 serverID 不同 folder 不串。
+- 消费方与次数：`CalendarViewModel.reload` 只在去重后的来源邮件上逐条调用一次，刷新一次最多 N 次本地索引读（N = 去重后的邀请邮件数）；不遍历邮件表、不做 join、不缓存。
+- 不改契约与写路径：`events`/`meeting`/`ics` 的签名与语义不变；不新增端口、不改 schema/迁移、不新增字段；不调 `SyncEngine`/`MailWriteGateway`，日历页仍零网络、零写；`CalendarScene` 仍不 import `EASClient`/`SyncEngine`（架构门 1 覆盖）。
+- 尺寸：`CalendarScene.swift` 98 行（≤260）；不新增文件/target/依赖。
+- 验证：`CalendarSceneTests` 既有用例不回归；信封命中与缺失回退由 `T-SCN-0024-10`（经 `CalendarViewModel`）间接覆盖，断言原文以场景卡为准；全量 466 tests / 77 suites、架构 4/4。
+- 定级：**P3**（场景 additive 只读方法；无 schema/写路径/同步契约变化）。

@@ -50,7 +50,12 @@ struct CalendarGridScenarioTests {
             account: account,
             folder: "13",
             added: invites.enumerated().map { index, invite in
-                Message(serverID: "m-\(key)-\(index)", subject: invite.subject)
+                Message(
+                    serverID: "m-\(key)-\(index)",
+                    subject: invite.subject,
+                    sender: "王强 <wangqy@hundsun.com>",
+                    receivedRaw: "2026-11-20T09:00:00.000Z"
+                )
             },
             changed: [],
             removedServerIDs: [],
@@ -103,6 +108,29 @@ struct CalendarGridScenarioTests {
         #expect(nov23?.chips.count == 1)
         #expect(nov20?.chips.isEmpty == true)
         #expect(model.month.daySymbols == ["一", "二", "三", "四", "五", "六", "日"])
+    }
+
+    @MainActor
+    @Test("T-SCN-0024-10: the invitation list keeps one row per source mail")
+    func invitationList() async throws {
+        let (model, store, account) = try make()
+        try seed(store, account, [
+            invite("a", "2026-11-19T01:30:00Z", "2026-11-19T04:00:00Z"),
+            invite(
+                "weekly",
+                "2026-11-02T08:00:00Z",
+                "2026-11-02T09:00:00Z",
+                rule: RecurrenceRule(frequency: .weekly, weekdays: [.monday], firstDayOfWeek: .monday)
+            ),
+        ])
+        await model.activate()
+
+        #expect(model.invitationMails.count == 2, "the recurring series contributes one source mail")
+        #expect(Set(model.invitationMails.map(\.title)) == ["会议 a", "会议 weekly"])
+        let weekly = model.invitationMails.first { $0.title == "会议 weekly" }
+        #expect(weekly?.occurrence.start == date("2026-11-02T08:00:00Z"))
+        #expect(model.invitationMails.allSatisfy { $0.occurrence.folderID == "13" })
+        #expect(model.invitationMails.allSatisfy { $0.senderText.contains("王强") })
     }
 
     @MainActor
