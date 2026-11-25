@@ -593,3 +593,21 @@ component: CMP-APP
 - 2026-11-25 反馈修正：列表按 `occurrence.start` 倒序；`CalendarView.open` 先查 `model.hasSourceMail(for:)`，无来源时只选中并弹「来源邮件不在本机」，不再打开空阅读窗；`CalendarView` 的导出/来源缺失统一用一个 `CalendarAlert` 枚举，避免两个 `.alert` 互斥。
 - 定级：**P3**（同组件内视图拆分与共用 split；无 schema/依赖/公开契约语义变化；新增文件均为 `uumail` internal）。
 - 不做：左列搜索/筛选、收信时间列、未读/已读语义、日历事件的建/改/拖拽、接受/拒绝邀请、日视图/年视图。
+
+## 设计增量：撰写页顶栏（REQ-0041，2026-11-25，P3，已实现）
+
+- 来源：`REQ-0041` / `SCN-0016` 增量。口径 2026-11-25 **人工确认**：撰写页操作按钮移到顶部；按 macOS 邮件截图细化为「左侧红色关闭、标题居中、右上唯一大蓝发送」；关闭时有改动询问存草稿，默认「继续编辑」。本增量**替换** REQ-0021 增量里「标题 + 右上 `xmark`」「底部「取消 / 状态 / 存草稿 / 发送」」两处口径；只动 `ComposeView.swift`。
+- `ComposeView`（174 → 186 行）：
+  - 顶栏 `header` 改为 `ZStack`：`HStack` 里左侧 `closeControl`、`Spacer()`、右侧「发送」；`Text(title)` 叠在上层水平居中。`closeControl` 是 13pt 红色圆 + 白色 `xmark`（`.buttonStyle(.plain)`、`.focusable(false)`、`.keyboardShortcut(.cancelAction)`、`.help("关闭（Esc）")`、无障碍标签「关闭」）。
+  - 「发送」是唯一工具栏动作：`composeButton("发送")` + `.buttonStyle(.borderedProminent)` + `.controlSize(.large)` + `.keyboardShortcut(.defaultAction)` + `.disabled(!viewModel.canSend)`；`send()` 先 `capture` → `setEditorHTML` → `send()`，成功 `onClose`。
+  - 底部 `footer` 删除；`xmark` 删除。`statusText` 非空时由 `statusRow` 在顶栏下单独一行显示（caption + 图标 + 语义色，编辑态零高度），不挤占顶栏。
+  - 关闭：`requestClose()` 先 `capture` + `setEditorHTML`；`hasEdits == false` 直接 `onClose`；有改动 `confirmationDialog("存储草稿？")`：`存草稿`（`saveDraft()` 成功才 `onClose`，失败留在 sheet）、`放弃`（destructive，直接关）、`继续编辑`（`role: .cancel`，默认 Esc）。
+  - 字号基线不变：标题 `.scaledFont(.headline)`；「发送」按钮沿用「100% 字符串标题、>100% 显式缩放 label」分支；关闭点是系统控件，不随字号缩放。
+  - 不改 sheet 宽 `max(preferredWidth, 480)` / 高 `460…820`、`ComposeRecipientForm`/`ComposeFormatBar`/`ComposeEditor`、`interactiveDismissDisabled`、发送只入队与草稿语义。
+- 验证：
+  - L1：全量 **466 tests / 77 suites**；`ComposeViewModelTests` 的 `canSend`/`hasEdits`/`send`/`sendFailureKeepsText`/`saveDraft` 覆盖数据语义，本增量未改 `Presentation`。
+  - L2：`task-spaces/20261125-220659-compose-toolbar/probe/`——生产 `ComposeView.swift` + 依赖托管 `NSWindow`，`screencapture -l` 取 900×760、480×760、225%×480 三张（`compose-900.png`/`compose-480.png`/`compose-225-480.png`）：红点在左、标题居中、右上一个蓝「发送」、无底栏、无第二个关闭入口；225% 下标题与按钮不重叠。
+  - 架构 4/4；`make-app.sh` 在收口执行。
+- 人工项（发布前）：真实 sheet 内点击红点与弹窗三按钮（存草稿/放弃/继续编辑）、浅色主题像素验收、VoiceOver。
+- 定级：**P3**（单文件 UI 布局与关闭确认；无 public 契约、schema、依赖、target、热路径变化）。
+- 不做：独立撰写窗口与真红绿灯（需改窗口载体，另立增量）、Cmd+S 存草稿、发送失败横幅、发送按钮图标化。
