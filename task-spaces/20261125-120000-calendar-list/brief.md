@@ -31,6 +31,8 @@ updated: 2026-11-25
 | `T-1125-03` | change | CMP-APP | 完成 | `MailboxView` 共用 split、`CalendarMailListView`、`CalendarReader`、`CalendarView` 共享选中 |
 | `T-1125-04` | verify | — | 完成 | 466 tests / 77 suites、架构 4/4、真实窗口截图、`make-app.sh` |
 | `T-1125-05` | doc | — | 完成 | REQ-0040、SCN-0024 增量、组件规格、roadmap、README |
+| `T-1125-06` | change | CMP-PRES / CMP-APP | 完成 | 倒序、只列有来源邮件的邀请、缺失计数与块提示、列宽按分支 |
+| `T-1125-07` | verify | — | 完成 | 466 tests / 77 suites、架构 4/4、`make-app.sh`、真实窗口截图 |
 
 ## 验收标准
 
