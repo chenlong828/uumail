@@ -13,14 +13,21 @@ struct PerformanceTests {
             MailFolder(serverID: "13", parentID: "0", displayName: "收件箱", type: 2),
         ], syncKey: "1")
 
+        // Relative dates keep the 30-day window assertion stable as the wall clock moves;
+        // fixed October dates used to fall out of the window after 2026-11-26.
+        let formatter = ISO8601DateFormatter()
+        let seedNow = Date()
         let insertStart = Date()
         for chunk in 0..<50 {
-            let messages = (0..<100).map { index in
-                MailMessage(
+            let messages = (0..<100).map { index -> MailMessage in
+                let raw = formatter.string(
+                    from: seedNow.addingTimeInterval(-Double(index % 28) * 86_400)
+                )
+                return MailMessage(
                     serverID: "\(chunk)-\(index)",
                     subject: "周报 \(chunk)-\(index)",
                     sender: "sender\(index)@corp.test",
-                    receivedRaw: String(format: "2026-10-%02dT05:11:18.000Z", (index % 28) + 1)
+                    receivedRaw: raw
                 )
             }
             try store.applySyncBatch(
