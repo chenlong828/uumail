@@ -2,7 +2,7 @@
 layer: design
 module: mail
 status: verified
-updated: 2026-11-24
+updated: 2026-11-26
 flow: mail/receive
 scenario: SCN-0028
 ---
@@ -41,6 +41,7 @@ scenario: SCN-0028
 - `SCN-0027`：列表 `min 320 / ideal 480` 的宽度口径沿用；两栏宽度由本场景的 `T-SCN-0028-02` 承接，SCN-0027 已按两栏重验。
 - `SCN-0003`：收件箱同步窗口、`sync_key` 与通知规则不变；发件箱同步使用独立入口与独立 key，不改收件箱。
 - 列表 30 天窗口、搜索、工具栏按钮集合与既有动作、窗口最小尺寸（900×560）不变。
+- 顶栏分组（2026-11-26 起）：三段切换在左、七个邮件动作在右并按 `REQ-0042` 贴住搜索框；动作集合/禁用规则/刷新分派不变。
 - 不改 schema、不新增 target 与依赖。
 
 ## 测试
@@ -51,10 +52,11 @@ scenario: SCN-0028
 | `T-SCN-0028-02` | 正 | 1440 与 900 窗口 → 列表均 480，阅读区分别 952 / 412；列表未低于 320、无 0/负宽（L2 `task-spaces/20261125-000000-sent-nav/probe/two-column.txt`，探针源 `TwoColumnProbe.swift`，与生产 `min 320 / ideal 480` 一致） |
 | `T-SCN-0028-03` | 正 | 切「发件箱」→ 选中 type 5 的 folder 18、列表出现已发送副本、phase idle；切「日历」→ 日历占满内容区且顶部三段仍在；切回收件箱/发件箱后两栏恢复（L1 `MailboxViewModelTests` 的 `selectSent` 例 + L2 `ToolbarProbe` 的根视图 toolbar 机制；真实 App 点击切到日历与发件箱列为发布前人工项） |
 | `T-SCN-0028-04` | 反 | 无 Sent 文件夹 → `syncSentOnce` 返回 nil、发件箱空态「没有发件邮件」且不报错；发件箱同步中快速切回收件箱 → 视图按当前 section 留在收件箱，不把选中抢回发件箱（L1 `SyncEngineTests.noSentItems` + 视图 section 守卫走查；真实快速点击的竞态列为发布前人工项） |
+| `T-SCN-0028-05` | 正 | 顶栏分组：1512pt 窗口下依次为「三段切换（左）→ 标题 → 七个动作（右，紧贴搜索框）」，七个动作全部可见、无「»」溢出；每个动作悬停有中文 tooltip；900pt 最小宽允许溢出但动作仍可达；状态变化（选中变化导致禁用态切换）后分组与 tooltip 保持。 | L2 探针 `task-spaces/20261126-210000-mail-toolbar/probe/`：`final-1512.png`/`final-900.png`/`final-layout.txt`（帧坐标 898..1169 紧贴搜索、tooltip 文本逐项列出）、`stability.txt`（0.3s 状态翻转 6s，items/flex/首动作 x 稳定） |
 
 ## 状态
 
-`verified`（2026-11-24 实现并验证）。
+`verified`（2026-11-24 实现并验证；2026-11-26 `REQ-0042` 增量重验：动作组迁到窗口级 toolbar 并贴右、tooltip 安装器补全，`T-SCN-0028-05` 通过；真实窗口点击/悬停仍为发布前人工项）。
 
 - 实现：`MailboxView` 去掉侧栏，根视图 toolbar 的 `.navigation` 位放三段 `Picker(.segmented)`，默认收件箱；邮件页改两栏 `NavigationSplitView`，列表 `min 320 / ideal 480`、阅读区取剩余；日历页占满内容区，顶部切换保留；工具栏刷新按 section 分派；`MailboxView` 293 行（≤300）。
 - 证据（L2）：`task-spaces/20261125-000000-sent-nav/probe/toolbar-nav.png`——顶部 Picker 在 leading、交通灯之后，三段可见，无文件夹栏；`task-spaces/20261125-000000-sent-nav/probe/two-column.txt`——1440 list=480 reading=952，900 list=480 reading=412；`HSplitView` 在 1440 把 list 拉到 760、不遵守 `idealWidth`，因此否决（`task-spaces/20261125-000000-sent-nav/probe/HSplitProbe.swift`）。

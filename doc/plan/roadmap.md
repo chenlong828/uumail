@@ -19,6 +19,8 @@ updated: 2026-11-25
 
 2026-11-25 追加 W-M3-21（撰写页顶栏）：按 macOS「邮件」的撰写窗口语言，把「取消 / 存草稿 / 发送」从底部左右两段改为顶栏——左侧红色关闭、标题居中、右上唯一大蓝「发送」；关闭时有改动询问「存储草稿？」（存草稿/放弃/继续编辑，默认继续编辑）。`REQ-0041` `delivered`、`SCN-0016` 增量 `verified`；只改 `Sources/uumail/ComposeView.swift`（174→186 行），`Presentation`/`Scenes`/schema/依赖/target 零改动；466 tests / 77 suites、架构 4/4；L2 探针截图 `task-spaces/20261125-220659-compose-toolbar/probe/`（900×760、480×760、225%×480）；真实点击红点/弹窗三按钮、浅色主题与 VoiceOver 为发布前人工项；`make-app.sh` 成功（release）。
 
+2026-11-26 追加 W-M3-22（主窗口顶栏分组）：用户反馈「收件箱/发件箱/日历应在左上，回复等动作在右上；空间充足时最右侧图标仍折叠；图标没有指示标签」。修复：动作组从列表列工具栏迁到窗口级 `.toolbar`，`ToolbarTooltipInstaller` 插入一个 `.flexibleSpace` 并移除搜索框前的 `.flexibleSpace`，把动作贴到右侧搜索框前（1512pt 下 x≈898..1169，七项全可见）；顺带按 label 补 `NSToolbarItem.toolTip`。另修正 `PerformanceTests` 的 30 天窗口夹具为相对时间（原固定 10 月日期在 2026-11-26 后落入窗口外，测试时间炸弹）。`REQ-0042` `delivered`、`SCN-0028` 增量 `verified`（`T-SCN-0028-05`）；只改 `Sources/uumail/{MailboxView,ToolbarTooltips}.swift` 与测试夹具；466 tests / 77 suites、架构 4/4；L2 探针 `task-spaces/20261126-210000-mail-toolbar/probe/`（1512/900 截图、帧与 tooltip、状态翻转稳定性）；真实悬停/点击与浅色主题为发布前人工项；`make-app.sh` 成功（release）。
+
 工序目录名沿用历史 `works/YYYY-MM-DD-<短名>/`；2026-11-14 起过程记录放工作区 `task-spaces/<run>/`，**任务表作为项目排期的一部分落在本文件**，不再只存在于某次运行的 brief 里。
 
 ## 里程碑
@@ -62,6 +64,7 @@ updated: 2026-11-25
 | W-M3-19 顶部三段切换与发件箱 Sent Items | M3 | W-M3-18；REQ-0037/REQ-0038/REQ-0039 `delivered`；SCN-0028/SCN-0029/SCN-0030 `verified` | CMP-APP、CMP-PRES、CMP-SYNC、CMP-DOMAIN | 已完成（2026-11-24）：去掉文件夹侧栏，窗口 toolbar `.navigation` 位放「收件箱/发件箱/日历」segmented Picker，邮件页两栏 `NavigationSplitView`、日历占满内容区；`Folder.isSentItems`、`syncSentOnce`/`SyncScene.refreshSent`、`selectSent`/`refreshSent` 落地；465 tests / 77 suites、架构 4/4、`make-app.sh` 成功（release）；REQ-0039 补账号邮箱地址与已存账号迁移（2026-11-25，465 tests / 77 suites）；真实发信 2026-11-25：错误 From 502 → 修正地址后成功，`uumailctl sync-sent` 从服务器 Sent Items 拉到 12 封（含测试信）；真实点击/分隔条/深色视觉待人工 |
 | W-M3-20 日历页两栏与邀请邮件列表 | M3 | W-M3-19；REQ-0040 `delivered`；SCN-0024 增量 `verified` | CMP-APP、CMP-PRES、CMP-SCN-CALENDAR | 已完成（2026-11-25）：日历页与邮件页共用同一个 `NavigationSplitView`，左列 `CalendarMailListView` 按 `(folderID, serverID)` 去重展示邀请邮件、右列 `CalendarView`；`CalendarReader` 统一列表/日历块的浮窗打开入口，`selectedOccurrence` 为唯一选中；`CalendarMailItem`/`invitationMails`、`CalendarScene.message(ref)` 落地；466 tests / 77 suites、架构 4/4；L2 截图 `task-spaces/20261125-120000-calendar-list/calendar-list.png`；`make-app.sh` 成功（release，2026-11-25 13:00 CST）；真实点击/双击/分隔条/深色视觉待人工 |
 | W-M3-21 撰写页顶栏：发送置顶与关闭存草稿 | M3 | W-M3-20；REQ-0041 `delivered`；SCN-0016 增量 `verified` | CMP-APP（`ComposeView.swift`） | 已完成（2026-11-25）：顶栏左侧红色关闭、标题居中、右上唯一 `borderedProminent` 大蓝「发送」；底栏与旧 `xmark` 删除；状态文本改顶栏下独立一行；关闭时 `hasEdits` 弹「存储草稿？/存草稿/放弃/继续编辑」；466 tests / 77 suites、架构 4/4；L2 探针 900/480/225% 截图；`make-app.sh` 成功（release）；真实点击与像素验收待人工。任务表见 §W-M3-21 |
+| W-M3-22 主窗口顶栏分组（动作贴右 + tooltip） | M3 | W-M3-21；REQ-0042 `delivered`；SCN-0028 增量 `verified` | CMP-APP（`MailboxView.swift`、`ToolbarTooltips.swift`） | 已完成（2026-11-26）：动作组迁到窗口级 `.toolbar`，安装器插入 `.flexibleSpace` 并移除搜索前多余 `.flexibleSpace`，1512pt 下贴住搜索框（x≈898..1169）、七项全可见；按 label 补 `NSToolbarItem.toolTip`；900pt 最小宽允许溢出；466 tests / 77 suites、架构 4/4；L2 探针 1512/900 截图与稳定性；`make-app.sh` 成功（release）；真实悬停/点击与浅色主题待人工。任务表见 §W-M3-22 |
 | W-REFACTOR-03 预算拆分（R45/R70/R71/R72） | —（结构） | W-M3-17；D1 拍板「不上调预算，先拆分」 | CMP-HTML（新 target `HTMLSupport`）、CMP-MEETING-STORE、CMP-WBXML、CMP-PRES、CMP-APP | 已完成（2026-11-24）：`Scenes` 1306→923（新组件 `CMP-HTML` 391）；`CMP-STORE` 1225→952（新组件 `CMP-MEETING-STORE` 287）；`CMP-EAS` 1513→1150（新组件 `CMP-WBXML` 363）；`MailboxViewModel` 424→366、`CalendarViewModel` 424→172（+`CalendarProjection` 254）；`CMP-APP` 各文件 ≤300；`MailDomain` 1503/800 目标未处理，登记 R77；460 tests / 77 suites、架构 4/4、`make-app.sh` 成功 |
 | W-REFACTOR-04 会议契约与同步契约解耦（R77） | —（结构） | W-REFACTOR-03；R77；用户拍板「彻底重构（`Message` 不再携会议）」 | CMP-MEETING-DOMAIN（新 target `MeetingDomain`）、CMP-SYNC-CONTRACT（新 target `SyncContract`）、CMP-DOMAIN、CMP-STORE、CMP-EASADAPTER、CMP-SCN-READ、CMP-PRES | 已完成（2026-11-24）：`MailDomain` 1503→**756/800**；`MeetingDomain` 682/800；`SyncContract` 87/400；`Message` 去 `meeting`、会议随 `MessageDelta.meetings` 同事务写入；读侧 `ReadScene.meeting(for:)`；460 tests / 77 suites、架构 4/4、`make-app.sh` 成功 |
 | W-REFACTOR-02 账号与文件夹存储拆分 | —（结构） | 计划；`sync_state` 事务边界需先设计 | CMP-STORE（拆分后新组件另定） | 未立项：把 accounts/folders/sync_state 从 `MailStore` 拆出前，先设计「批次与 key 同事务」「`applyFolderSnapshot` 文件夹+key 同事务」「`discardAccount` 空账号检查」三条不变量的边界；不在 W-M3-16 夹带 |
@@ -665,6 +668,20 @@ P1 确认记录已归档为 `uumail/doc/history/decisions/2026-11-14-mail-write-
 | `T-1125-12` | `release` | — | `T-1125-11` | 已完成（2026-11-25） | `make-app.sh`、`dist/build-info.txt` |
 
 发布前人工项：真实 sheet 内点击红色关闭与弹窗三按钮、浅色主题像素、VoiceOver；不做独立撰写窗口（真红绿灯需另立增量）。
+
+## W-M3-22 任务表（主窗口顶栏分组：动作贴右与 tooltip）
+
+来源：`REQ-0042`、`SCN-0028` 增量（`T-SCN-0028-05`）、`CMP-APP` 设计增量。定级 **P3**；口径 2026-11-26 人工确认（三段左上、动作右上、不折叠、悬停提示）。
+
+| 任务 | 类型 | 组件 | 依赖 | 状态 | 出口 |
+|---|---|---|---|---|---|
+| `T-1126-01` | `design` | CMP-APP | — | 已完成（2026-11-26） | 现状归因与方案探针（`task-spaces/20261126-210000-mail-toolbar/probe/`） |
+| `T-1126-02` | `change` | CMP-APP | `T-1126-01` | 已完成（2026-11-26） | `MailboxView` 动作组迁到窗口级 toolbar；`ToolbarTooltips` 增加贴右与 tooltip 安装 |
+| `T-1126-03` | `verify` | — | `T-1126-02` | 已完成（2026-11-26） | 466 tests / 77 suites、架构 4/4、L2 1512/900 截图 + 稳定性；修正 30 天窗口测试夹具的时间炸弹 |
+| `T-1126-04` | `doc` | — | `T-1126-03` | 已完成（2026-11-26） | `REQ-0042`、`SCN-0028` 增量、`CMP-APP` 规格、roadmap、`doc/README.md` |
+| `T-1126-05` | `release` | — | `T-1126-04` | 已完成（2026-11-26） | `make-app.sh`、`dist/build-info.txt` |
+
+发布前人工项：真实窗口悬停看 tooltip、点击七个动作、浅色主题像素验收；macOS 14/15 的贴右程度未验证。
 
 ## 批次纪律
 

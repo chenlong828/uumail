@@ -611,3 +611,20 @@ component: CMP-APP
 - 人工项（发布前）：真实 sheet 内点击红点与弹窗三按钮（存草稿/放弃/继续编辑）、浅色主题像素验收、VoiceOver。
 - 定级：**P3**（单文件 UI 布局与关闭确认；无 public 契约、schema、依赖、target、热路径变化）。
 - 不做：独立撰写窗口与真红绿灯（需改窗口载体，另立增量）、Cmd+S 存草稿、发送失败横幅、发送按钮图标化。
+
+## 设计增量：主窗口顶栏分组与动作贴右（REQ-0042，2026-11-26，P3，已实现）
+
+- 来源：`REQ-0042` / `SCN-0028` 增量。口径 2026-11-26 **人工确认**（用户截图，1512pt 主窗口）：三段切换在左上、七个邮件动作在右上；「空间很充足但最右侧图标还折叠了」按缺陷处理；「图标没有指示标签」按悬停提示（tooltip）处理。
+- 归因（L2 实测，`task-spaces/20261126-210000-mail-toolbar/probe/`）：动作工具栏挂在 `mailListColumn` 上时，macOS 26 的 `NavigationSplitView` 把它排进 leading 组——动作落在 x≈591..862（1512pt 窗口），系统在搜索框前留一个 `.flexibleSpace`，动作组与右缘之间空出一大片；leading 组在窄窗口先触发溢出（900pt 时 11/13 可见）。把同一组动作迁到窗口级 `.toolbar` 后位置不变（仍 x≈591），说明是 split 的布局规则而非挂载视图；插入一个 `.flexibleSpace` 并移除搜索框前的 `.flexibleSpace` 后动作到 x≈898..1169，贴住搜索框。
+- `MailboxView`（298 行）：
+  - 删除 `mailListColumn` 上的 `.toolbar { MailboxToolbar(...) }` 与 `ToolbarTooltipInstaller` 背景；根视图 `.toolbar` 由「`ToolbarItem(.navigation)` 三段 Picker + `mailboxToolbar`」组成；`mailboxToolbar` 为 `@ToolbarContentBuilder` 计算属性，`State`/`Actions` 构建与原实现一致（动作、禁用条件、刷新按 section 分派均不变）。
+  - `ToolbarTooltipInstaller` 移到根视图 `.background`，与工具栏同生命周期。
+- `ToolbarTooltips.swift`（92 行）：
+  - 抽出 `installTooltips(in:)`（原逻辑：`toolTip` 为空时按 label 映射补全）与 `pinActionGroupToTrailingEdge(in:)`。
+  - `pinActionGroupToTrailingEdge`：以 `actionLabels` 找首个动作项；若其前一项不是 `.flexibleSpace` 则 `insertItem(withItemIdentifier: .flexibleSpace, at:)`（幂等，重复安装不重复插入）；再找 Search 项（identifier 含 `search` 或 label 为 `Search`），移除其与最后一个动作之间的 `.flexibleSpace`；找不到 Search（macOS 14/15 或无搜索）时只插入、不删除。
+  - 稳定性：0.3s 状态翻转连续 6s，`items=13`、`flex=2`、首动作 x=898 不变（`stability.txt`）。
+- 量测：1512pt 下动作组 x=898..1169、搜索框在右缘；七个动作全部可见；900pt（窗口下限）时 5 个动作可见 + 「»」溢出，溢出项可触发。
+- 不改：动作集合/禁用规则/刷新分派、`.searchable` 绑定与 ⌘F、三段切换与日历页、浮窗工具栏、`Presentation`/`Scenes`/schema/依赖/target。
+- 风险：依赖 NSToolbar 项顺序与 `MailboxToolbar` 的 label；新增/改名动作必须同步 `ToolbarTooltipInstaller.actionLabels` 与 `tooltips` 映射（否则该动作不参与贴右/无 tooltip）。macOS 14/15 上贴右程度取决于系统对 flexibleSpace 的处理，未做真机验证。
+- 定级：**P3**（两个 `uumail` internal 文件内的视图与工具安装逻辑；无 public 契约、schema、依赖、target、热路径变化）。
+- 不做：把图标改成常驻文字标签、动作折叠进自定义「更多」菜单、`ReaderWindowView` 工具栏改造。
