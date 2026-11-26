@@ -1,0 +1,29 @@
+WIN number=479524 width=1512
+LAYOUT 1512 visible=13/13
+LAYOUT   1512 <NSToolbarFlexibleSpa>: no view
+LAYOUT   1512 Hide Sidebar x=532..572 tip='Hide Sidebar'
+LAYOUT   1512 <com.apple.SwiftUI.sp>: no view
+LAYOUT   1512 <C8818A0F-FE43-4609-8> x=96..356 tip=''
+LAYOUT   1512 <NSToolbarFlexibleSpa>: no view
+LAYOUT   1512 新建 x=898..934 tip='新建邮件'
+LAYOUT   1512 回复 x=934..970 tip='回复发件人'
+LAYOUT   1512 全部回复 x=972..1014 tip='回复全部收件人'
+LAYOUT   1512 转发 x=1014..1052 tip='转发邮件'
+LAYOUT   1512 加载远程图片 x=1053..1092 tip='仅对当前邮件放行远程图片'
+LAYOUT   1512 标记为已读 x=1094..1134 tip='将当前邮件标记为已读'
+LAYOUT   1512 刷新 x=1133..1169 tip='刷新收件箱'
+LAYOUT   1512 Search: no view
+LAYOUT 900 visible=11/13
+LAYOUT   900 <NSToolbarFlexibleSpa>: no view
+LAYOUT   900 Hide Sidebar x=532..572 tip='Hide Sidebar'
+LAYOUT   900 <com.apple.SwiftUI.sp>: no view
+LAYOUT   900 <C8818A0F-FE43-4609-8> x=96..356 tip=''
+LAYOUT   900 <NSToolbarFlexibleSpa>: no view
+LAYOUT   900 新建 x=599..636 tip='新建邮件'
+LAYOUT   900 回复 x=634..672 tip='回复发件人'
+LAYOUT   900 全部回复 x=673..714 tip='回复全部收件人'
+LAYOUT   900 转发 x=716..752 tip='转发邮件'
+LAYOUT   900 加载远程图片 x=752..792 tip='仅对当前邮件放行远程图片'
+LAYOUT   900 标记为已读 x=1094..1134 tip='将当前邮件标记为已读'
+LAYOUT   900 刷新 x=1133..1169 tip='刷新收件箱'
+LAYOUT   900 Search: no view

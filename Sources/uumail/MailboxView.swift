@@ -42,7 +42,9 @@ struct MailboxView: View {
                 .labelsHidden()
                 .frame(width: 260)
             }
+            mailboxToolbar
         }
+        .background(ToolbarTooltipInstaller().frame(width: 0, height: 0))
         .onChange(of: section) { _, value in switchSection(to: value) }
         // A SwiftUI window's scenePhase stays `.active` when the app is deactivated on
         // macOS (measured 2026-11-14), so foreground state comes from NSApplication:
@@ -115,35 +117,6 @@ struct MailboxView: View {
         .onChange(of: viewModel.selection.searchQuery) { _, query in
             if searchText != query { searchText = query }
         }
-        .background(ToolbarTooltipInstaller().frame(width: 0, height: 0))
-        .toolbar {
-            MailboxToolbar(
-                state: MailboxToolbar.State(
-                    hasSelection: viewModel.selectedMessage != nil,
-                    allowsRemoteContent: viewModel.allowsRemoteContent,
-                    canAllowRemoteContent: viewModel.canAllowRemoteContent,
-                    canMarkSelectedRead: viewModel.canMarkSelectedRead,
-                    isSyncing: viewModel.sync.phase == .syncing
-                ),
-                actions: MailboxToolbar.Actions(
-                    newMessage: { compose = viewModel.composeNew() },
-                    reply: { compose = viewModel.composeReply() },
-                    replyAll: { compose = viewModel.composeReplyAll() },
-                    forward: { compose = viewModel.composeForward() },
-                    setAllowRemoteContent: { viewModel.setAllowsRemoteContent($0) },
-                    markSelectedRead: { viewModel.markSelectedRead() },
-                    refresh: {
-                        Task {
-                            if section == .sent {
-                                await viewModel.refreshSent()
-                            } else {
-                                await viewModel.refresh()
-                            }
-                        }
-                    }
-                )
-            )
-        }
         .sheet(item: $compose) { draft in
             ComposeView(
                 viewModel: draft,
@@ -186,6 +159,35 @@ struct MailboxView: View {
               let text = calendarModel.icsText(uid: uid)
         else { return }
         _ = CalendarExport.present(text, uid: uid)
+    }
+
+    /// Window-level mail actions (REQ-0042): a column-scoped toolbar renders inside the
+    /// split view's leading group, where the buttons collapse into overflow even when the
+    /// window has room; `ToolbarTooltipInstaller` pins this group to the trailing edge.
+    @ToolbarContentBuilder
+    private var mailboxToolbar: some ToolbarContent {
+        MailboxToolbar(
+            state: MailboxToolbar.State(
+                hasSelection: viewModel.selectedMessage != nil,
+                allowsRemoteContent: viewModel.allowsRemoteContent,
+                canAllowRemoteContent: viewModel.canAllowRemoteContent,
+                canMarkSelectedRead: viewModel.canMarkSelectedRead,
+                isSyncing: viewModel.sync.phase == .syncing),
+            actions: MailboxToolbar.Actions(
+                newMessage: { compose = viewModel.composeNew() },
+                reply: { compose = viewModel.composeReply() },
+                replyAll: { compose = viewModel.composeReplyAll() },
+                forward: { compose = viewModel.composeForward() },
+                setAllowRemoteContent: { viewModel.setAllowsRemoteContent($0) },
+                markSelectedRead: { viewModel.markSelectedRead() },
+                refresh: {
+                    Task {
+                        if section == .sent { await viewModel.refreshSent() }
+                        else { await viewModel.refresh() }
+                    }
+                }
+            )
+        )
     }
 
     private var currentFolderName: String {
