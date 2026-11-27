@@ -45,15 +45,28 @@ extension SyncEngine {
         folder: Folder, into store: any DraftSyncStore, report: inout DraftSyncReport
     ) async throws {
         let key = try store.syncKey(account: account, collection: folder.serverID) ?? "0"
-        var delta = try await gateway.fetchMessages(
-            collectionID: folder.serverID, syncKey: key, window: 50, filterType: filterType
-        )
-        if key == "0" {
-            // SyncKey=0 only answers with a fresh key; the window is fetched with it.
+        var delta: MessageDelta
+        do {
             delta = try await gateway.fetchMessages(
-                collectionID: folder.serverID, syncKey: delta.syncKey,
-                window: 50, filterType: filterType
+                collectionID: folder.serverID, syncKey: key, window: 50, filterType: filterType
             )
+            if key == "0" {
+                // SyncKey=0 only answers with a fresh key; the window is fetched with it.
+                delta = try await gateway.fetchMessages(
+                    collectionID: folder.serverID, syncKey: delta.syncKey,
+                    window: 50, filterType: filterType
+                )
+            }
+        } catch MailError.syncKeyInvalid {
+            // This gateway answers status 3/4 for a window Sync on an EMPTY Drafts
+            // collection (measured 2026-11-27: inbox/sent return normally, drafts fail
+            // until an item exists). Treat it as "no server drafts": take a fresh bootstrap
+            // key for the push step and let the next pass pull once the folder has items.
+            let fresh = try await gateway.fetchMessages(
+                collectionID: folder.serverID, syncKey: "0", window: 1, filterType: 0
+            ).syncKey
+            try store.setSyncKey(account: account, collection: folder.serverID, key: fresh)
+            return
         }
         // A locally deleted/sent draft may still appear as an Add/Change in this window;
         // the tombstone is authoritative until the delete reaches the server, otherwise the

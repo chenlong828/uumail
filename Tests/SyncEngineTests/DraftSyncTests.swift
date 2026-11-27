@@ -10,6 +10,8 @@ final class DraftSyncGatewayStub: MailGateway, @unchecked Sendable {
     var folders: [Folder]
     var delta: MessageDelta
     var bodies: [String: FetchedBody] = [:]
+    /// Models the gateway's status 3/4 on a window Sync over an empty Drafts collection.
+    var emptyWindowIsInvalid = false
 
     init(folders: [Folder], delta: MessageDelta, bodies: [String: FetchedBody] = [:]) {
         self.folders = folders
@@ -29,7 +31,10 @@ final class DraftSyncGatewayStub: MailGateway, @unchecked Sendable {
     func fetchMessages(
         collectionID: String, syncKey: String, window: Int, filterType: Int
     ) async throws -> MessageDelta {
-        delta
+        if emptyWindowIsInvalid, syncKey != "0" {
+            throw MailError.syncKeyInvalid
+        }
+        return delta
     }
 
     func fetchBody(collectionID: String, serverID: String) async throws -> FetchedBody {
@@ -212,6 +217,27 @@ struct DraftSyncTests {
         #expect(write.deleted == ["S9"])
         #expect(try store.outbox.draftTombstones(account: account).isEmpty)
         #expect(try store.outbox.drafts(account: account).isEmpty)
+    }
+
+    @Test("an empty Drafts collection with status 3/4 still uploads local drafts")
+    func emptyCollectionStillPushes() async throws {
+        let (store, account) = try fixture()
+        let gateway = DraftSyncGatewayStub(folders: [], delta: MessageDelta(
+            added: [], changed: [], removedServerIDs: [], syncKey: "K0", moreAvailable: false
+        ))
+        gateway.emptyWindowIsInvalid = true
+        let write = DraftWriteStub()
+        try store.outbox.saveDraft(
+            account: account,
+            draft: MailDraft(to: "a@b.c", cc: nil, subject: "空目录草稿", body: "x", isDraft: true)
+        )
+
+        let report = try await engine(store: store, account: account, gateway: gateway, write: write)
+            .syncDraftsOnce()
+
+        #expect(report?.uploaded == 1)
+        #expect(write.created.count == 1)
+        #expect(try store.outbox.drafts(account: account).first?.serverID == "S-new")
     }
 
     @Test("a tombstoned draft is not resurrected by the pull")

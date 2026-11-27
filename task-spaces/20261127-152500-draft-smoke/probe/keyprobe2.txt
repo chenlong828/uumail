@@ -1,0 +1,9 @@
+P2 start bootstrap=1333301643
+P2 start key=1333301643 FAILED syncKeyInvalid
+P2 addKey=1043495258 serverID=_YPprqSaOkKgdRfWHADCtgAAAAABD_2D6a6kmjpCoHUX1hwAwrYAAk8CLms1
+P2 after-add bootstrap=1610833229
+P2 after-add key=1610833229 OK next=350972512 added=1
+P2 deleteKey=1828824439
+P2 after-delete bootstrap=1818818265
+P2 after-delete-bootstrap key=1818818265 FAILED syncKeyInvalid
+P2 after-delete-writekey key=1828824439 FAILED syncKeyInvalid

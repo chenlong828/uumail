@@ -8,8 +8,11 @@
 #   ./run.sh smoke   # upload -> verify server body -> delete -> verify gone
 #   ./run.sh keys    # diagnose which SyncKey is usable after a draft write
 #
-# Evidence from the 2026-11-27 run: smoke3.txt (PASS) and keyprobe.txt (the write
-# response's SyncKey is rejected; a fresh SyncKey=0 bootstrap is valid).
+# Evidence from the 2026-11-27 run: smoke4.txt (PASS: upload -> server body readable ->
+# local delete -> server copy gone), keyprobe2.txt (the write response's SyncKey is
+# rejected; a post-write bootstrap is required) and emptytest.txt (an EMPTY Drafts folder
+# makes a window Sync return status 3/4; it recovers once an item exists). verify6.txt
+# shows the empty-folder status after cleanup.
 set -e
 cd "$(dirname "$0")"
 ROOT=../../..

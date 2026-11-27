@@ -1,0 +1,3 @@
+CLEANUP bootstrap key=1540195559 added=0
+CLEANUP deleteDraft ok newKey=401846129
+CLEANUP verify: server copy gone (permanent(status: 200, detail: Optional("Fetch status=6")))
