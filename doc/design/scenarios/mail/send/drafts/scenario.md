@@ -64,7 +64,7 @@ scenario: SCN-0031
 | `T-SCN-0031-03` | 正 | 发送消费草稿：`DraftListTests.sendingOpenedDraft`（发送后草稿清空、pending 恰为原行 id）；`OutboxDraftTests.sendDraftQueuesSameRow`（state→queued、`is_draft=0`、正文更新）；`ComposeSceneDraftTests.sendOpenedDraft`（不触网）；L2 截图 `task-spaces/20261127-114500-drafts-tab/probe/embedded-compose.png`（就地编辑器：红点/草稿标题/存草稿/发送/回填表单） |
 | `T-SCN-0031-04` | 反 | 行被删除与空收件人：`OutboxDraftTests.missingDraftIsNotCreated`（missing id 不插行、不报 success）；`ComposeSceneDraftTests.missingDraftFallsBack`（发送回退为新的 queued 行）；`ComposeViewModelTests.sendFailureKeepsText`（空收件人发送失败保留编辑器）；L2 截图 `draft-list.png`（列表行与「选择一封草稿」空态） |
 
-| `T-SCN-0031-05` | 正 | 双向合并：服务器草稿拉取后绑定 `server_id`；本地新草稿上传后绑定；两边都改用原行收服务器版、本地改动复制成新草稿并上传（`conflicts == 1`、两行都在）；删除/发送已绑定草稿落 tombstone，下一轮 `Sync Delete` 后清空。 | `DraftSyncTests.downloadsServerDrafts`/`.uploadsLocalDraft`/`.conflictKeepsBoth`/`.deleteTombstoneIsFlushed`/`.sendingBoundDraftDeletesServerDraft`；`DraftBindingTests.bindingsAndTombstones`；`EASDraftWriteTests.createDraft/updateDraft/deleteDraft`（WBXML Add/Change/Delete 与 ServerId 解析） |
+| `T-SCN-0031-05` | 正 | 双向合并：服务器草稿拉取后绑定 `server_id`；本地新草稿上传后绑定；两边都改用原行收服务器版、本地改动复制成新草稿并上传（`conflicts == 1`、两行都在）；删除/发送已绑定草稿落 tombstone，下一轮 `Sync Delete` 后清空。 | `DraftSyncTests.downloadsServerDrafts`/`.uploadsLocalDraft`/`.conflictKeepsBoth`/`.deleteTombstoneIsFlushed`/`.sendingBoundDraftDeletesServerDraft`；`DraftBindingTests.bindingsAndTombstones`；`EASDraftWriteTests.createDraft/updateDraft/deleteDraft`（WBXML Add/Change/Delete 与 ServerId 解析）；真实网关冒烟 `task-spaces/20261127-152500-draft-smoke/probe/smoke3.txt`（上传→服务器正文可读→本地删除→服务器副本消失，PASS）与 `keyprobe.txt`（写响应 key 被拒、bootstrap key 有效） |
 支撑测试：`OutboxDraftTests` 3 例、`ComposeSceneDraftTests` 3 例、`DraftListTests` 3 例、`DraftSyncTests` 5 例、`DraftBindingTests` 1 例、`EASDraftWriteTests` 3 例；全量 484 tests / 83 suites。
 
 ## 状态
@@ -73,7 +73,7 @@ scenario: SCN-0031
 
 - 实现：`DraftRecord`（MailDomain）、`OutboxStore.drafts/updateDraft/sendDraft`、`ComposeScene.drafts/saveDraft(draftID:)/send(draftID:)`、`ComposeViewModel.mode.draft/draftID`、`MailboxViewModel.drafts/loadDrafts/compose(draft:)`、`MailboxSection.drafts`、`DraftListView`、`MailboxView+Drafts`、`ComposeView.isEmbedded/存草稿⌘S`。
 - 证据（L2）：`task-spaces/20261127-114500-drafts-tab/probe/draft-list.png`（三行草稿：主题/收件人/时间 + 右侧「选择一封草稿」空态）、`embedded-compose.png`（就地编辑器：草稿标题、存草稿、发送、回填收件人/主题/正文）。
-- 增量证据（REQ-0044，L1）：`DraftSyncTests` 5 例（下载绑定、上传绑定、冲突两份、删除 tombstone、发送 tombstone）、`DraftBindingTests`、`EASDraftWriteTests`（Sync Add/Change/Delete 的 WBXML 与 ServerId）；EAS 协议与真实网关的草稿写入/删除未在真机验证。
+- 增量证据（REQ-0044，L1）：`DraftSyncTests` 6 例（下载绑定、上传绑定、冲突两份、删除 tombstone、发送 tombstone）、`DraftBindingTests`、`EASDraftWriteTests`（Sync Add/Change/Delete 的 WBXML 与 ServerId）；真实网关冒烟已 PASS（2026-11-27，临时库，未动用户本地库）：上传草稿 → `fetchBody` 读到服务器正文 → 本地删除（tombstone）→ 下一轮同步 `Sync Delete` → `fetchBody` 失败；证据 `task-spaces/20261127-152500-draft-smoke/probe/smoke3.txt`。同时实测出写响应 SyncKey 不可用（`keyprobe.txt`），已改为写后重新 bootstrap。
 - 未覆盖（发布前人工项）：真实点击 tab/草稿行/存草稿/发送的整窗流程，⌘S 焦点行为，浅色/深色像素，VoiceOver；真实 Exchange 上的草稿 Add/Change/Delete 与多设备冲突合并。
 
 ## 与相邻场景的边界
