@@ -34,6 +34,8 @@ macOS 原生邮件客户端，只走 Exchange ActiveSync（以「一台已登记
 
 2026-11-27 追加并交付（W-M3-23，草稿箱 tab 与就地继续编辑）：顶部切换新增第四段「草稿箱」，左列按更新时间倒序列出本机 `outbox` 中 `state='draft'` 的草稿（主题/收件人/时间，空值显示「无主题」「未填写收件人」），单击在右侧就地打开编辑器继续写；`存草稿`（⌘S）覆盖同一行并留在编辑器（状态行「草稿已保存」、列表刷新），`发送` 把同一行原子转成 `queued`（同一 `ClientId`）并移出草稿箱，离开 tab 或切换草稿前自动保存，保存失败保留编辑器不丢内容。仅本机草稿，不同步服务器 Drafts。`REQ-0043` `delivered`、新建 `SCN-0031` `verified`（`T-SCN-0031-01…04`）；新增 `DraftRecord`、`OutboxStore.drafts/updateDraft/sendDraft`、`ComposeScene.drafts/saveDraft(draftID:)/send(draftID:)`、`ComposeViewModel.mode.draft/draftID`、`DraftListView`/`MailboxView+Drafts`/`MailboxView+Toolbar` 与 `ComposeView.isEmbedded`；不新增 schema/target/依赖；475 tests / 80 suites、架构 4/4；L2 探针 `task-spaces/20261127-114500-drafts-tab/probe/`（草稿列表 + 就地编辑器）；真实点击/⌘S/深浅色/VoiceOver 为发布前人工项。需求索引改为 REQ-0001…0043。
 
+2026-11-27 追加并交付（W-M3-24，草稿与服务器 Drafts 双向合并同步）：草稿箱现在与服务器 Drafts 文件夹对账。协议走 EAS 16.1 的 `Sync` 在 Drafts 文件夹 `Add/Change/Delete`（MS-ASEMAIL §4.4）；schema v13 给 `outbox` 加 `server_id`/`draft_hash` 并新增 `draft_tombstones`。同步顺序「先拉后推」：服务器新增/修改按内容指纹合并，两边都改过时**两份都保留**（原行收服务器版，本地改动复制成新草稿并同轮上传）；服务器删除而本地改过则解绑保留；未绑定本地草稿上传并绑定；删除/发送已绑定草稿在同一事务落 tombstone，离线后补删。单飞在 `SyncScene.syncDrafts()`，触发点为进入草稿箱/存草稿/删除/发送。`REQ-0044` `delivered`、`SCN-0031` 增量 `verified`（`T-SCN-0031-05`）；484 tests / 83 suites、架构 4/4；真实 Exchange 上的草稿写/删与多设备冲突合并仍需真机验证（未执行，未向真实邮箱写入）。需求索引改为 REQ-0001…0044。
+
 ## 阅读顺序
 
 1. [architecture.md](design/architecture.md) — 现行分层、target、九条核心契约、冷热路径、组合根规则、D1–D10 决策与实施阶段。先读这一篇。
@@ -41,7 +43,7 @@ macOS 原生邮件客户端，只走 Exchange ActiveSync（以「一台已登记
 3. 组件规格（`design/components/`）：`CMP-DOMAIN`（值类型/端口）、`CMP-STORE`（数据）、`CMP-SYNC`、`CMP-OUT`、`CMP-EASADAPTER`、`CMP-SCN-{ACCOUNT,SYNC,READ,COMPOSE}`、`CMP-PRES`、`CMP-ROOT`、`CMP-CLI`、`CMP-APP`。
 4. [design/scenarios/](design/scenarios/) — 业务功能树 `mail/{access,receive,read,send}/<场景>` 与 `settings/appearance/<场景>`，运行序、入口与测试证据。
 5. [roadmap.md](plan/roadmap.md)、[risks.md](plan/risks.md)、[open-questions.md](plan/open-questions.md) — 里程碑、风险、待拍板项。
-6. [requirements/](requirements/) — 每个用户可感知动作一张卡（REQ-0001…0043）。
+6. [requirements/](requirements/) — 每个用户可感知动作一张卡（REQ-0001…0044）。
 7. [history/](history/) — 已归档的[范围与关键决策](history/decisions/2026-11-09-scope-baseline.md)、[附件缓存上限](history/decisions/2026-11-09-attachment-cache-cap.md)、[正文契约 D10](history/decisions/2026-11-13-fetched-body-contract.md)、[EAS 探针](history/works/2026-11-09-eas-probe/result.md)、[M1 账号接入](history/works/2026-11-09-m1-account-access/result.md)、[M4 加固](history/works/2026-11-09-m4-hardening/result.md)、[场景重构收口](history/works/2026-11-10-scene-refactor/result.md)、[HTML 回复](history/works/2026-11-17-html-reply/result.md)、[同步状态误判](history/works/2026-11-17-sync-state/result.md)、[附件下载修复](history/works/2026-11-21-attachment-fetch/result.md)、[内联图 ContentId](history/works/2026-11-21-inline-image-content-id/result.md)、[正文宽表适配与附件条过滤](history/works/2026-11-23-table-adapt/result.md)、[开发凭据文件](history/works/2026-11-21-dev-dotenv/result.md)、[风险收口与登记复核](history/decisions/2026-11-24-risk-closeout.md)、[风险与开放问题拍板](history/decisions/2026-11-24-risk-review-decisions.md)。只作记忆，不作设计依据。
 
 ## 入口

@@ -247,3 +247,8 @@ component: CMP-EAS
   `Sources/EASClient/EASClient.swift`；`MeetingRequest` 子树、`Recurrences/Recurrence`、Compact `Until`、
   `TimeZone` blob（`Bias` + 名称）均按设计解析，坏字段只丢该字段。
 - 测试：`Tests/EASClientTests/EASClientTests.swift` 新增 3 例（完整请求、普通邮件、畸形时区块）。
+## 设计增量：Drafts 文件夹写命令（REQ-0044，2026-11-27，P3，已实现）
+
+- 新增 `EASDraft`/`EASDraftWriteResult` 与 `createDraft/updateDraft/deleteDraft`：同一 `Sync` 命令的 `Commands/Add|Change|Delete`，Add 带 `ClientId`、`ApplicationData`（`To`/`Cc`/`Subject`/`Body`（Type=2 HTML））；响应解析 `Collection/SyncKey` 与 `Responses`（`ServerId`/`Status`）。
+- 错误映射沿用：collection status 3/4 → `syncKeyInvalid`，其它非 1 → `permanent`；空 body 仍按既有写路径处理。
+- 真机未验证：真实 Exchange 2016/2019 上 `Sync Add` 到 Drafts 的行为（协议依据 MS-ASEMAIL §4.4，EAS 16.0+）。

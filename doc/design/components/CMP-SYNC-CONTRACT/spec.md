@@ -33,3 +33,8 @@ component: CMP-SYNC-CONTRACT
 - **删除测试**：删掉后 `MailDomain` 要么重新依赖会议子域、要么每个网关/存储各自发明批次类型 → 真边界。
 - **来源**：`history/decisions/2026-11-24-meeting-domain-split.md`（R77，P1）；2026-11-24 从 `MailDomain`
   迁出 `MessageDelta` 与三个同步端口。
+
+## 设计增量：草稿写端口与草稿存储端口（REQ-0044，2026-11-27，P3，已实现）
+
+- `MailWriteGateway` 增加 `createDraft/updateDraft/deleteDraft`（参数 `DraftPayload`，返回 `DraftWriteResult`：新 SyncKey 与 Add 的 ServerId）；协议扩展给默认实现抛 `MailError.unsupported`，既有测试假实现不必改。
+- 新增 `DraftPayload`、`DraftWriteResult` 与 `DraftSyncStore`（草稿列表/绑定/指纹/采用服务器版/复制/解绑/墓碑/同步键），`MailStore` 在 `DraftSyncStoreConformance.swift` 适配。

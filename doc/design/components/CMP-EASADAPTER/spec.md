@@ -122,3 +122,7 @@ component: CMP-EASADAPTER
   `meetings: [MeetingDeltaEntry]`：`EASAdapter.delta` 把同一响应里的邀请映射成 `MeetingDeltaEntry(serverID:subject:invite:)`。
 - `EASAdapter.message(_:)` 不再构造会议；会议映射保留为 `EASAdapter.meeting(_:)`（测试直接调用）。
 
+
+## 设计增量：草稿写命令适配（REQ-0044，2026-11-27，P3，已实现）
+
+- `EASAdapter` 实现 `MailWriteGateway` 的三个草稿方法：`DraftPayload → EASDraft`、结果映射回 `DraftWriteResult`，错误经既有 `map` 归一为 `MailError`。

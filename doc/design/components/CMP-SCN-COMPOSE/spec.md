@@ -140,3 +140,7 @@ component: CMP-SCN-COMPOSE
 - `saveDraft(_:account:draftID:)`：`draftID` 非空先 `updateDraft`，返回 `false`（行已删）再插入新草稿；`isDraft = true` 语义不变。
 - `send(_:account:draftID:)`：`draftID` 非空先 `sendDraft`，成功返回该 id；行已删回退 `Outbox.enqueue`。收件人校验、只入队、`ClientId` 规则不变。
 - 既有不带 `draftID` 的调用（CLI/测试）签名兼容（默认参数）。
+
+## 设计增量：草稿删除（REQ-0044，2026-11-27，P3，已实现）
+
+- `ComposeScene.deleteDraft(_:account:)` 删本地草稿行；已绑定服务器副本时由 store 在同一事务写 tombstone，等待草稿同步删除服务器副本。

@@ -727,3 +727,8 @@ component: CMP-PRES
 - `MailboxViewModel.drafts: [DraftRecord]`（`public internal(set)`）+ `loadDrafts()`（scene 读取，失败为空列表）；`compose(draft:) -> ComposeViewModel` 以 `mode: .draft`、`draftID`、回填字段构造编辑器。
 - `ComposeViewModel`：新增 `Mode.draft` 与 `public let draftID: OutboxID?`（init 默认 nil，既有调用不变）；`saveDraft()`/`send()` 把 `draftID` 传给 scene，其余状态/错误文案不变。
 - 测试：`Tests/PresentationTests/ComposeViewModelTests.swift` 的 `DraftListTests` 3 例（同行保存、发送消费、账号隔离）。
+
+## 设计增量：草稿刷新与删除（REQ-0044，2026-11-27，P3，已实现）
+
+- `MailboxViewModel.refreshDrafts()`：先读本地列表立即显示，再后台 `SyncScene.syncDrafts()` 合并，完成后重读；`deleteDraft(_ record:)` 删行（含 tombstone）后刷新并触发同步。
+- 触发器：进入草稿箱、`存草稿`、删除、发送后；同步失败不回滚本地。

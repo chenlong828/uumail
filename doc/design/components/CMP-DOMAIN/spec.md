@@ -363,3 +363,8 @@ component: CMP-DOMAIN
 
 - 来源：`REQ-0043` / `SCN-0031`。新增 public 值类型 `DraftRecord`（`id` = outbox 行 id、`to`/`cc`/`subject`/`body`/`bodyHTML`/`inReplyTo`/`references`、`updatedAt`），供草稿列表与就地编辑器读取。
 - 只新增类型，不改既有 `Draft`/`OutboxItem`；无 schema/依赖/target 变化。`cc` 为空串时读取归一为 `nil`。
+
+## 设计增量：草稿与服务器绑定字段（REQ-0044，2026-11-27，P3，已实现）
+
+- `DraftRecord` 增加可选 `serverID`（服务器 Drafts 文件夹里的 ServerId）与 `draftHash`（上次同步时的内容指纹），以及只读 `fingerprint`：收件人/抄送（去空白）、主题、`bodyHTML ?? body` 用 `\u{1E}` 拼接（`MailDomain` 不引第三方，故不哈希）。`Folder` 增加 `isDrafts`（type == 3）。
+- 只新增字段与派生属性；既有构造默认 nil，旧调用不变。

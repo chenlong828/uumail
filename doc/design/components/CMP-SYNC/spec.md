@@ -143,3 +143,11 @@ component: CMP-SYNC
   - `syncSentOnce is a no-op when the account has no Sent Items folder`：返回 `nil`、零批次。
   - `refreshSent` 的「不发通知」本轮无独立断言（VM 用例只断言列表与 `phase`），登记为残余。
 - 尺寸：`SyncEngine.swift` **315 行**（预算 ≤400）；无 schema/依赖/target 变化；`CMP-EAS` 零改动。
+
+## 设计增量：草稿双向合并同步（REQ-0044，2026-11-27，P3，已实现）
+
+- `SyncEngine.init` 增加可选 `draftStore: (any DraftSyncStore)? = nil`（CLI/旧测试不传即关闭）；新增 `syncDraftsOnce() -> DraftSyncReport?`，与消息同步共用同一网关/写端口/FIFO gate。
+- 拉：按 `Folder.isDrafts` 取文件夹，`fetchMessages` + 逐条 `fetchBody`；指纹比较判定本地/服务器是否改过；两边都改 → 先 `duplicateDraft` 复制本地版本，再 `adoptServerDraft` 采用服务器版本；服务器删除且本地改过 → `unbindDraft`，否则删行；同步键只写草稿集合（不进 `messages`）。
+- 推：未绑定 → `createDraft`（ClientId = 本地行 id）→ `bindDraft(serverID, 指纹)`；已绑定且指纹不同 → `updateDraft` → `setDraftHash`；tombstone → `deleteDraft` → 清墓碑；每次写回包更新草稿集合 SyncKey。
+- 单飞在 `SyncScene.syncDrafts()`，失败返回 `MailError` 不动本地数据。
+- 测试：`Tests/SyncEngineTests/DraftSyncTests.swift` 5 例（下载绑定、上传绑定、冲突两份、删除墓碑、发送墓碑）。

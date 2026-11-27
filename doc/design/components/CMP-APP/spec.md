@@ -642,3 +642,9 @@ component: CMP-APP
 - 人工项（发布前）：真实点击 tab/草稿行/存草稿/发送、⌘S 焦点、深浅色像素、VoiceOver。
 - 定级：**P3**（视图与表单分支，无 public 契约/schema/依赖/热路径语义变化）。
 - 不做：服务器 Drafts 同步、删除草稿、搜索/批量、草稿附件。
+
+## 设计增量：草稿同步的界面入口（REQ-0044，2026-11-27，P3，已实现）
+
+- `DraftListView` 增加 `onDelete`：行右键「删除草稿」与选中后 Delete 键；删除已绑定草稿由 view model 落 tombstone，下一轮同步删服务器副本。
+- `MailboxView+Drafts`：列表 `onAppear` 与 `onDraftSaved`/关闭/离开改走 `refreshDrafts()`（本地立即显示 + 后台合并 + 重读）；`deleteDraft` 同时清掉正在编辑的同一封。
+- 未做网络状态/同步中指示；同步失败不影响本地草稿编辑（按设计）。

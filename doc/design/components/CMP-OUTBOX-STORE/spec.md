@@ -82,3 +82,9 @@ component: CMP-OUTBOX-STORE
 - `updateDraft(account:draftID:draft:) -> Bool`：`UPDATE … WHERE id = ? AND state = 'draft'`，刷新 `updated_at`；返回 `changesCount == 1`，行不存在时调用方回退为插入。
 - `sendDraft(account:draftID:draft:) -> Bool`：同一条 `UPDATE` 写最新正文并置 `is_draft = 0, state = 'queued'`、清 `last_error`/`next_attempt_at`；行 id 即 `ClientId`，草稿不可能既被投递又留在草稿箱。
 - 不改 `saveDraft`/`enqueueOutbox`/`pendingOutbox`/claim/租约/退避的既有语义；草稿行不进入投递查询。
+
+## 设计增量：草稿服务器绑定与删除墓碑（REQ-0044，2026-11-27，P3，已实现）
+
+- schema v13：`outbox` 增加 `server_id TEXT`、`draft_hash TEXT`；新表 `draft_tombstones(account_id, server_id, created_at, PRIMARY KEY(account_id, server_id))`。
+- 新文件拆分：`OutboxStore+Drafts.swift`（列表/单查/同行更新/删除）与 `OutboxStore+DraftSync.swift`（绑定/改指纹/采用服务器版/插入服务器版/复制/解绑/墓碑），均 ≤300 行。
+- 关键语义：`duplicateDraft` 复制成 `server_id = NULL` 的新行（冲突「两份都保留」的本地版本）；`sendDraft`/`deleteDraft` 在**同一事务**里读取 `server_id` 并写 tombstone，保证离线发送/删除后服务器副本最终被删；`draft(account:serverID:)` 供拉取按服务器 id 找本地行。
