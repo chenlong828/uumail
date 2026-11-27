@@ -603,6 +603,21 @@ public final class MailStore: @unchecked Sendable {
 
     // MARK: - Sync state
 
+    /// Writes the collection key without touching messages (draft sync uses its own
+    /// collection and never stores those items in `messages`).
+    public func setSyncKey(account id: AccountID, collection: String, key: String) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO sync_state (account_id, collection, sync_key)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(account_id, collection) DO UPDATE SET sync_key = excluded.sync_key
+                    """,
+                arguments: [id.raw, collection, key]
+            )
+        }
+    }
+
     public func syncKey(account id: AccountID, collection: String) throws -> String? {
         try dbQueue.read { db in
             try String.fetchOne(

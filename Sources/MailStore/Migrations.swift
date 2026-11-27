@@ -174,6 +174,22 @@ enum MailStoreMigrations {
             // untouched (same mechanism as v9).
             try db.execute(sql: "UPDATE sync_state SET sync_key = '0' WHERE collection <> 'folders'")
         }
+        // Draft synchronization (REQ-0044): the local draft row remembers its server
+        // counterpart and the content fingerprint of the last sync; tombstones carry a
+        // delete that still has to reach the server after a send/delete.
+        migrator.registerMigration("v13_draft_sync") { db in
+            try db.execute(sql: "ALTER TABLE outbox ADD COLUMN server_id TEXT")
+            try db.execute(sql: "ALTER TABLE outbox ADD COLUMN draft_hash TEXT")
+            try db.execute(sql: """
+                CREATE TABLE draft_tombstones (
+                    account_id TEXT NOT NULL,
+                    server_id TEXT NOT NULL,
+                    created_at REAL NOT NULL,
+                    PRIMARY KEY (account_id, server_id)
+                );
+                """)
+        }
+
         // Meetings (REQ-0029 / REQ-0030, 2026-11-24): one row per UID so create/update/
         // cancel messages for the same series collapse into one. No cursor rewind: the
         // confirmed scope does not backfill invitations received before the upgrade.

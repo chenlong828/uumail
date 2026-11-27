@@ -58,7 +58,7 @@ public final class MailboxViewModel {
     @ObservationIgnored var localMarkRead: (MessageRef) throws -> Bool
 
     let read: ReadScene
-    private let syncScene: SyncScene
+    let syncScene: SyncScene
     let composeScene: ComposeScene
     let account: AccountID
     /// Wakes the composition's delivery pump after an enqueue. Composition owns the loop;

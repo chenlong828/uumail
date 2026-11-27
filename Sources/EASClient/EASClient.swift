@@ -262,6 +262,33 @@ public struct SyncResult: Equatable, Sendable {
 
 /// One client-side mailbox mutation carried by a Sync command. The client sends exactly
 /// one of these per request; responses still use the normal `SyncResult` shape.
+/// One draft's mail fields (REQ-0044). The Drafts folder write commands carry these as
+/// Email/AirSyncBase application data (MS-ASEMAIL §4.4).
+public struct EASDraft: Equatable, Sendable {
+    public var to: String
+    public var cc: String?
+    public var subject: String
+    public var bodyHTML: String
+
+    public init(to: String, cc: String?, subject: String, bodyHTML: String) {
+        self.to = to
+        self.cc = cc
+        self.subject = subject
+        self.bodyHTML = bodyHTML
+    }
+}
+
+/// Result of one draft write: the new SyncKey plus, for an Add, the server id.
+public struct EASDraftWriteResult: Equatable, Sendable {
+    public var serverID: String?
+    public var syncKey: String
+
+    public init(serverID: String?, syncKey: String) {
+        self.serverID = serverID
+        self.syncKey = syncKey
+    }
+}
+
 public enum EASSyncChange: Equatable, Sendable {
     case read(serverID: String)
     case delete(serverID: String)
@@ -591,6 +618,107 @@ public actor EASClient {
             moreAvailable: collection.child("MoreAvailable") != nil
                 || syncNode.child("MoreAvailable") != nil
         )
+    }
+
+    // MARK: - Drafts (REQ-0044)
+
+    /// Adds one draft to the server's Drafts folder (Sync/Add with Email application data).
+    public func createDraft(
+        _ draft: EASDraft, collectionID: String, syncKey: String, clientID: String
+    ) async throws -> EASDraftWriteResult {
+        try await writeDraft(
+            collectionID: collectionID, syncKey: syncKey,
+            command: .children("Add", [
+                .text("ClientId", clientID),
+                Self.draftApplicationData(draft),
+            ])
+        )
+    }
+
+    /// Updates one server draft in place.
+    public func updateDraft(
+        serverID: String, draft: EASDraft, collectionID: String, syncKey: String
+    ) async throws -> EASDraftWriteResult {
+        try await writeDraft(
+            collectionID: collectionID, syncKey: syncKey,
+            command: .children("Change", [
+                .text("ServerId", serverID),
+                Self.draftApplicationData(draft),
+            ])
+        )
+    }
+
+    /// Deletes one server draft.
+    public func deleteDraft(
+        serverID: String, collectionID: String, syncKey: String
+    ) async throws -> EASDraftWriteResult {
+        try await writeDraft(
+            collectionID: collectionID, syncKey: syncKey,
+            command: .children("Delete", [.text("ServerId", serverID)])
+        )
+    }
+
+    private func writeDraft(
+        collectionID: String, syncKey: String, command: WBXMLElement
+    ) async throws -> EASDraftWriteResult {
+        if policyKey == nil {
+            try await provision()
+        }
+        let body = try codec.encode(.children("Sync", [
+            .children("Collections", [
+                .children("Collection", [
+                    .text("SyncKey", syncKey),
+                    .text("CollectionId", collectionID),
+                    .children("Commands", [command]),
+                ]),
+            ]),
+        ]))
+        let response = try await call(
+            "Sync", body: body, isWrite: true, emptyBodyError: .syncKeyInvalid
+        )
+        let document = try decode(response)
+        guard let syncNode = document.child("Sync"),
+              let collection = syncNode.path("Collections", "Collection"),
+              let status = collection.child("Status")?.stringValue()
+        else {
+            throw EASError.syncKeyInvalid
+        }
+        switch status {
+        case "1":
+            break
+        case "3", "4":
+            throw EASError.syncKeyInvalid
+        default:
+            throw EASError.permanent(status: response.status, detail: "draft Sync status=\(status)")
+        }
+        guard let newKey = collection.child("SyncKey")?.stringValue() else {
+            throw EASError.malformedResponse("draft Sync: missing SyncKey")
+        }
+        let responses = collection.child("Responses") ?? collection.child("Commands")
+        var serverID: String?
+        for item in responses?.children ?? [] {
+            if let itemStatus = item.child("Status")?.stringValue(), itemStatus != "1" {
+                throw EASError.permanent(status: response.status, detail: "draft item status=\(itemStatus)")
+            }
+            if let value = item.child("ServerId")?.stringValue() { serverID = value }
+        }
+        return EASDraftWriteResult(serverID: serverID, syncKey: newKey)
+    }
+
+    private static func draftApplicationData(_ draft: EASDraft) -> WBXMLElement {
+        var fields: [WBXMLElement] = [
+            .text("To", draft.to),
+            .text("Subject", draft.subject),
+        ]
+        if let cc = draft.cc, !cc.isEmpty {
+            fields.append(.text("Cc", cc))
+        }
+        // Body type 2 = HTML; the editor keeps full HTML documents.
+        fields.append(.children("Body", [
+            .text("Type", "2"),
+            .text("Data", draft.bodyHTML),
+        ]))
+        return .children("ApplicationData", fields)
     }
 
     private func parseMessage(_ command: WBXMLNode) -> EASMessage? {

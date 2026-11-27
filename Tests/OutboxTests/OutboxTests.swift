@@ -505,3 +505,34 @@ struct OutboxDraftTests {
         #expect(try store.outbox.pendingOutbox(account: account).isEmpty)
     }
 }
+
+@Suite("Draft server binding")
+struct DraftBindingTests {
+    @Test("duplicate, unbind and tombstones follow the merge rule")
+    func bindingsAndTombstones() throws {
+        let (store, account) = try seededStore()
+        let id = try store.outbox.saveDraft(
+            account: account,
+            draft: MailDraft(to: "a@b.c", cc: nil, subject: "草稿", body: "x", isDraft: true)
+        )
+        try store.outbox.bindDraft(account: account, draftID: id, serverID: "S1", hash: "h1")
+        #expect(try store.outbox.drafts(account: account).first?.serverID == "S1")
+        #expect(try store.outbox.draft(account: account, serverID: "S1")?.id == id)
+
+        let copy = try store.outbox.duplicateDraft(account: account, draftID: id)
+        let drafts = try store.outbox.drafts(account: account)
+        #expect(drafts.count == 2)
+        #expect(drafts.first { $0.id == copy }?.serverID == nil)
+        #expect(try store.outbox.unboundDrafts(account: account).map(\.id) == [copy])
+
+        try store.outbox.unbindDraft(account: account, draftID: id)
+        #expect(try store.outbox.draft(account: account, draftID: id)?.serverID == nil)
+
+        try store.outbox.bindDraft(account: account, draftID: id, serverID: "S1", hash: "h1")
+        _ = try store.outbox.deleteDraft(account: account, draftID: id)
+        #expect(try store.outbox.draftTombstones(account: account) == ["S1"])
+        try store.outbox.removeDraftTombstone(account: account, serverID: "S1")
+        #expect(try store.outbox.draftTombstones(account: account).isEmpty)
+        #expect(try store.outbox.drafts(account: account).count == 1)
+    }
+}

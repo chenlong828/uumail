@@ -72,7 +72,7 @@ struct MailboxView: View {
                 }
             }
         case .drafts:
-            viewModel.loadDrafts()
+            viewModel.refreshDrafts()
         case .calendar:
             break
         }

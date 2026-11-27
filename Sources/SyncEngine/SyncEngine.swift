@@ -12,17 +12,19 @@ import SyncContract
 /// A read and a write (read marker/delete) share one collection key. The explicit FIFO
 /// gate, not actor reentrancy, is what keeps them serial.
 public actor SyncEngine {
-    private let gateway: any MailGateway
-    private let store: any SyncStore
-    private let account: AccountRef
-    private let writeGateway: any MailWriteGateway
+    let gateway: any MailGateway
+    let store: any SyncStore
+    let account: AccountRef
+    let writeGateway: any MailWriteGateway
+    /// Draft sync is opt-in: the CLI and older tests construct the engine without it.
+    let draftStore: (any DraftSyncStore)?
     private let window: Int
     private let maxRounds: Int
-    private let filterType: Int
+    let filterType: Int
     private let sleeper: @Sendable (Duration) async -> Void
 
-    private var state: SyncState = .idle
-    private var consecutiveFailures = 0
+    var state: SyncState = .idle
+    var consecutiveFailures = 0
 
     // FIFO gate: `busy` stays true when a waiter owns the next turn.
     private var gateBusy = false
@@ -33,6 +35,7 @@ public actor SyncEngine {
         store: any SyncStore,
         account: AccountRef,
         writeGateway: any MailWriteGateway,
+        draftStore: (any DraftSyncStore)? = nil,
         window: Int = 25,
         maxRounds: Int = 5,
         filterType: Int = 5,
@@ -42,6 +45,7 @@ public actor SyncEngine {
         self.store = store
         self.account = account
         self.writeGateway = writeGateway
+        self.draftStore = draftStore
         self.window = window
         self.maxRounds = maxRounds
         self.filterType = filterType
@@ -106,7 +110,7 @@ public actor SyncEngine {
 
     /// One failure shape for both entry points: classify, count, publish the state, and
     /// hand the normalized error back to the throw site.
-    private func recordFailure(_ error: Error) -> MailError {
+    func recordFailure(_ error: Error) -> MailError {
         let failure = SyncState.SyncFailure(
             error: map(error),
             folder: nil,
@@ -119,7 +123,7 @@ public actor SyncEngine {
 
     // MARK: - Folders
 
-    private func refreshFolders() async throws -> [FolderSummary] {
+    func refreshFolders() async throws -> [FolderSummary] {
         state = .syncingFolders
         // FolderSync is asked for the full hierarchy every time: an incremental key only
         // tells us that the tree changed, not what it now contains.
@@ -270,7 +274,7 @@ public actor SyncEngine {
 
     // MARK: - Gate
 
-    private func acquire() async throws {
+    func acquire() async throws {
         if Task.isCancelled { throw CancellationError() }
         if !gateBusy {
             gateBusy = true
@@ -296,7 +300,7 @@ public actor SyncEngine {
     }
 
     /// Hands the gate to the next FIFO waiter without clearing `busy`.
-    private func release() {
+    func release() {
         if waiters.isEmpty {
             gateBusy = false
         } else {

@@ -159,7 +159,10 @@ public final class AppComposition {
         }
         let endpoints = gatewayFactory(configuration)
         let gateway = endpoints.read
-        let engine = SyncEngine(gateway: gateway, store: store, account: account, writeGateway: endpoints.write)
+        let engine = SyncEngine(
+            gateway: gateway, store: store, account: account,
+            writeGateway: endpoints.write, draftStore: store
+        )
         let outbox = Outbox(store: store, gateway: gateway, clock: SystemMailClock())
         let pump = OutboxPump(outbox: outbox, account: account)
         mailbox = MailboxViewModel(

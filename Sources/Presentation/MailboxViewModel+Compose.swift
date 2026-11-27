@@ -17,6 +17,26 @@ extension MailboxViewModel {
         drafts = (try? composeScene.drafts(account: account)) ?? []
     }
 
+    /// Loads the list, then merges with the server Drafts folder in the background and
+    /// loads again (REQ-0044). The local list is shown immediately, so a slow or offline
+    /// server never blocks the drafts tab.
+    public func refreshDrafts() {
+        loadDrafts()
+        Task {
+            _ = await syncScene.syncDrafts()
+            loadDrafts()
+        }
+    }
+
+    public func deleteDraft(_ record: DraftRecord) {
+        try? composeScene.deleteDraft(OutboxID(record.id), account: account)
+        loadDrafts()
+        Task {
+            _ = await syncScene.syncDrafts()
+            loadDrafts()
+        }
+    }
+
     /// Reopens a stored draft in the editor: same row id, so saving updates it and sending
     /// converts it into the queued row instead of creating a duplicate.
     public func compose(draft record: DraftRecord) -> ComposeViewModel {

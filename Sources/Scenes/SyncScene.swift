@@ -31,6 +31,7 @@ public actor SyncScene {
     private var autoRefreshTask: Task<Void, Never>?
     private var authorizationRequested = false
     private var autoRefreshPaused = false
+    private var isSyncingDrafts = false
 
     public init(engine: SyncEngine, notifier: any Notifier, clock: any MailClock) {
         self.engine = engine
@@ -63,6 +64,22 @@ public actor SyncScene {
 
     /// Refreshes only Sent Items (REQ-0038). No new-mail notification: a sent copy is not
     /// incoming mail. Shares the engine's FIFO gate, so it never interleaves with a write.
+    /// One draft sync pass (REQ-0044). Draft sync is local-first: failures are returned and
+    /// the local rows stay usable; the next pass retries.
+    public func syncDrafts() async -> MailError? {
+        // Single flight: a second trigger (tab entry + save) must not upload the same
+        // local-only draft twice.
+        if isSyncingDrafts { return nil }
+        isSyncingDrafts = true
+        defer { isSyncingDrafts = false }
+        do {
+            _ = try await engine.syncDraftsOnce()
+            return nil
+        } catch {
+            return (error as? MailError) ?? .offline
+        }
+    }
+
     public func refreshSent() async -> RefreshOutcome {
         let startedAt = clock.now
         do {

@@ -7,14 +7,18 @@ import SwiftUI
 /// current edits first, so nothing typed here can be lost by navigation.
 extension MailboxView {
     var draftListColumn: some View {
-        DraftListView(drafts: viewModel.drafts, selection: $selectedDraftID)
+        DraftListView(
+            drafts: viewModel.drafts,
+            selection: $selectedDraftID,
+            onDelete: { deleteDraft($0) }
+        )
             .onChange(of: selectedDraftID) { _, id in
                 guard let id, let record = viewModel.drafts.first(where: { $0.id == id }) else {
                     return
                 }
                 openDraft(record)
             }
-            .onAppear { viewModel.loadDrafts() }
+            .onAppear { viewModel.refreshDrafts() }
             .navigationSplitViewColumnWidth(min: 320, ideal: 480)
     }
 
@@ -33,7 +37,7 @@ extension MailboxView {
                 preferredHeight: 0,
                 allowRemoteContent: false,
                 isEmbedded: true,
-                onDraftSaved: { viewModel.loadDrafts() },
+                onDraftSaved: { viewModel.refreshDrafts() },
                 onClose: { closeDraftEditor() }
             )
         } else {
@@ -50,7 +54,7 @@ extension MailboxView {
     func leaveDraftEditor() {
         guard let compose = draftCompose else { return }
         if compose.hasEdits, !compose.saveDraft() { return }
-        viewModel.loadDrafts()
+        viewModel.refreshDrafts()
         draftCompose = nil
     }
 
@@ -63,7 +67,15 @@ extension MailboxView {
     func closeDraftEditor() {
         draftCompose = nil
         selectedDraftID = nil
-        viewModel.loadDrafts()
+        viewModel.refreshDrafts()
+    }
+
+    func deleteDraft(_ record: DraftRecord) {
+        if draftCompose?.draftID?.raw == record.id {
+            draftCompose = nil
+            selectedDraftID = nil
+        }
+        viewModel.deleteDraft(record)
     }
 
     /// True while the drafts tab is showing an editor, so the window toolbar can avoid

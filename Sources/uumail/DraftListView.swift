@@ -6,6 +6,8 @@ import SwiftUI
 struct DraftListView: View {
     let drafts: [DraftRecord]
     @Binding var selection: String?
+    /// Destructive delete: the view model removes the row (and tombstones the server copy).
+    var onDelete: (DraftRecord) -> Void = { _ in }
 
     private static let timeFormat = DateFormatter()
 
@@ -33,6 +35,9 @@ struct DraftListView: View {
                     "\(draft.subject.isEmpty ? "无主题" : draft.subject)，"
                     + (draft.to.isEmpty ? "未填写收件人" : draft.to)
                 )
+                .contextMenu {
+                    Button("删除草稿", role: .destructive) { onDelete(draft) }
+                }
             }
         }
         .overlay {
@@ -43,6 +48,12 @@ struct DraftListView: View {
                     description: "撰写页里「存草稿」后，会出现在这里。"
                 )
             }
+        }
+        .onDeleteCommand {
+            guard let id = selection, let draft = drafts.first(where: { $0.id == id }) else {
+                return
+            }
+            onDelete(draft)
         }
         .navigationTitle("草稿箱")
         .navigationSplitViewColumnWidth(min: 320, ideal: 480)

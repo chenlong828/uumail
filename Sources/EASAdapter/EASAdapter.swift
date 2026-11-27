@@ -238,3 +238,55 @@ public struct EASAdapter: MailGateway, MailWriteGateway {
         }
     }
 }
+
+// MARK: - Drafts (REQ-0044)
+
+extension EASAdapter {
+    public func createDraft(
+        _ payload: DraftPayload, collectionID: String, syncKey: String, clientID: String
+    ) async throws -> DraftWriteResult {
+        do {
+            let result = try await client.createDraft(
+                Self.draft(payload), collectionID: collectionID,
+                syncKey: syncKey, clientID: clientID
+            )
+            return DraftWriteResult(serverID: result.serverID, syncKey: result.syncKey)
+        } catch {
+            throw Self.map(error)
+        }
+    }
+
+    public func updateDraft(
+        serverID: String, payload: DraftPayload, collectionID: String, syncKey: String
+    ) async throws -> DraftWriteResult {
+        do {
+            let result = try await client.updateDraft(
+                serverID: serverID, draft: Self.draft(payload),
+                collectionID: collectionID, syncKey: syncKey
+            )
+            return DraftWriteResult(serverID: result.serverID, syncKey: result.syncKey)
+        } catch {
+            throw Self.map(error)
+        }
+    }
+
+    public func deleteDraft(
+        serverID: String, collectionID: String, syncKey: String
+    ) async throws -> DraftWriteResult {
+        do {
+            let result = try await client.deleteDraft(
+                serverID: serverID, collectionID: collectionID, syncKey: syncKey
+            )
+            return DraftWriteResult(serverID: result.serverID, syncKey: result.syncKey)
+        } catch {
+            throw Self.map(error)
+        }
+    }
+
+    private static func draft(_ payload: DraftPayload) -> EASDraft {
+        EASDraft(
+            to: payload.to, cc: payload.cc,
+            subject: payload.subject, bodyHTML: payload.bodyHTML
+        )
+    }
+}

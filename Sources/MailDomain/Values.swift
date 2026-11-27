@@ -41,6 +41,8 @@ public struct Folder: Equatable, Sendable {
 
     /// Exchange folder type `5` is Sent Items (REQ-0038).
     public var isSentItems: Bool { type == 5 }
+    /// The Drafts folder (type 3), used by the draft merge (REQ-0044).
+    public var isDrafts: Bool { type == 3 }
 }
 
 /// An attachment as listed on a message. `messageID` is absent until the store has
@@ -260,6 +262,11 @@ public struct DraftRecord: Equatable, Sendable, Identifiable {
     public var inReplyTo: String?
     public var references: String?
     public var updatedAt: Date
+    /// EAS ServerId once the draft exists in the server's Drafts folder (nil = local only).
+    public var serverID: String?
+    /// Content fingerprint at the last successful sync, used to tell "local changed" from
+    /// "server changed" during the merge (REQ-0044).
+    public var draftHash: String?
 
     public init(
         id: String,
@@ -270,7 +277,9 @@ public struct DraftRecord: Equatable, Sendable, Identifiable {
         bodyHTML: String? = nil,
         inReplyTo: String? = nil,
         references: String? = nil,
-        updatedAt: Date
+        updatedAt: Date,
+        serverID: String? = nil,
+        draftHash: String? = nil
     ) {
         self.id = id
         self.to = to
@@ -281,6 +290,20 @@ public struct DraftRecord: Equatable, Sendable, Identifiable {
         self.inReplyTo = inReplyTo
         self.references = references
         self.updatedAt = updatedAt
+        self.serverID = serverID
+        self.draftHash = draftHash
+    }
+
+    /// Content identity used by the draft merge: recipients, subject and body. It is a
+    /// plain joined string (no hashing dependency in `MailDomain`) stored in `draft_hash`;
+    /// comparing it tells "local changed since the last sync" from "only the server did".
+    public var fingerprint: String {
+        [
+            to.trimmingCharacters(in: .whitespacesAndNewlines),
+            (cc ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
+            subject,
+            bodyHTML ?? body,
+        ].joined(separator: "\u{1E}")
     }
 }
 

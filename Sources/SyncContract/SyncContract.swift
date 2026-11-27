@@ -66,6 +66,94 @@ public protocol MailGateway: Sendable {
 public protocol MailWriteGateway: Sendable {
     func markRead(collectionID: String, serverID: String, syncKey: String) async throws -> MessageDelta
     func delete(collectionID: String, serverID: String, syncKey: String) async throws -> MessageDelta
+
+    // Drafts (REQ-0044): the Drafts folder is written with the same Sync command
+    // (MS-ASEMAIL §4.4). Implementations that do not support drafts may leave the
+    // defaults below, which fail as `MailError.unsupported`.
+    func createDraft(
+        _ payload: DraftPayload, collectionID: String, syncKey: String, clientID: String
+    ) async throws -> DraftWriteResult
+    func updateDraft(
+        serverID: String, payload: DraftPayload, collectionID: String, syncKey: String
+    ) async throws -> DraftWriteResult
+    func deleteDraft(
+        serverID: String, collectionID: String, syncKey: String
+    ) async throws -> DraftWriteResult
+}
+
+public extension MailWriteGateway {
+    func createDraft(
+        _ payload: DraftPayload, collectionID: String, syncKey: String, clientID: String
+    ) async throws -> DraftWriteResult {
+        throw MailError.unsupported
+    }
+
+    func updateDraft(
+        serverID: String, payload: DraftPayload, collectionID: String, syncKey: String
+    ) async throws -> DraftWriteResult {
+        throw MailError.unsupported
+    }
+
+    func deleteDraft(
+        serverID: String, collectionID: String, syncKey: String
+    ) async throws -> DraftWriteResult {
+        throw MailError.unsupported
+    }
+}
+
+/// One draft's mail fields, the payload the server draft write needs.
+public struct DraftPayload: Equatable, Sendable {
+    public var to: String
+    public var cc: String?
+    public var subject: String
+    public var bodyHTML: String
+
+    public init(to: String, cc: String?, subject: String, bodyHTML: String) {
+        self.to = to
+        self.cc = cc
+        self.subject = subject
+        self.bodyHTML = bodyHTML
+    }
+}
+
+/// Result of one draft write: the new SyncKey plus, for a create, the server id.
+public struct DraftWriteResult: Equatable, Sendable {
+    public var serverID: String?
+    public var syncKey: String
+
+    public init(serverID: String?, syncKey: String) {
+        self.serverID = serverID
+        self.syncKey = syncKey
+    }
+}
+
+/// Store surface the draft sync pass needs (REQ-0044). `MailStore` conforms; the pass
+/// lives in `SyncEngine` so it shares the same gateway, write port and advisory gate as
+/// the message sync.
+public protocol DraftSyncStore: Sendable {
+    func drafts(account: AccountID) throws -> [DraftRecord]
+    func draft(account: AccountID, draftID: String) throws -> DraftRecord?
+    func draft(account: AccountID, serverID: String) throws -> DraftRecord?
+    func unboundDrafts(account: AccountID) throws -> [DraftRecord]
+    func draftsNeedingUpload(account: AccountID) throws -> [DraftRecord]
+    func bindDraft(account: AccountID, draftID: String, serverID: String, hash: String) throws
+    func setDraftHash(account: AccountID, draftID: String, hash: String) throws
+    func adoptServerDraft(
+        account: AccountID, draftID: String, draft: MailDomain.Draft,
+        updatedAt: Date, hash: String
+    ) throws
+    func insertServerDraft(
+        account: AccountID, serverID: String, draft: MailDomain.Draft,
+        updatedAt: Date, hash: String
+    ) throws
+    func duplicateDraft(account: AccountID, draftID: String) throws -> String
+    func unbindDraft(account: AccountID, draftID: String) throws
+    func deleteDraft(account: AccountID, draftID: String) throws
+    func addDraftTombstone(account: AccountID, serverID: String) throws
+    func draftTombstones(account: AccountID) throws -> [String]
+    func removeDraftTombstone(account: AccountID, serverID: String) throws
+    func syncKey(account: AccountID, collection: String) throws -> String?
+    func setSyncKey(account: AccountID, collection: String, key: String) throws
 }
 
 /// Store port for the sync engine. Local database work is synchronous; `MailStore`

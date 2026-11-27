@@ -170,6 +170,16 @@ public struct ComposeScene: Sendable {
         }
     }
 
+    /// Removes a local draft row; when it is bound to a server copy the delete is also
+    /// queued as a tombstone and reaches the server on the next draft sync (REQ-0044).
+    public func deleteDraft(_ id: OutboxID, account: AccountID) throws {
+        do {
+            _ = try store.outbox.deleteDraft(account: account, draftID: id.raw)
+        } catch {
+            throw Self.classify(error)
+        }
+    }
+
     /// Validates and enqueues. No network here: the row is committed and the id returned;
     /// delivery happens later in `Outbox`. When the editor came from the drafts list,
     /// `draftID` turns that same row into the queued one (one row, same `ClientId`), so a
