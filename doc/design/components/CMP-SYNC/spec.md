@@ -150,5 +150,5 @@ component: CMP-SYNC
 - 拉：按 `Folder.isDrafts` 取文件夹，`fetchMessages` + 逐条 `fetchBody`；指纹比较判定本地/服务器是否改过；两边都改 → 先 `duplicateDraft` 复制本地版本，再 `adoptServerDraft` 采用服务器版本；服务器删除且本地改过 → `unbindDraft`，否则删行；同步键只写草稿集合（不进 `messages`）。
 - 推：未绑定 → `createDraft`（ClientId = 本地行 id）→ `bindDraft(serverID, 指纹)`；已绑定且指纹不同 → `updateDraft` → `setDraftHash`；tombstone → `deleteDraft` → 清墓碑；每次写回包更新草稿集合 SyncKey。
 - 单飞在 `SyncScene.syncDrafts()`，失败返回 `MailError` 不动本地数据。
-- 网关实测修正：写响应的 SyncKey 不可用（status 3/4），故每次 create/update/delete 后重新 `SyncKey=0` 引导取新 key（`freshKey`）；草稿集合首次拉取也先引导再取窗口。
-- 测试：`Tests/SyncEngineTests/DraftSyncTests.swift` 6 例（下载绑定、上传绑定、冲突两份、删除墓碑、发送墓碑、墓碑不被拉取复活）；真实网关冒烟 PASS（`task-spaces/20261127-152500-draft-smoke/probe/`）。
+- 网关实测修正：写响应的 SyncKey 不可用（status 3/4），故每次 create/update/delete 后重新 `SyncKey=0` 引导取新 key（`freshKey`）；草稿集合首次拉取也先引导再取窗口。Drafts 为空时窗口 Sync 返回 3/4，pull 捕获 `MailError.syncKeyInvalid` 后视为「无服务器草稿」，取新 key 继续推送。
+- 测试：`Tests/SyncEngineTests/DraftSyncTests.swift` 7 例（下载绑定、上传绑定、冲突两份、删除墓碑、发送墓碑、墓碑不被拉取复活）；真实网关冒烟 PASS（`task-spaces/20261127-152500-draft-smoke/probe/`）。

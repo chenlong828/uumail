@@ -26,8 +26,9 @@ updated: 2026-11-27
   2. `fetchBody` 从服务器 Drafts 文件夹读到草稿正文（服务器确实有这封草稿）；
   3. 本地删除（tombstone）→ 下一轮同步 `deleted=1`、墓碑清空；
   4. `fetchBody` 失败 → 服务器副本已消失。
-  证据：`task-spaces/20261127-152500-draft-smoke/probe/smoke3.txt`；另 `keyprobe.txt` 记录网关行为：写响应返回的 SyncKey 会被下一次 Sync 拒绝（status 3/4），已改为写后 `SyncKey=0` 重新引导。
-- `./Scripts/swiftw test`：**485 tests / 83 suites** 全绿（新增 8 例：`EASDraftWriteTests` 3、`DraftSyncTests` 5；另有 `DraftBindingTests` 1 例并入 484）；`bash Scripts/check-architecture.sh`：**4/4 PASS**。
+  证据：`task-spaces/20261127-152500-draft-smoke/probe/smoke4.txt`。
+- 冒烟发现的网关行为（均已处理，有复现探针）：① 草稿写响应返回的 SyncKey 被下一次 Sync 拒绝（status 3/4）→ 写后 `SyncKey=0` 重新引导（`keyprobe2.txt`）；② Drafts 文件夹为空时窗口 Sync 返回 3/4（有草稿后正常）→ pull 视为「无服务器草稿」后继续推送（`emptytest.txt`、`verify6.txt`）。
+- `./Scripts/swiftw test`：**486 tests / 83 suites** 全绿（新增 8 例：`EASDraftWriteTests` 3、`DraftSyncTests` 5；另有 `DraftBindingTests` 1 例并入 484）；`bash Scripts/check-architecture.sh`：**4/4 PASS**。
 - 冲突规则按人工确认落地：原行采用服务器版本、本地版本复制成未绑定行并在同轮上传；`conflicts == 1`、两行都在。
 - 发送/删除已绑定草稿：同事务 tombstone，下一轮 `Sync Delete`；离线安全。
 - 裁决摘要：blocker 0 / decision 1（写响应 key 不可用 → 写后重新引导，已实现并有真机证据） / hold 1（多设备/OWA 同时改的冲突合并未人工验证；OWA 界面未目验）。
