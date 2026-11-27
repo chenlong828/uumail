@@ -64,6 +64,69 @@ public final class OutboxStore: @unchecked Sendable {
         }
     }
 
+    // MARK: - Drafts (REQ-0043)
+
+    /// Locally saved drafts, newest first. Drafts are never delivered: `state = 'draft'`
+    /// keeps them out of every outbox query above.
+    public func drafts(account id: AccountID) throws -> [DraftRecord] {
+        try dbQueue.read { db in
+            try Row.fetchAll(
+                db,
+                sql: """
+                    SELECT id, to_recipients, cc, subject, body, body_html, in_reply_to, refs,
+                           updated_at
+                    FROM outbox
+                    WHERE account_id = ? AND state = 'draft'
+                    ORDER BY updated_at DESC, id DESC
+                    """,
+                arguments: [id.raw]
+            ).map(Self.draftRecord)
+        }
+    }
+
+    /// Overwrites a draft row in place. Returns `false` when the row is gone (deleted by
+    /// another window), so the caller can fall back to inserting a fresh draft.
+    @discardableResult
+    public func updateDraft(account id: AccountID, draftID: String, draft: MailDraft) throws -> Bool {
+        let now = Date().timeIntervalSince1970
+        return try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                    UPDATE outbox
+                    SET to_recipients = ?, cc = ?, subject = ?, body = ?, body_html = ?,
+                        in_reply_to = ?, refs = ?, updated_at = ?
+                    WHERE account_id = ? AND id = ? AND state = 'draft'
+                    """,
+                arguments: [draft.to, draft.cc ?? "", draft.subject, draft.body,
+                            draft.bodyHTML, draft.inReplyTo, draft.references, now, id.raw, draftID]
+            )
+            return db.changesCount == 1
+        }
+    }
+
+    /// Turns an existing draft row into a deliverable one: the row keeps its id (and so its
+    /// `ClientId`), `is_draft` is cleared and the state becomes `queued` in one statement,
+    /// so the draft can never be both delivered and still listed. Returns `false` when the
+    /// row is gone.
+    @discardableResult
+    public func sendDraft(account id: AccountID, draftID: String, draft: MailDraft) throws -> Bool {
+        let now = Date().timeIntervalSince1970
+        return try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                    UPDATE outbox
+                    SET to_recipients = ?, cc = ?, subject = ?, body = ?, body_html = ?,
+                        in_reply_to = ?, refs = ?, is_draft = 0, state = 'queued',
+                        attempts = 0, last_error = NULL, next_attempt_at = NULL, updated_at = ?
+                    WHERE account_id = ? AND id = ? AND state = 'draft'
+                    """,
+                arguments: [draft.to, draft.cc ?? "", draft.subject, draft.body,
+                            draft.bodyHTML, draft.inReplyTo, draft.references, now, id.raw, draftID]
+            )
+            return db.changesCount == 1
+        }
+    }
+
     /// Atomically claims the oldest deliverable row for `account` and stamps the lease.
     ///
     /// Deliverable: `queued`, a `failed_retryable` row whose backoff has elapsed, or a
@@ -192,10 +255,25 @@ public final class OutboxStore: @unchecked Sendable {
         }
     }
 
+    private static func nonEmpty(_ value: String?) -> String? {
+        guard let value, !value.isEmpty else { return nil }
+        return value
+    }
+
+    private static func draftRecord(_ row: Row) -> DraftRecord {
+        DraftRecord(
+            id: row["id"], to: row["to_recipients"], cc: Self.nonEmpty(row["cc"]),
+            subject: row["subject"],
+            body: row["body"], bodyHTML: row["body_html"], inReplyTo: row["in_reply_to"],
+            references: row["refs"], updatedAt: Date(timeIntervalSince1970: row["updated_at"])
+        )
+    }
+
     private static func outboxItem(_ row: Row) -> OutboxItem {
         let nextAttempt: Double? = row["next_attempt_at"]
         return OutboxItem(
-            id: row["id"], to: row["to_recipients"], cc: row["cc"], subject: row["subject"],
+            id: row["id"], to: row["to_recipients"], cc: Self.nonEmpty(row["cc"]),
+            subject: row["subject"],
             body: row["body"], inReplyTo: row["in_reply_to"], references: row["refs"],
             state: row["state"], attempts: row["attempts"], lastError: row["last_error"],
             nextAttemptAt: nextAttempt.map(Date.init(timeIntervalSince1970:)),

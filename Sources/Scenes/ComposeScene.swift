@@ -140,11 +140,30 @@ public struct ComposeScene: Sendable {
 
     // MARK: - Drafts and sending
 
-    /// Stores a local draft row. A draft is not queued and is never delivered.
-    public func saveDraft(_ draft: Draft, account: AccountID) throws -> OutboxID {
+    /// Locally saved drafts, newest first (REQ-0043). Local only: the Drafts folder is
+    /// not synced with the server.
+    public func drafts(account: AccountID) throws -> [DraftRecord] {
+        do {
+            return try store.outbox.drafts(account: account)
+        } catch {
+            throw Self.classify(error)
+        }
+    }
+
+    /// Stores a local draft row, or updates `draftID` in place when the editor was opened
+    /// from the drafts list. A draft is not queued and is never delivered.
+    public func saveDraft(
+        _ draft: Draft,
+        account: AccountID,
+        draftID: OutboxID? = nil
+    ) throws -> OutboxID {
         var stored = draft
         stored.isDraft = true
         do {
+            if let draftID,
+               try store.outbox.updateDraft(account: account, draftID: draftID.raw, draft: stored) {
+                return draftID
+            }
             return OutboxID(try store.outbox.saveDraft(account: account, draft: stored))
         } catch {
             throw Self.classify(error)
@@ -152,14 +171,26 @@ public struct ComposeScene: Sendable {
     }
 
     /// Validates and enqueues. No network here: the row is committed and the id returned;
-    /// delivery happens later in `Outbox`.
-    public func send(_ draft: Draft, account: AccountID) async throws -> OutboxID {
+    /// delivery happens later in `Outbox`. When the editor came from the drafts list,
+    /// `draftID` turns that same row into the queued one (one row, same `ClientId`), so a
+    /// sent draft can never be both delivered and still listed.
+    public func send(
+        _ draft: Draft,
+        account: AccountID,
+        draftID: OutboxID? = nil
+    ) async throws -> OutboxID {
         var normalized = draft
         normalized.to = draft.to.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.to.isEmpty else {
             throw MailError.invalidInput(reason: "recipient is empty")
         }
         do {
+            if let draftID,
+               try store.outbox.sendDraft(
+                   account: account, draftID: draftID.raw, draft: normalized
+               ) {
+                return draftID
+            }
             return try await outbox.enqueue(normalized, account: account)
         } catch {
             throw Self.classify(error)

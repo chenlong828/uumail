@@ -431,3 +431,77 @@ struct OutboxMimeTests {
         #expect(!text.contains("multipart/alternative"))
     }
 }
+
+@Suite("Outbox drafts")
+struct OutboxDraftTests {
+    @Test("saved drafts are listed and updated in place, never queued")
+    func draftRoundTrip() throws {
+        let (store, account) = try seededStore()
+        let first = try store.outbox.saveDraft(
+            account: account,
+            draft: MailDraft(to: "a@b.c", cc: "cc@b.c", subject: "草稿一", body: "v1", isDraft: true)
+        )
+        let second = try store.outbox.saveDraft(
+            account: account,
+            draft: MailDraft(to: "d@e.f", cc: nil, subject: "草稿二", body: "v2", isDraft: true)
+        )
+
+        #expect(Set(try store.outbox.drafts(account: account).map(\.id)) == [first, second])
+        #expect(try store.outbox.pendingOutbox(account: account).isEmpty)
+
+        let updated = try store.outbox.updateDraft(
+            account: account,
+            draftID: first,
+            draft: MailDraft(
+                to: "new@b.c", cc: nil, subject: "改名", body: "v3",
+                inReplyTo: "parent", references: "root", isDraft: true
+            )
+        )
+
+        #expect(updated)
+        #expect(try store.outbox.drafts(account: account).count == 2, "updating never inserts a row")
+        let row = try #require(try store.outbox.drafts(account: account).first { $0.id == first })
+        #expect(row.to == "new@b.c")
+        #expect(row.subject == "改名")
+        #expect(row.body == "v3")
+        #expect(row.inReplyTo == "parent")
+        #expect(row.references == "root")
+        #expect(row.cc == nil, "an empty cc reads back as nil")
+    }
+
+    @Test("sending a draft turns the same row into the queued message")
+    func sendDraftQueuesSameRow() throws {
+        let (store, account) = try seededStore()
+        let id = try store.outbox.saveDraft(
+            account: account,
+            draft: MailDraft(to: "a@b.c", cc: nil, subject: "发我", body: "hi", isDraft: true)
+        )
+
+        let sent = try store.outbox.sendDraft(
+            account: account,
+            draftID: id,
+            draft: MailDraft(to: "a@b.c", cc: "c@d.e", subject: "发我", body: "hi2")
+        )
+
+        #expect(sent)
+        #expect(try store.outbox.drafts(account: account).isEmpty)
+        #expect(try store.outbox.pendingOutbox(account: account).map(\.id) == [id])
+        let item = try #require(try store.outbox.outboxItem(account: account, id: OutboxID(id)))
+        #expect(item.state == "queued")
+        #expect(item.body == "hi2")
+    }
+
+    @Test("a missing draft id reports false instead of inserting a row")
+    func missingDraftIsNotCreated() throws {
+        let (store, account) = try seededStore()
+
+        #expect(try !store.outbox.updateDraft(
+            account: account, draftID: "missing", draft: MailDraft(to: "a@b.c", cc: nil, subject: "x", body: "y", isDraft: true)
+        ))
+        #expect(try !store.outbox.sendDraft(
+            account: account, draftID: "missing", draft: MailDraft(to: "a@b.c", cc: nil, subject: "x", body: "y", isDraft: true)
+        ))
+        #expect(try store.outbox.drafts(account: account).isEmpty)
+        #expect(try store.outbox.pendingOutbox(account: account).isEmpty)
+    }
+}

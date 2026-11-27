@@ -5,5 +5,6 @@ import Foundation
 enum MailboxSection: Hashable {
     case inbox
     case sent
+    case drafts
     case calendar
 }

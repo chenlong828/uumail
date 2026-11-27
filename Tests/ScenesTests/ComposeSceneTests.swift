@@ -594,3 +594,66 @@ private func makePreV9Database(at path: String) throws {
             """)
     }
 }
+
+@Suite("ComposeScene drafts")
+struct ComposeSceneDraftTests {
+    private func makeScene() throws -> (ComposeScene, MailStore, AccountID, FakeGateway) {
+        let store = try MailStore.inMemory()
+        let account = try store.createAccount(
+            NewAccount(displayName: "jdoe", address: "jdoe@corp.test", host: "mail.corp.test")
+        )
+        let gateway = FakeGateway()
+        let outbox = Outbox(store: store, gateway: gateway, clock: FixedClock())
+        return (ComposeScene(store: store, outbox: outbox), store, account, gateway)
+    }
+
+    @Test("saving with a draftID updates that row instead of inserting another")
+    func saveDraftUpdatesOpenedDraft() throws {
+        let (scene, store, account, _) = try makeScene()
+        let id = try scene.saveDraft(
+            Draft(to: "a@b.c", cc: nil, subject: "草稿", body: "初稿"), account: account
+        )
+
+        let again = try scene.saveDraft(
+            Draft(to: "a@b.c", cc: nil, subject: "改过", body: "二稿"), account: account, draftID: id
+        )
+
+        #expect(again == id)
+        let drafts = try scene.drafts(account: account)
+        #expect(drafts.count == 1)
+        #expect(drafts.first?.subject == "改过")
+        #expect(try store.outbox.pendingOutbox(account: account).isEmpty)
+    }
+
+    @Test("sending an opened draft consumes it and only enqueues locally")
+    func sendOpenedDraft() async throws {
+        let (scene, store, account, gateway) = try makeScene()
+        let id = try scene.saveDraft(
+            Draft(to: "a@b.c", cc: nil, subject: "发我", body: "hi"), account: account
+        )
+
+        let sent = try await scene.send(
+            Draft(to: "a@b.c", cc: nil, subject: "发我", body: "hi2"),
+            account: account,
+            draftID: id
+        )
+
+        #expect(sent == id)
+        #expect(await gateway.sendCalls == 0)
+        #expect(try scene.drafts(account: account).isEmpty)
+        #expect(try store.outbox.pendingOutbox(account: account).map(\.id) == [id.raw])
+    }
+
+    @Test("a draft row deleted meanwhile falls back to a fresh queued row")
+    func missingDraftFallsBack() async throws {
+        let (scene, _, account, _) = try makeScene()
+
+        let sent = try await scene.send(
+            Draft(to: "a@b.c", cc: nil, subject: "新", body: "hi"),
+            account: account,
+            draftID: OutboxID("missing")
+        )
+
+        #expect(sent.raw != "missing")
+    }
+}

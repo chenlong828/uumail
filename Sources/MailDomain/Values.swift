@@ -246,6 +246,44 @@ public struct OutboxItem: Equatable, Sendable {
     }
 }
 
+/// One locally saved draft as the drafts list reads it (an `outbox` row in state
+/// `draft`, REQ-0043). `id` is the row's outbox id: re-saving updates the same row and
+/// sending turns it into the queued row instead of inserting a second one.
+public struct DraftRecord: Equatable, Sendable, Identifiable {
+    public let id: String
+    public var to: String
+    public var cc: String?
+    public var subject: String
+    /// Plain-text alternative; the editor reopens from `bodyHTML` when present.
+    public var body: String
+    public var bodyHTML: String?
+    public var inReplyTo: String?
+    public var references: String?
+    public var updatedAt: Date
+
+    public init(
+        id: String,
+        to: String,
+        cc: String? = nil,
+        subject: String,
+        body: String,
+        bodyHTML: String? = nil,
+        inReplyTo: String? = nil,
+        references: String? = nil,
+        updatedAt: Date
+    ) {
+        self.id = id
+        self.to = to
+        self.cc = cc
+        self.subject = subject
+        self.body = body
+        self.bodyHTML = bodyHTML
+        self.inReplyTo = inReplyTo
+        self.references = references
+        self.updatedAt = updatedAt
+    }
+}
+
 /// A body fetched from the gateway. `isHTML` says whether the payload is HTML or
 /// plain text (the scene layer converts), `isTruncated` says the server cut it.
 public struct FetchedBody: Equatable, Sendable {

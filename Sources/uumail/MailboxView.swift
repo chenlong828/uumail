@@ -8,9 +8,12 @@ struct MailboxView: View {
     @Bindable var viewModel: MailboxViewModel
     /// Present in the running app; nil in probes that only host the mail side.
     var calendarModel: CalendarViewModel?
-    @State private var section: MailboxSection = .inbox
+    @State var section: MailboxSection = .inbox
     @State private var attachmentActions: AttachmentActionModel
-    @State private var compose: ComposeViewModel?
+    @State var compose: ComposeViewModel?
+    /// Drafts tab: the editor continued in the reading pane (REQ-0043) and its list row.
+    @State var draftCompose: ComposeViewModel?
+    @State var selectedDraftID: String?
     @State private var searchText = ""
     /// Selection that came from a mouse click must not scroll itself to the center (a
     /// scroll between the two clicks would move the row out from under the pointer).
@@ -32,16 +35,7 @@ struct MailboxView: View {
         mailSplit
         .toolbar(removing: .sidebarToggle)
         .toolbar {
-            ToolbarItem(placement: .navigation) {
-                Picker("邮箱", selection: $section) {
-                    Text("收件箱").tag(MailboxSection.inbox)
-                    Text("发件箱").tag(MailboxSection.sent)
-                    Text("日历").tag(MailboxSection.calendar)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 260)
-            }
+            sectionToolbar
             mailboxToolbar
         }
         .background(ToolbarTooltipInstaller().frame(width: 0, height: 0))
@@ -62,6 +56,8 @@ struct MailboxView: View {
     }
 
     private func switchSection(to value: MailboxSection) {
+        // Leaving the drafts tab keeps the editor's text: auto-save first (REQ-0043).
+        if section == .drafts, value != .drafts { leaveDraftEditor() }
         switch value {
         case .inbox:
             if let id = viewModel.inboxFolderID {
@@ -75,6 +71,8 @@ struct MailboxView: View {
                     viewModel.select(folderID: id)
                 }
             }
+        case .drafts:
+            viewModel.loadDrafts()
         case .calendar:
             break
         }
@@ -85,6 +83,8 @@ struct MailboxView: View {
             if section == .calendar, let calendarModel {
                 CalendarMailListView(model: calendarModel)
                     .navigationSplitViewColumnWidth(min: 320, ideal: 480)
+            } else if section == .drafts {
+                draftListColumn
             } else {
                 mailListColumn
                     .navigationSplitViewColumnWidth(min: 320, ideal: 480)
@@ -92,6 +92,8 @@ struct MailboxView: View {
         } detail: {
             if section == .calendar, let calendarModel {
                 CalendarView(model: calendarModel)
+            } else if section == .drafts {
+                draftDetail
             } else {
                 mailReadingPane
             }
@@ -123,7 +125,10 @@ struct MailboxView: View {
                 preferredWidth: readingPaneSize.width,
                 preferredHeight: readingPaneSize.height,
                 allowRemoteContent: viewModel.allowsRemoteContent,
-                onClose: { compose = nil }
+                onClose: {
+                compose = nil
+                if section == .drafts { viewModel.loadDrafts() }
+            }
             )
         }
     }
@@ -159,35 +164,6 @@ struct MailboxView: View {
               let text = calendarModel.icsText(uid: uid)
         else { return }
         _ = CalendarExport.present(text, uid: uid)
-    }
-
-    /// Window-level mail actions (REQ-0042): a column-scoped toolbar renders inside the
-    /// split view's leading group, where the buttons collapse into overflow even when the
-    /// window has room; `ToolbarTooltipInstaller` pins this group to the trailing edge.
-    @ToolbarContentBuilder
-    private var mailboxToolbar: some ToolbarContent {
-        MailboxToolbar(
-            state: MailboxToolbar.State(
-                hasSelection: viewModel.selectedMessage != nil,
-                allowsRemoteContent: viewModel.allowsRemoteContent,
-                canAllowRemoteContent: viewModel.canAllowRemoteContent,
-                canMarkSelectedRead: viewModel.canMarkSelectedRead,
-                isSyncing: viewModel.sync.phase == .syncing),
-            actions: MailboxToolbar.Actions(
-                newMessage: { compose = viewModel.composeNew() },
-                reply: { compose = viewModel.composeReply() },
-                replyAll: { compose = viewModel.composeReplyAll() },
-                forward: { compose = viewModel.composeForward() },
-                setAllowRemoteContent: { viewModel.setAllowsRemoteContent($0) },
-                markSelectedRead: { viewModel.markSelectedRead() },
-                refresh: {
-                    Task {
-                        if section == .sent { await viewModel.refreshSent() }
-                        else { await viewModel.refresh() }
-                    }
-                }
-            )
-        )
     }
 
     private var currentFolderName: String {

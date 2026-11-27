@@ -10,6 +10,11 @@ struct ComposeView: View {
     let preferredWidth: CGFloat
     let preferredHeight: CGFloat
     let allowRemoteContent: Bool
+    /// Embedded editors (drafts tab) fill the reading pane instead of presenting as a
+    /// sheet, and 「存草稿」 keeps the editor open (REQ-0043).
+    var isEmbedded: Bool = false
+    /// Called after an embedded editor saved a draft, so the drafts list can refresh.
+    var onDraftSaved: (() -> Void)?
     let onClose: () -> Void
 
     @Environment(\.fontSizePreference) private var fontSize
@@ -53,7 +58,7 @@ struct ComposeView: View {
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(width: width, height: height)
+        .frame(width: isEmbedded ? nil : width, height: isEmbedded ? nil : height)
         .interactiveDismissDisabled()
         .confirmationDialog(
             "存储草稿？",
@@ -76,6 +81,12 @@ struct ComposeView: View {
             HStack {
                 closeControl
                 Spacer()
+                if isEmbedded {
+                    composeButton("存草稿") { saveDraftInPlace() }
+                        .keyboardShortcut("s", modifiers: .command)
+                        .disabled(viewModel.isSending)
+                        .help("保存草稿（⌘S），可继续编辑")
+                }
                 composeButton("发送") { send() }
                     .keyboardShortcut(.defaultAction)
                     .disabled(!viewModel.canSend)
@@ -119,6 +130,17 @@ struct ComposeView: View {
         }
         .padding(.horizontal, 12)
         .padding(.bottom, 6)
+    }
+
+    /// Embedded drafts keep the editor open after a save and refresh the list; the sheet
+    /// keeps its close-first 存草稿 path in the discard dialog.
+    private func saveDraftInPlace() {
+        Task {
+            if let html = await editor.capture() {
+                viewModel.setEditorHTML(html)
+            }
+            if viewModel.saveDraft() { onDraftSaved?() }
+        }
     }
 
     private func send() {
@@ -166,6 +188,7 @@ struct ComposeView: View {
         case .reply: "回复"
         case .replyAll: "全部回复"
         case .forward: "转发"
+        case .draft: "草稿"
         }
     }
 

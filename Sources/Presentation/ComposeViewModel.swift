@@ -14,6 +14,9 @@ public final class ComposeViewModel: Identifiable {
         case reply
         case replyAll
         case forward
+        /// Opened from the drafts list (REQ-0043): saving updates `draftID` instead of
+        /// inserting another draft, and sending turns that row into the queued one.
+        case draft
     }
 
     public enum Status: Equatable, Sendable {
@@ -27,6 +30,8 @@ public final class ComposeViewModel: Identifiable {
 
     public let id = UUID()
     public let mode: Mode
+    /// The stored draft row this editor is continuing, `nil` for a fresh composition.
+    public let draftID: OutboxID?
     public var to: String
     public var cc: String
     public var subject: String
@@ -77,6 +82,7 @@ public final class ComposeViewModel: Identifiable {
         body: String = "",
         bodyHTML: String = "",
         inReplyTo: String? = nil,
+        draftID: OutboxID? = nil,
         scene: ComposeScene,
         account: AccountID,
         onEnqueued: (@MainActor () -> Void)? = nil
@@ -88,6 +94,7 @@ public final class ComposeViewModel: Identifiable {
         self.body = body
         self.bodyHTML = bodyHTML
         self.inReplyTo = inReplyTo
+        self.draftID = draftID
         self.scene = scene
         self.account = account
         self.onEnqueued = onEnqueued
@@ -235,7 +242,7 @@ public final class ComposeViewModel: Identifiable {
         guard status != .sending else { return false }
         status = .sending
         do {
-            _ = try await scene.send(draft, account: account)
+            _ = try await scene.send(draft, account: account, draftID: draftID)
             status = .queued
             // The row is committed; the composition's pump decides when to deliver it.
             onEnqueued?()
@@ -250,7 +257,7 @@ public final class ComposeViewModel: Identifiable {
     @discardableResult
     public func saveDraft() -> Bool {
         do {
-            _ = try scene.saveDraft(draft, account: account)
+            _ = try scene.saveDraft(draft, account: account, draftID: draftID)
             status = .saved
             return true
         } catch {

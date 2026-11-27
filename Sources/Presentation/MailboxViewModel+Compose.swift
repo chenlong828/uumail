@@ -11,6 +11,30 @@ extension MailboxViewModel {
         return html
     }
 
+    /// Reads the locally saved drafts (REQ-0043). Store failures surface as an empty list;
+    /// the drafts list has no error banner of its own (compose still works).
+    public func loadDrafts() {
+        drafts = (try? composeScene.drafts(account: account)) ?? []
+    }
+
+    /// Reopens a stored draft in the editor: same row id, so saving updates it and sending
+    /// converts it into the queued row instead of creating a duplicate.
+    public func compose(draft record: DraftRecord) -> ComposeViewModel {
+        ComposeViewModel(
+            mode: .draft,
+            to: record.to,
+            cc: record.cc ?? "",
+            subject: record.subject,
+            body: record.body,
+            bodyHTML: record.bodyHTML ?? "",
+            inReplyTo: record.inReplyTo,
+            draftID: OutboxID(record.id),
+            scene: composeScene,
+            account: account,
+            onEnqueued: onEnqueued
+        )
+    }
+
     public func composeNew() -> ComposeViewModel {
         ComposeViewModel(mode: .new, scene: composeScene, account: account, onEnqueued: onEnqueued)
     }

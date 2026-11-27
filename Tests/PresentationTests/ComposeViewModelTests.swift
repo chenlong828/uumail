@@ -485,3 +485,71 @@ struct ComposeViewModelTests {
         #expect(reply.hasEdits)
     }
 }
+
+@Suite("Drafts")
+@MainActor
+struct DraftListTests {
+    @Test("a draft opened from the list saves back into the same row")
+    func reopenedDraftSavesInPlace() throws {
+        let fixture = try makeMailboxFixture()
+        let first = fixture.viewModel.composeNew()
+        first.to = "a@b.c"
+        first.subject = "草稿"
+        first.body = "初稿"
+        #expect(first.saveDraft())
+
+        fixture.viewModel.loadDrafts()
+        #expect(fixture.viewModel.drafts.count == 1)
+        let record = try #require(fixture.viewModel.drafts.first)
+
+        let reopened = fixture.viewModel.compose(draft: record)
+        #expect(reopened.mode == .draft)
+        #expect(reopened.draftID?.raw == record.id)
+        #expect(reopened.statusText == nil, "a freshly reopened draft is not dirty or saved")
+
+        reopened.subject = "改过"
+        #expect(reopened.saveDraft())
+        fixture.viewModel.loadDrafts()
+        #expect(fixture.viewModel.drafts.count == 1, "saving again must not duplicate the draft")
+        #expect(fixture.viewModel.drafts.first?.subject == "改过")
+        #expect(try fixture.store.outbox.pendingOutbox(account: fixture.account).isEmpty)
+    }
+
+    @Test("sending an opened draft removes it from the list and queues one row")
+    func sendingOpenedDraft() async throws {
+        let fixture = try makeMailboxFixture()
+        let first = fixture.viewModel.composeNew()
+        first.to = "a@b.c"
+        first.subject = "发我"
+        first.body = "正文"
+        #expect(first.saveDraft())
+        fixture.viewModel.loadDrafts()
+        let record = try #require(fixture.viewModel.drafts.first)
+
+        let reopened = fixture.viewModel.compose(draft: record)
+        let sent = await reopened.send()
+
+        #expect(sent)
+        #expect(reopened.status == .queued)
+        fixture.viewModel.loadDrafts()
+        #expect(fixture.viewModel.drafts.isEmpty)
+        let pending = try fixture.store.outbox.pendingOutbox(account: fixture.account)
+        #expect(pending.map(\.id) == [record.id])
+    }
+
+    @Test("a draft from another account is not listed")
+    func draftsArePerAccount() throws {
+        let fixture = try makeMailboxFixture()
+        let other = try fixture.store.createAccount(
+            NewAccount(displayName: "other", address: "o@corp.test", host: "mail.corp.test")
+        )
+        let first = fixture.viewModel.composeNew()
+        first.to = "a@b.c"
+        first.subject = "本机草稿"
+        #expect(first.saveDraft())
+
+        fixture.viewModel.loadDrafts()
+        #expect(fixture.viewModel.drafts.count == 1)
+        #expect(try fixture.store.outbox.drafts(account: other).isEmpty)
+    }
+}

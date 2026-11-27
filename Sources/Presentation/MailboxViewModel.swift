@@ -12,6 +12,9 @@ import Scenes
 public final class MailboxViewModel {
     public internal(set) var folders: [Folder] = []
     public internal(set) var messages: [Message] = []
+    /// Locally saved drafts, newest first (REQ-0043). Local only; the Drafts folder is
+    /// not synced.
+    public internal(set) var drafts: [DraftRecord] = []
     public internal(set) var body: BodyPresentation = .none
     /// Current body with `cid:` image sources replaced by `data:` URLs. View state only:
     /// never persisted and never copied into `body`/`quotableHTML` (REQ-0025 / SCN-0019).
