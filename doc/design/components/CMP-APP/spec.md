@@ -628,3 +628,17 @@ component: CMP-APP
 - 风险：依赖 NSToolbar 项顺序与 `MailboxToolbar` 的 label；新增/改名动作必须同步 `ToolbarTooltipInstaller.actionLabels` 与 `tooltips` 映射（否则该动作不参与贴右/无 tooltip）。macOS 14/15 上贴右程度取决于系统对 flexibleSpace 的处理，未做真机验证。
 - 定级：**P3**（两个 `uumail` internal 文件内的视图与工具安装逻辑；无 public 契约、schema、依赖、target、热路径变化）。
 - 不做：把图标改成常驻文字标签、动作折叠进自定义「更多」菜单、`ReaderWindowView` 工具栏改造。
+
+## 设计增量：草稿箱 tab 与右侧就地编辑（REQ-0043，2026-11-27，P3，已实现）
+
+- 来源：`REQ-0043` / `SCN-0031`。口径 2026-11-26 人工确认（仅本机草稿；存草稿后留在编辑器）。
+- `MailboxSection` 增加 `.drafts`；`MailboxView+Toolbar.sectionToolbar` 的四段 Picker 宽度 260 → 320；`.toolbar` 只引用 `sectionToolbar`/`mailboxToolbar`（后者移到 `MailboxView+Toolbar.swift`，`MailboxView.swift` 274 行）。
+- `MailboxView` 列/详情分支：`section == .drafts` 时左列 `draftListColumn`、右侧 `draftDetail`；`@State var draftCompose`、`@State var selectedDraftID`；`switchSection` 离开草稿箱先 `leaveDraftEditor()`（自动保存，失败保留编辑器不切走），进入时 `loadDrafts()`；工具栏刷新在草稿箱走 `loadDrafts()`。
+- 新增 `Sources/uumail/DraftListView.swift`（57 行）：`List(selection:)` 行 = 主题（空→无主题）+ 收件人（空→未填写收件人）+ `MM-dd HH:mm`；空态「没有草稿」；行无障碍合并标签。
+- 新增 `Sources/uumail/MailboxView+Drafts.swift`（约 75 行）：`draftListColumn`（`onChange(selectedDraftID)` → `openDraft`，`onAppear` 读草稿）、`draftDetail`（有草稿→就地 `ComposeView`，否则「选择一封草稿」）、`leaveDraftEditor`/`openDraft`/`closeDraftEditor`；标题「草稿箱」。
+- `ComposeView`：新增 `isEmbedded`（`frame(width: nil, height: nil)` 填满详情列）、`onDraftSaved` 回调、`Mode.draft` 标题「草稿」；嵌入态顶部多一个 `存草稿`（⌘S），保存成功不关闭、由 `onDraftSaved` 刷新列表；sheet 形态与「存储草稿？」关闭确认不变。
+- 预算：`MailboxView` 274、`MailboxView+Drafts` 75、`MailboxView+Toolbar` 50、`DraftListView` 57、`ComposeView` 约 170，均 ≤300；不新增 target/依赖，schema 不变。
+- 验证：475 tests / 80 suites、架构 4/4；L2 `task-spaces/20261127-114500-drafts-tab/probe/`（`draft-list.png`、`embedded-compose.png`）。
+- 人工项（发布前）：真实点击 tab/草稿行/存草稿/发送、⌘S 焦点、深浅色像素、VoiceOver。
+- 定级：**P3**（视图与表单分支，无 public 契约/schema/依赖/热路径语义变化）。
+- 不做：服务器 Drafts 同步、删除草稿、搜索/批量、草稿附件。

@@ -358,3 +358,8 @@ component: CMP-DOMAIN
   - `AccountSetupViewModel` 用它预填/回传表单（`CMP-PRES`）；`ConfigurationSource`/`CommandLineComposition`/`DotEnvCredentialStore` 负责 `EAS_EMAIL` 的读写（`CMP-ROOT`）。
   - `Outbox` 不直接读本类型：发信 `From` 仍来自 `accounts.address`，启动/重连迁移后自然使用显式地址。
 - 测试：`Tests/MailDomainTests` 的 `legacyConfigurationDecoding` 断言旧载荷 `email == ""` 且 `resolvedEmail == "u@mail.example.com"`，并断言编码再解码后配置相等；全量 465 tests / 77 suites、架构 4/4。
+
+## 设计增量：草稿记录 `DraftRecord`（REQ-0043，2026-11-27，P3，已实现）
+
+- 来源：`REQ-0043` / `SCN-0031`。新增 public 值类型 `DraftRecord`（`id` = outbox 行 id、`to`/`cc`/`subject`/`body`/`bodyHTML`/`inReplyTo`/`references`、`updatedAt`），供草稿列表与就地编辑器读取。
+- 只新增类型，不改既有 `Draft`/`OutboxItem`；无 schema/依赖/target 变化。`cc` 为空串时读取归一为 `nil`。

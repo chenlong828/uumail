@@ -32,6 +32,8 @@ macOS 原生邮件客户端，只走 Exchange ActiveSync（以「一台已登记
 
 2026-11-26 追加并交付（W-M3-22，主窗口顶栏分组）：用户反馈三处：「收件箱/发件箱/日历」应在左上、回复等到右上；1512pt 空间充足但最右侧图标仍折进「»」；图标没有指示标签。修复：七个邮件动作从列表列工具栏迁到窗口级 `.toolbar`（列表列不再声明工具栏），`ToolbarTooltipInstaller` 在工具栏出现后插入一个 `.flexibleSpace` 到动作组之前、移除搜索框前多余的 `.flexibleSpace`，把动作组贴到右侧搜索框前（1512pt 实测 x≈898..1169、七项全可见）；同一安装器按 label 补 `NSToolbarItem.toolTip`（SwiftUI `.help` 不桥接）。发现 macOS 26 的 `NavigationSplitView` 会把 primaryAction 项排进 leading 组（动作停在 x≈591 并先溢出），这是位置与折叠的共同根因。顺带修正 `PerformanceTests` 的 30 天窗口夹具为相对时间（原固定 10 月日期在 2026-11-26 后落出窗口，测试时间炸弹）。`REQ-0042` `delivered`、`SCN-0028` 增量重验（`T-SCN-0028-05`）；466 tests / 77 suites、架构 4/4；L2 探针 `task-spaces/20261126-210000-mail-toolbar/probe/`（1512/900 截图 + 帧/tooltip + 状态翻转稳定性）；真实悬停/点击与浅色主题为发布前人工项。需求索引改为 REQ-0001…0042。
 
+2026-11-27 追加并交付（W-M3-23，草稿箱 tab 与就地继续编辑）：顶部切换新增第四段「草稿箱」，左列按更新时间倒序列出本机 `outbox` 中 `state='draft'` 的草稿（主题/收件人/时间，空值显示「无主题」「未填写收件人」），单击在右侧就地打开编辑器继续写；`存草稿`（⌘S）覆盖同一行并留在编辑器（状态行「草稿已保存」、列表刷新），`发送` 把同一行原子转成 `queued`（同一 `ClientId`）并移出草稿箱，离开 tab 或切换草稿前自动保存，保存失败保留编辑器不丢内容。仅本机草稿，不同步服务器 Drafts。`REQ-0043` `delivered`、新建 `SCN-0031` `verified`（`T-SCN-0031-01…04`）；新增 `DraftRecord`、`OutboxStore.drafts/updateDraft/sendDraft`、`ComposeScene.drafts/saveDraft(draftID:)/send(draftID:)`、`ComposeViewModel.mode.draft/draftID`、`DraftListView`/`MailboxView+Drafts`/`MailboxView+Toolbar` 与 `ComposeView.isEmbedded`；不新增 schema/target/依赖；475 tests / 80 suites、架构 4/4；L2 探针 `task-spaces/20261127-114500-drafts-tab/probe/`（草稿列表 + 就地编辑器）；真实点击/⌘S/深浅色/VoiceOver 为发布前人工项。需求索引改为 REQ-0001…0043。
+
 ## 阅读顺序
 
 1. [architecture.md](design/architecture.md) — 现行分层、target、九条核心契约、冷热路径、组合根规则、D1–D10 决策与实施阶段。先读这一篇。
@@ -39,7 +41,7 @@ macOS 原生邮件客户端，只走 Exchange ActiveSync（以「一台已登记
 3. 组件规格（`design/components/`）：`CMP-DOMAIN`（值类型/端口）、`CMP-STORE`（数据）、`CMP-SYNC`、`CMP-OUT`、`CMP-EASADAPTER`、`CMP-SCN-{ACCOUNT,SYNC,READ,COMPOSE}`、`CMP-PRES`、`CMP-ROOT`、`CMP-CLI`、`CMP-APP`。
 4. [design/scenarios/](design/scenarios/) — 业务功能树 `mail/{access,receive,read,send}/<场景>` 与 `settings/appearance/<场景>`，运行序、入口与测试证据。
 5. [roadmap.md](plan/roadmap.md)、[risks.md](plan/risks.md)、[open-questions.md](plan/open-questions.md) — 里程碑、风险、待拍板项。
-6. [requirements/](requirements/) — 每个用户可感知动作一张卡（REQ-0001…0042）。
+6. [requirements/](requirements/) — 每个用户可感知动作一张卡（REQ-0001…0043）。
 7. [history/](history/) — 已归档的[范围与关键决策](history/decisions/2026-11-09-scope-baseline.md)、[附件缓存上限](history/decisions/2026-11-09-attachment-cache-cap.md)、[正文契约 D10](history/decisions/2026-11-13-fetched-body-contract.md)、[EAS 探针](history/works/2026-11-09-eas-probe/result.md)、[M1 账号接入](history/works/2026-11-09-m1-account-access/result.md)、[M4 加固](history/works/2026-11-09-m4-hardening/result.md)、[场景重构收口](history/works/2026-11-10-scene-refactor/result.md)、[HTML 回复](history/works/2026-11-17-html-reply/result.md)、[同步状态误判](history/works/2026-11-17-sync-state/result.md)、[附件下载修复](history/works/2026-11-21-attachment-fetch/result.md)、[内联图 ContentId](history/works/2026-11-21-inline-image-content-id/result.md)、[正文宽表适配与附件条过滤](history/works/2026-11-23-table-adapt/result.md)、[开发凭据文件](history/works/2026-11-21-dev-dotenv/result.md)、[风险收口与登记复核](history/decisions/2026-11-24-risk-closeout.md)、[风险与开放问题拍板](history/decisions/2026-11-24-risk-review-decisions.md)。只作记忆，不作设计依据。
 
 ## 入口

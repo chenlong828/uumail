@@ -133,3 +133,10 @@ component: CMP-SCN-COMPOSE
 - 尺寸：`ComposeScene.swift` 165 → 预计约 220 行（新增约 55 行），低于 500；`Scenes` 总行数约 947（2026-11-18 实测）+ 约 55，不新增 target。
 - 测试：`ScenesTests/ComposeSceneTests.recipientDirectoryAggregatesLocally`（Inbox + 自定义文件夹聚合、名字/地址、排除自己）、`.recipientDirectorySkipsNonMailFoldersAndOwnAddress`（Sent/Drafts/Deleted/Outbox 不贡献）、`.recipientDirectoryCapsFolderAndTotal`（文件夹 500/总计 5,000 截断，用 `@testable` 常量构造小 fixture）、`.recipientDirectoryDegradesToEmpty`（空库/读失败等价）；`ComposeSceneTests` 既有种子/发送用例不回归。
 - 定级/确认：P1（场景 public 契约 + 平台级 `MailDomain` 值类型）；默认确认（未经人工）见 `history/decisions/2026-11-18-recipient-autocomplete.md`；A4 总计上限与 A6 内部常量见 `history/decisions/2026-11-18-recipient-autocomplete-design-addendum.md`。
+
+## 设计增量：草稿读取、同行保存与转队发送（REQ-0043，2026-11-27，P3，已实现）
+
+- 来源：`REQ-0043` / `SCN-0031`。`drafts(account:)` 读本地草稿（store 失败归为 `MailError.storage`）。
+- `saveDraft(_:account:draftID:)`：`draftID` 非空先 `updateDraft`，返回 `false`（行已删）再插入新草稿；`isDraft = true` 语义不变。
+- `send(_:account:draftID:)`：`draftID` 非空先 `sendDraft`，成功返回该 id；行已删回退 `Outbox.enqueue`。收件人校验、只入队、`ClientId` 规则不变。
+- 既有不带 `draftID` 的调用（CLI/测试）签名兼容（默认参数）。

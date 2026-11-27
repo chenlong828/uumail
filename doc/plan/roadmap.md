@@ -21,6 +21,8 @@ updated: 2026-11-25
 
 2026-11-26 追加 W-M3-22（主窗口顶栏分组）：用户反馈「收件箱/发件箱/日历应在左上，回复等动作在右上；空间充足时最右侧图标仍折叠；图标没有指示标签」。修复：动作组从列表列工具栏迁到窗口级 `.toolbar`，`ToolbarTooltipInstaller` 插入一个 `.flexibleSpace` 并移除搜索框前的 `.flexibleSpace`，把动作贴到右侧搜索框前（1512pt 下 x≈898..1169，七项全可见）；顺带按 label 补 `NSToolbarItem.toolTip`。另修正 `PerformanceTests` 的 30 天窗口夹具为相对时间（原固定 10 月日期在 2026-11-26 后落入窗口外，测试时间炸弹）。`REQ-0042` `delivered`、`SCN-0028` 增量 `verified`（`T-SCN-0028-05`）；只改 `Sources/uumail/{MailboxView,ToolbarTooltips}.swift` 与测试夹具；466 tests / 77 suites、架构 4/4；L2 探针 `task-spaces/20261126-210000-mail-toolbar/probe/`（1512/900 截图、帧与 tooltip、状态翻转稳定性）；真实悬停/点击与浅色主题为发布前人工项；`make-app.sh` 成功（release）。
 
+2026-11-27 追加 W-M3-23（草稿箱 tab 与就地继续编辑）：顶部切换新增第四段「草稿箱」，左列按 `updated_at` 倒序列出本机 `outbox` 中 `state='draft'` 的草稿（主题/收件人/时间），单击在右侧就地打开编辑器继续写；`存草稿`（⌘S）覆盖同一行并留在编辑器，`发送` 把同一行原子转成 `queued` 并移出草稿箱，离开 tab/切换草稿前自动保存。仅本机草稿（不同步服务器 Drafts）。`REQ-0043` `delivered`、新建 `SCN-0031` `verified`（`T-SCN-0031-01…04`）；改动 `MailDomain`（+`DraftRecord`）、`CMP-OUTBOX-STORE`、`CMP-SCN-COMPOSE`、`CMP-PRES`、`CMP-APP`（新增 `DraftListView`/`MailboxView+Drafts`/`MailboxView+Toolbar`，`ComposeView` 嵌入态）；不新增 schema/target/依赖；475 tests / 80 suites、架构 4/4；L2 探针 `task-spaces/20261127-114500-drafts-tab/probe/`（草稿列表与就地编辑器截图）；真实点击/⌘S/深浅色/ VoiceOver 为发布前人工项；`make-app.sh` 成功（release）。
+
 工序目录名沿用历史 `works/YYYY-MM-DD-<短名>/`；2026-11-14 起过程记录放工作区 `task-spaces/<run>/`，**任务表作为项目排期的一部分落在本文件**，不再只存在于某次运行的 brief 里。
 
 ## 里程碑
@@ -65,6 +67,7 @@ updated: 2026-11-25
 | W-M3-20 日历页两栏与邀请邮件列表 | M3 | W-M3-19；REQ-0040 `delivered`；SCN-0024 增量 `verified` | CMP-APP、CMP-PRES、CMP-SCN-CALENDAR | 已完成（2026-11-25）：日历页与邮件页共用同一个 `NavigationSplitView`，左列 `CalendarMailListView` 按 `(folderID, serverID)` 去重展示邀请邮件、右列 `CalendarView`；`CalendarReader` 统一列表/日历块的浮窗打开入口，`selectedOccurrence` 为唯一选中；`CalendarMailItem`/`invitationMails`、`CalendarScene.message(ref)` 落地；466 tests / 77 suites、架构 4/4；L2 截图 `task-spaces/20261125-120000-calendar-list/calendar-list.png`；`make-app.sh` 成功（release，2026-11-25 13:00 CST）；真实点击/双击/分隔条/深色视觉待人工 |
 | W-M3-21 撰写页顶栏：发送置顶与关闭存草稿 | M3 | W-M3-20；REQ-0041 `delivered`；SCN-0016 增量 `verified` | CMP-APP（`ComposeView.swift`） | 已完成（2026-11-25）：顶栏左侧红色关闭、标题居中、右上唯一 `borderedProminent` 大蓝「发送」；底栏与旧 `xmark` 删除；状态文本改顶栏下独立一行；关闭时 `hasEdits` 弹「存储草稿？/存草稿/放弃/继续编辑」；466 tests / 77 suites、架构 4/4；L2 探针 900/480/225% 截图；`make-app.sh` 成功（release）；真实点击与像素验收待人工。任务表见 §W-M3-21 |
 | W-M3-22 主窗口顶栏分组（动作贴右 + tooltip） | M3 | W-M3-21；REQ-0042 `delivered`；SCN-0028 增量 `verified` | CMP-APP（`MailboxView.swift`、`ToolbarTooltips.swift`） | 已完成（2026-11-26）：动作组迁到窗口级 `.toolbar`，安装器插入 `.flexibleSpace` 并移除搜索前多余 `.flexibleSpace`，1512pt 下贴住搜索框（x≈898..1169）、七项全可见；按 label 补 `NSToolbarItem.toolTip`；900pt 最小宽允许溢出；466 tests / 77 suites、架构 4/4；L2 探针 1512/900 截图与稳定性；`make-app.sh` 成功（release）；真实悬停/点击与浅色主题待人工。任务表见 §W-M3-22 |
+| W-M3-23 草稿箱 tab 与就地继续编辑 | M3 | W-M3-22；REQ-0043 `delivered`；SCN-0031 `verified` | CMP-DOMAIN、CMP-OUTBOX-STORE、CMP-SCN-COMPOSE、CMP-PRES、CMP-APP | 已完成（2026-11-27）：四段切换 + 草稿列表 + 右侧原地编辑器；「存草稿」覆盖同行并留在编辑器，「发送」把同行转 queued；离开自动保存；仅本机草稿。475 tests / 80 suites、架构 4/4；L2 截图 `task-spaces/20261127-114500-drafts-tab/probe/`；`make-app.sh` 成功（release）；真实点击/⌘S/像素/VoiceOver 待人工。任务表见 §W-M3-23 |
 | W-REFACTOR-03 预算拆分（R45/R70/R71/R72） | —（结构） | W-M3-17；D1 拍板「不上调预算，先拆分」 | CMP-HTML（新 target `HTMLSupport`）、CMP-MEETING-STORE、CMP-WBXML、CMP-PRES、CMP-APP | 已完成（2026-11-24）：`Scenes` 1306→923（新组件 `CMP-HTML` 391）；`CMP-STORE` 1225→952（新组件 `CMP-MEETING-STORE` 287）；`CMP-EAS` 1513→1150（新组件 `CMP-WBXML` 363）；`MailboxViewModel` 424→366、`CalendarViewModel` 424→172（+`CalendarProjection` 254）；`CMP-APP` 各文件 ≤300；`MailDomain` 1503/800 目标未处理，登记 R77；460 tests / 77 suites、架构 4/4、`make-app.sh` 成功 |
 | W-REFACTOR-04 会议契约与同步契约解耦（R77） | —（结构） | W-REFACTOR-03；R77；用户拍板「彻底重构（`Message` 不再携会议）」 | CMP-MEETING-DOMAIN（新 target `MeetingDomain`）、CMP-SYNC-CONTRACT（新 target `SyncContract`）、CMP-DOMAIN、CMP-STORE、CMP-EASADAPTER、CMP-SCN-READ、CMP-PRES | 已完成（2026-11-24）：`MailDomain` 1503→**756/800**；`MeetingDomain` 682/800；`SyncContract` 87/400；`Message` 去 `meeting`、会议随 `MessageDelta.meetings` 同事务写入；读侧 `ReadScene.meeting(for:)`；460 tests / 77 suites、架构 4/4、`make-app.sh` 成功 |
 | W-REFACTOR-02 账号与文件夹存储拆分 | —（结构） | 计划；`sync_state` 事务边界需先设计 | CMP-STORE（拆分后新组件另定） | 未立项：把 accounts/folders/sync_state 从 `MailStore` 拆出前，先设计「批次与 key 同事务」「`applyFolderSnapshot` 文件夹+key 同事务」「`discardAccount` 空账号检查」三条不变量的边界；不在 W-M3-16 夹带 |
@@ -682,6 +685,21 @@ P1 确认记录已归档为 `uumail/doc/history/decisions/2026-11-14-mail-write-
 | `T-1126-05` | `release` | — | `T-1126-04` | 已完成（2026-11-26） | `make-app.sh`、`dist/build-info.txt` |
 
 发布前人工项：真实窗口悬停看 tooltip、点击七个动作、浅色主题像素验收；macOS 14/15 的贴右程度未验证。
+
+## W-M3-23 任务表（草稿箱 tab 与就地继续编辑）
+
+来源：`REQ-0043`、新建 `SCN-0031`（`T-SCN-0031-01…04`）、各组件的 2026-11-27 设计增量。定级 **P3**；口径 2026-11-26 人工确认（仅本机草稿；存草稿后留在编辑器）。
+
+| 任务 | 类型 | 组件 | 依赖 | 状态 | 出口 |
+|---|---|---|---|---|---|
+| `T-1127-01` | `design` | CMP-APP 等 | — | 已完成（2026-11-27） | 草稿数据流（outbox draft 行→列表→就地编辑器→同行保存/转队）与交互口径 |
+| `T-1127-02` | `change` | CMP-DOMAIN / CMP-OUTBOX-STORE / CMP-SCN-COMPOSE | `T-1127-01` | 已完成（2026-11-27） | `DraftRecord`、`drafts/updateDraft/sendDraft`、`saveDraft(draftID:)/send(draftID:)` |
+| `T-1127-03` | `change` | CMP-PRES / CMP-APP | `T-1127-02` | 已完成（2026-11-27） | 视图模型草稿状态与 `compose(draft:)`；四段切换、草稿列表、就地编辑器、⌘S 存草稿、离开自动保存 |
+| `T-1127-04` | `verify` | — | `T-1127-03` | 已完成（2026-11-27） | 475 tests / 80 suites、架构 4/4、L2 草稿列表与就地编辑器截图 |
+| `T-1127-05` | `doc` | — | `T-1127-04` | 已完成（2026-11-27） | `REQ-0043`、`SCN-0031`、五个组件增量、roadmap、`doc/README.md` |
+| `T-1127-06` | `release` | — | `T-1127-05` | 已完成（2026-11-27） | `make-app.sh`、`dist/build-info.txt` |
+
+发布前人工项：真实点击四段切换/草稿行/存草稿/发送、⌘S 焦点与 IME、浅色/深色像素、VoiceOver；服务器 Drafts 同步不在本工序。
 
 ## 批次纪律
 

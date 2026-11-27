@@ -74,3 +74,11 @@ component: CMP-OUTBOX-STORE
 - `Outbox` 的行级调用改为 `outboxStore`，账号只读仍走 `MailStore`；状态机/租约/退避语义逐字不变
   （`Tests/MailStoreTests/MigrationTests.swift` 与 `OutboxTests` 全绿）。
 - `MailStore` 由 1024 行降到 586 行（组件合计 842），为 v12 的约 110 行留出预算。
+
+## 设计增量：草稿行读取、覆盖与转队（REQ-0043，2026-11-27，P3，已实现）
+
+- 来源：`REQ-0043` / `SCN-0031`。草稿沿用既有 `outbox` 表与 `state = 'draft'`，不新增 schema。
+- `drafts(account:) -> [DraftRecord]`：`WHERE state = 'draft' ORDER BY updated_at DESC, id DESC`；不含 queued/sending/failed 行。
+- `updateDraft(account:draftID:draft:) -> Bool`：`UPDATE … WHERE id = ? AND state = 'draft'`，刷新 `updated_at`；返回 `changesCount == 1`，行不存在时调用方回退为插入。
+- `sendDraft(account:draftID:draft:) -> Bool`：同一条 `UPDATE` 写最新正文并置 `is_draft = 0, state = 'queued'`、清 `last_error`/`next_attempt_at`；行 id 即 `ClientId`，草稿不可能既被投递又留在草稿箱。
+- 不改 `saveDraft`/`enqueueOutbox`/`pendingOutbox`/claim/租约/退避的既有语义；草稿行不进入投递查询。

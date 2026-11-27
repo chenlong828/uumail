@@ -720,3 +720,10 @@ component: CMP-PRES
 - 测试（L1）：`T-SCN-0024-10`（`CalendarGridScenarioTests.invitationList`）覆盖去重、倒序、首个 occurrence、来源发件人、`omittedInvitationCount` 与 `hasSourceMail`，具体断言以场景卡为准；全量 466 tests / 77 suites、架构 4/4。列表布局与真实点击不在本层。
 - 定级：**P3**（`Presentation` 内 additive public 展示值与只读属性；无 schema/依赖/场景契约语义变化）。
 
+
+## 设计增量：草稿箱数据与就地编辑器（REQ-0043，2026-11-27，P3，已实现）
+
+- 来源：`REQ-0043` / `SCN-0031`。
+- `MailboxViewModel.drafts: [DraftRecord]`（`public internal(set)`）+ `loadDrafts()`（scene 读取，失败为空列表）；`compose(draft:) -> ComposeViewModel` 以 `mode: .draft`、`draftID`、回填字段构造编辑器。
+- `ComposeViewModel`：新增 `Mode.draft` 与 `public let draftID: OutboxID?`（init 默认 nil，既有调用不变）；`saveDraft()`/`send()` 把 `draftID` 传给 scene，其余状态/错误文案不变。
+- 测试：`Tests/PresentationTests/ComposeViewModelTests.swift` 的 `DraftListTests` 3 例（同行保存、发送消费、账号隔离）。
