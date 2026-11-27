@@ -45,10 +45,21 @@ extension SyncEngine {
         folder: Folder, into store: any DraftSyncStore, report: inout DraftSyncReport
     ) async throws {
         let key = try store.syncKey(account: account, collection: folder.serverID) ?? "0"
-        let delta = try await gateway.fetchMessages(
+        var delta = try await gateway.fetchMessages(
             collectionID: folder.serverID, syncKey: key, window: 50, filterType: filterType
         )
-        for message in delta.added + delta.changed {
+        if key == "0" {
+            // SyncKey=0 only answers with a fresh key; the window is fetched with it.
+            delta = try await gateway.fetchMessages(
+                collectionID: folder.serverID, syncKey: delta.syncKey,
+                window: 50, filterType: filterType
+            )
+        }
+        // A locally deleted/sent draft may still appear as an Add/Change in this window;
+        // the tombstone is authoritative until the delete reaches the server, otherwise the
+        // pull would resurrect the row we just removed.
+        let tombstones = Set(try store.draftTombstones(account: account))
+        for message in delta.added + delta.changed where !tombstones.contains(message.serverID) {
             guard let fetched = try? await gateway.fetchBody(
                 collectionID: folder.serverID, serverID: message.serverID
             ) else { continue }
@@ -123,9 +134,10 @@ extension SyncEngine {
                 account: account, draftID: record.id, serverID: serverID,
                 hash: record.fingerprint
             )
-            key = result.syncKey
+            key = try await freshKey(folder.serverID)
             try store.setSyncKey(account: account, collection: folder.serverID, key: key)
             report.uploaded += 1
+            _ = result
         }
 
         for record in try store.draftsNeedingUpload(account: account) {
@@ -135,9 +147,10 @@ extension SyncEngine {
                 collectionID: folder.serverID, syncKey: key
             )
             try store.setDraftHash(account: account, draftID: record.id, hash: record.fingerprint)
-            key = result.syncKey
+            key = try await freshKey(folder.serverID)
             try store.setSyncKey(account: account, collection: folder.serverID, key: key)
             report.updated += 1
+            _ = result
         }
 
         for serverID in try store.draftTombstones(account: account) {
@@ -145,13 +158,24 @@ extension SyncEngine {
                 serverID: serverID, collectionID: folder.serverID, syncKey: key
             )
             try store.removeDraftTombstone(account: account, serverID: serverID)
-            key = result.syncKey
+            key = try await freshKey(folder.serverID)
             try store.setSyncKey(account: account, collection: folder.serverID, key: key)
             report.deleted += 1
+            _ = result
         }
     }
 
     // MARK: - Helpers
+
+    /// This gateway returns a SyncKey on a draft write that the next `Sync` rejects with
+    /// status 3/4 (measured 2026-11-27: Sync Add → key X, `Sync` with X → syncKeyInvalid,
+    /// while the pre-write key and a fresh `SyncKey=0` bootstrap both stay valid). Take a
+    /// fresh bootstrap key after every write instead of trusting the write response.
+    private func freshKey(_ collectionID: String) async throws -> String {
+        try await gateway.fetchMessages(
+            collectionID: collectionID, syncKey: "0", window: 1, filterType: 0
+        ).syncKey
+    }
 
     private static func payload(_ record: DraftRecord) -> DraftPayload {
         DraftPayload(

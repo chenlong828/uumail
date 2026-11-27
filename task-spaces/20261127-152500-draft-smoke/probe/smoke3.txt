@@ -1,0 +1,12 @@
+SMOKE local draft: 3BEA3519-BB9E-4E20-8535-AD97B48059E2
+SMOKE upload report: downloaded=1 uploaded=1 updated=0 deleted=0
+SMOKE bound serverID: _YPprqSaOkKgdRfWHADCtgAAAAABD_2D6a6kmjpCoHUX1hwAwrYAAk8CLmo1
+SMOKE drafts folder: 草稿 (4)
+SMOKE stored drafts key after upload: 54941921
+SMOKE pull after upload ok: added=2 key=1208799361
+SMOKE server copy present after upload: true
+SMOKE delete report: deleted=1
+SMOKE tombstones left: 0
+SMOKE server copy fetch failed after attempt 1: MailError
+SMOKE server copy gone after delete: true
+SMOKE PASS

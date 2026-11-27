@@ -1,0 +1,7 @@
+KEYPROBE bootstrap key=659520675
+KEYPROBE add key=1814576061 serverID=_YPprqSaOkKgdRfWHADCtgAAAAABD_2D6a6kmjpCoHUX1hwAwrYAAk8CLmk1
+KEYPROBE pre-write key=659520675 OK next=886531094 added=1
+KEYPROBE add-response key=1814576061 FAILED syncKeyInvalid
+KEYPROBE rebootstrap key=1689443747
+KEYPROBE rebootstrap key=1689443747 OK next=300005319 added=1
+KEYPROBE cleanup delete ok

@@ -214,6 +214,34 @@ struct DraftSyncTests {
         #expect(try store.outbox.drafts(account: account).isEmpty)
     }
 
+    @Test("a tombstoned draft is not resurrected by the pull")
+    func tombstoneSkipsPull() async throws {
+        let (store, account) = try fixture()
+        let gateway = DraftSyncGatewayStub(
+            folders: [], delta: MessageDelta(
+                added: [Message(
+                    serverID: "S1", subject: "已删草稿",
+                    recipients: "a@b.c", receivedRaw: "2026-11-27T06:00:00.000Z"
+                )],
+                changed: [], removedServerIDs: [], syncKey: "K2", moreAvailable: false
+            ),
+            bodies: ["S1": FetchedBody(text: "<p>x</p>", isHTML: true, isTruncated: false)]
+        )
+        let write = DraftWriteStub()
+        let id = try store.outbox.saveDraft(
+            account: account,
+            draft: MailDraft(to: "a@b.c", cc: nil, subject: "已删草稿", body: "x", isDraft: true)
+        )
+        try store.outbox.bindDraft(account: account, draftID: id, serverID: "S1", hash: "h")
+        _ = try store.outbox.deleteDraft(account: account, draftID: id)
+
+        _ = try await engine(store: store, account: account, gateway: gateway, write: write)
+            .syncDraftsOnce()
+
+        #expect(try store.outbox.drafts(account: account).isEmpty, "the deleted draft stays deleted")
+        #expect(write.deleted == ["S1"])
+    }
+
     @Test("sending a bound draft tombstones the server copy")
     func sendingBoundDraftDeletesServerDraft() async throws {
         let (store, account) = try fixture()
